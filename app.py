@@ -1,14 +1,14 @@
+import eventlet
+eventlet.monkey_patch()
 from flask import Flask, render_template, request, redirect, url_for, jsonify, make_response
 from flask_socketio import SocketIO, emit
 import supabase
 import sqlite3
-import eventlet
 import random
 from escpos.printer import Network
 import socket  # Corrigido: Importação do módulo socket
 import os
 from datetime import timedelta
-eventlet.monkey_patch()
 
 # Configuração do Flask e SocketIO
 app = Flask(__name__)
