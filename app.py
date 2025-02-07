@@ -8,13 +8,13 @@ from escpos.printer import Network
 import socket  # Corrigido: Importação do módulo socket
 import os
 from datetime import timedelta
+eventlet.monkey_patch()
 
 # Configuração do Flask e SocketIO
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=365)
 socketio = SocketIO(app)
-eventlet.monkey_patch()
 
 
 IMPRESSORA_PORTA = 9100
