@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
+    <title>Tela Inicial</title>
+    <style>
+        /* Estilo global para garantir que a página se adapte bem a qualquer tamanho de tela */
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            background-color: #121212;
+  
+            
+            box-sizing: border-box;
+        }
+
+    
+
+        /* Melhorando a aparência do título */
+        h1 {
+            font-size: 2.5em;
+            color:white;
+            margin-bottom: 10px;
+        }
+
+        h2 {
+            font-size: 1.5em;
+            color:white;
+            margin-bottom: 20px;
+        }
+
+        /* Estilo do botão com transições suaves e maior foco em interatividade */
+       .btn {
+            padding: 18px 35px;
+            font-size: 1.2em;
+            margin: 12px;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 3px 3px 8px rgba(0, 0, 0, 0.2), -3px -3px 8px rgba(255, 255, 255, 0.3);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            width: 100%;
+            max-width: 250px;
+        }
+
+        button:hover {
+            transform: scale(1.05);
+            box-shadow: 4px 4px 12px rgba(0, 0, 0, 0.3), -4px -4px 12px rgba(255, 255, 255, 0.3);
+        }
+
+        /* Botão "normal" com cor verde */
+        #normal {
+            background-color: #4CAF50;
+            color: white;
+        }
+
+        /* Botão "preferencial" com cor laranja */
+        #preferencial {
+            background-color: #FF5733;
+            color: white;
+        }
+
+    
+    </style>
+</head>
+<body>
+    <h1>Bem-vindo</h1>
+    <h2>Retire uma senha:</h2>
+    <a href="/retirar_senha/normal" class="btn btn-primary" id="normal">Senha Normal</a>
+       
+  
+    <a href="/retirar_senha/preferencial" class="btn btn-primary" id="preferencial">Senha Preferencial  </a>
+</body>
+</html>
