@@ -49,7 +49,7 @@
     <script>
         function atualizarSenhaAtual() {
             $.getJSON('/get_senha_atual', function(data) {
-                $('#senha_atual').text(data.senha_atual).hide().fadeIn(1000);
+                $('#senha_atual').text(data.senha_atual).hide().fadeIn(100);
             });
         }
 
