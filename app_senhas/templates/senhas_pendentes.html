@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Senhas Pendentes</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <meta name="theme-color" content="#ffffff">
+    <style>
+        /* Bloqueando o scroll da página */
+        body, html {
+            height: 100%;
+            overflow: hidden; /* Impede o scroll */
+            margin: 0;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f4f4f4;
+            display: flex;
+            flex-direction: column;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .senha-atual {
+            font-size: 32px;
+            color: #FF5733;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            box-shadow: 5px 5px 15px rgba(0, 0, 0, 0.1), -5px -5px 15px rgba(255, 255, 255, 0.5);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        th, td {
+            padding: 12px;
+            text-align: center;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+        td {
+            background-color: #fff;
+            color: #333;
+        }
+        button {
+            padding: 15px 30px;
+            font-size: 16px;
+            background-color: #FF5733;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 4px 4px 6px rgba(0, 0, 0, 0.1), -4px -4px 6px rgba(255, 255, 255, 0.5);
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: scale(1.05);
+        }
+        /* Fixando o botão no canto superior direito */
+        .chamar-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.js"></script>
+    <script>
+        const socket = io();
+
+        socket.on('atualizar_lista', (data) => {
+            // Atualiza a senha atual
+            document.querySelector('.senha-atual').textContent = `Senha Atual: ${data.senha_atual}`;
+
+            // Atualiza a lista de senhas pendentes
+            const tabela = document.querySelector('#tabela-senhas tbody');
+            tabela.innerHTML = ''; // Limpa a tabela
+            data.senhas.forEach(senha => {
+                const linha = `<tr>
+                    <td>${senha[0]}</td>
+                    <td>${senha[1]}</td>
+                    <td>${senha[2]}</td>
+                </tr>`;
+                tabela.innerHTML += linha;
+            });
+        });
+
+        socket.on('erro', (data) => {
+            alert(data.mensagem);
+        });
+
+        function chamarProximaSenha() {
+            socket.emit('chamar_proxima');  // Emite o evento para o backend
+
+            // Toca o som ao clicar no botão
+            var audio = new Audio('/static/audio.mp3');  // Certifique-se de que 'alerta.mp3' está no mesmo diretório ou forneça o caminho correto
+            audio.play();
+        }
+    </script>
+</head>
+<body>
+    <h1>Senhas Pendentes</h1>
+    <div class="senha-atual">Senha Atual: Aguardando...</div>
+    <table id="tabela-senhas">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>Senha</th>
+                <th>Tipo</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- A tabela será preenchida dinamicamente -->
+        </tbody>
+    </table>
+    
+    <!-- Botão fixo no canto superior direito -->
+    <div class="chamar-btn">
+        <button onclick="chamarProximaSenha()">Chamar Próxima Senha</button>
+    </div>
+</body>
+</html>
