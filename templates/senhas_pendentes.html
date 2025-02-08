@@ -99,7 +99,11 @@
         });
 
         function chamarProximaSenha() {
-            socket.emit('chamar_proxima');
+            socket.emit('chamar_proxima');  // Emite o evento para o backend
+
+            // Toca o som ao clicar no botão
+            var audio = new Audio('/static/audio.mp3');  // Certifique-se de que 'alerta.mp3' está no mesmo diretório ou forneça o caminho correto
+            audio.play();
         }
     </script>
 </head>
