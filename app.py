@@ -122,7 +122,7 @@ def imprimir_senha(senha):
         impressora_ip = request.cookies.get('end_impressora_local')
         if not impressora_ip:
             # Caso não haja o cookie, utilize um valor padrão (opcional)
-            impressora_ip = "192.168.2.69"
+            impressora_ip = "192.168.2.67"
         
         # A porta permanece padrão (9100)
         p = Network(impressora_ip, IMPRESSORA_PORTA)
