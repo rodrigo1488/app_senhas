@@ -90,7 +90,7 @@ def login():
 
 def atualizar_senhas_periodicamente():
     while True:
-        socketio.sleep(5)  # Atualiza a cada 5 segundos (ajuste conforme necessário)
+        socketio.sleep(1)  # Atualiza a cada 5 segundos (ajuste conforme necessário)
         end_banco_local = "local_db.sqlite"  # Modifique para a variável correta se necessário
         
         if not os.path.exists(end_banco_local):
