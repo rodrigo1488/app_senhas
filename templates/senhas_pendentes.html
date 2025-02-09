@@ -25,7 +25,7 @@
             text-align: center;
             color: #333;
         }
-        .senha-atual {
+        .senha{
             font-size: 32px;
             color: #FF5733;
             margin-bottom: 20px;
@@ -105,11 +105,15 @@
             var audio = new Audio('/static/audio.mp3');  // Certifique-se de que 'alerta.mp3' está no mesmo diretório ou forneça o caminho correto
             audio.play();
         }
-    </script>
+        </script>
 </head>
 <body>
+    
     <h1>Senhas Pendentes</h1>
-    <div class="senha-atual">Senha Atual: Aguardando...</div>
+    <div class="senha">
+    <span id="senha-display">Carregando...</span>
+      </div>
+    <div class="senha-atual" style="display: none;"></div>
     <table id="tabela-senhas">
         <thead>
             <tr>
@@ -127,5 +131,21 @@
     <div class="chamar-btn">
         <button onclick="chamarProximaSenha()">Chamar Próxima Senha</button>
     </div>
+    <script>
+        function atualizarSenha() {
+          fetch('/get_senha_atual')
+            .then(response => response.json())
+            .then(data => {
+              document.getElementById('senha-display').innerText = data.senha_atual;
+            })
+            .catch(error => console.error('Erro ao obter a senha:', error));
+        }
+      
+        // Atualiza a cada 5 segundos
+        setInterval(atualizarSenha, 5000);
+        atualizarSenha();
+      </script>
+      
+      
 </body>
 </html>

@@ -8,6 +8,7 @@ import random
 from escpos.printer import Network
 import socket  # Corrigido: Importação do módulo socket
 import os
+import threading
 from datetime import timedelta
 
 # Configuração do Flask e SocketIO
@@ -86,6 +87,27 @@ def login():
             return "Usuário não encontrado."
     
     return render_template('login.html')
+
+def atualizar_senhas_periodicamente():
+    while True:
+        socketio.sleep(5)  # Atualiza a cada 5 segundos (ajuste conforme necessário)
+        end_banco_local = "local_db.sqlite"  # Modifique para a variável correta se necessário
+        
+        if not os.path.exists(end_banco_local):
+            continue
+
+        conn = sqlite3.connect(end_banco_local)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, senha, tipo FROM senhas ORDER BY tipo DESC, id ASC")
+        senhas_pendentes = cursor.fetchall()
+        conn.close()
+
+        # Emite o evento para todos os clientes conectados
+        socketio.emit('atualizar_lista', {'senhas': senhas_pendentes})
+
+
+# Inicia a atualização contínua em uma thread separada
+threading.Thread(target=atualizar_senhas_periodicamente, daemon=True).start()
 
 
 @app.route('/')

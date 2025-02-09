@@ -5,12 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Senha Atual</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<<<<<<< HEAD
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
-=======
+
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
     <meta name="theme-color" content="#ffffff">
->>>>>>> 59f7618dffeeff8b3aab4a0db8ca82f913a6c066
+
     <style>
         body {
             display: flex;
@@ -30,7 +29,7 @@
             background: #121212;
         }
         h1 {
-            font-size: 4rem;
+            font-size: 6rem;
             margin-bottom: 20px;
             color: #00e676;
             text-shadow: 0 0 10px #00e676;
@@ -48,9 +47,13 @@
 </head>
 <body>
     <div id="container">
-        <h1>Senha Atual</h1>
-        <p id="senha_atual" style="font-size: 8rem;">Aguardando próxima senha...</p>
+        <h1 >Senha Atual</h1>
+        <p id="senha-display"style="font-size: 8rem;">Carregando...</p>
+        
     </div>
+
+      <div id="container">
+      </div>
 
     <script>
         function atualizarSenhaAtual() {
@@ -66,6 +69,21 @@
 
         
     </script>
+
+<script>
+    function atualizarSenha() {
+      fetch('/get_senha_atual')
+        .then(response => response.json())
+        .then(data => {
+          document.getElementById('senha-display').innerText = data.senha_atual;
+        })
+        .catch(error => console.error('Erro ao obter a senha:', error));
+    }
+  
+    // Atualiza a cada 5 segundos
+    setInterval(atualizarSenha, 5000);
+    atualizarSenha();
+  </script>
   
 </body>
 </html>
