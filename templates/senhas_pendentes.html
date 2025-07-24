@@ -110,21 +110,24 @@
     <script>
         const socket = io();
 
+        const tabelaBody = document.getElementById('tabela-senhas-body');
         socket.on('atualizar_lista', (data) => {
             // Atualiza a senha atual
             document.querySelector('.senha-atual').textContent = `Senha Atual: ${data.senha_atual}`;
-
             // Atualiza a lista de senhas pendentes
-            const tabela = document.querySelector('#tabela-senhas tbody');
-            tabela.innerHTML = ''; // Limpa a tabela
-            data.senhas.forEach(senha => {
-                const linha = `<tr>
-                    <td>${senha[0]}</td>
-                    <td>${senha[1]}</td>
-                    <td>${senha[2]}</td>
-                </tr>`;
-                tabela.innerHTML += linha;
-            });
+            tabelaBody.innerHTML = '';
+            if (data.senhas.length === 0) {
+                tabelaBody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#888;font-size:1.2em;">Sem senhas pendentes</td></tr>';
+            } else {
+                data.senhas.forEach(senha => {
+                    const linha = `<tr>
+                        <td>${senha[0]}</td>
+                        <td>${senha[1]}</td>
+                        <td>${senha[2]}</td>
+                    </tr>`;
+                    tabelaBody.innerHTML += linha;
+                });
+            }
         });
 
         socket.on('erro', (data) => {
@@ -177,15 +180,48 @@
                 <th>Tipo</th>
             </tr>
         </thead>
-        <tbody>
-            <!-- A tabela será preenchida dinamicamente -->
+        <tbody id="tabela-senhas-body">
+            {% if senhas and senhas|length > 0 %}
+                {% for s in senhas %}
+                <tr>
+                    <td>{{ s[0] }}</td>
+                    <td>{{ s[1] }}</td>
+                    <td>{{ s[2] }}</td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr><td colspan="3" style="text-align:center;color:#888;font-size:1.2em;">Sem senhas pendentes</td></tr>
+            {% endif %}
         </tbody>
     </table>
     
     <!-- Botão fixo no canto superior direito -->
     <div class="chamar-btn">
-        <button onclick="chamarProximaSenha()">Chamar Próxima Senha</button>
+        <button onclick="abrirModalOperador()">Chamar Próxima Senha</button>
     </div>
+
+    <!-- Modal de identificação do operador -->
+    <div id="modalOperador" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+        <div style="background:#fff;padding:30px;border-radius:10px;max-width:350px;margin:auto;">
+            <h2>Selecione o Operador</h2>
+            <form id="formOperador" method="POST" action="/chamar_proxima">
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                {% for op in operadores %}
+                    <button type="submit" name="operador_id" value="{{ op[0] }}" style="padding:15px;font-size:1.2em;border-radius:8px;background:#007BFF;color:#fff;border:none;">{{ op[1] }}</button>
+                {% endfor %}
+                </div>
+                <button type="button" onclick="fecharModalOperador()" style="width:100%;margin-top:10px;background:#ccc;">Cancelar</button>
+            </form>
+        </div>
+    </div>
+    <script>
+        function abrirModalOperador() {
+            document.getElementById('modalOperador').style.display = 'flex';
+        }
+        function fecharModalOperador() {
+            document.getElementById('modalOperador').style.display = 'none';
+        }
+    </script>
 
     <!-- Overlay de carregamento -->
     <div class="loading-overlay" id="loadingOverlay">

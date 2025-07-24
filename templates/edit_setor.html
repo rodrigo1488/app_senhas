@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Editar Setor</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Editar Setor</h1>
+        <form method="POST">
+            <label for="nome">Nome:</label>
+            <input type="text" name="nome" id="nome" value="{{ setor[1] }}" required>
+            <label for="descricao">Descrição:</label>
+            <input type="text" name="descricao" id="descricao" value="{{ setor[2] }}">
+            <label for="senha_setor">Senha do Setor:</label>
+            <input type="text" name="senha_setor" id="senha_setor" value="{{ setor[3] }}" required>
+            <button type="submit">Salvar</button>
+        </form>
+    </div>
+</body>
+</html> 

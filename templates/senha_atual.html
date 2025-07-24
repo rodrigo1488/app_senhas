@@ -4,12 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Senha Atual</title>
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
-
+    <script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script>
     <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
     <meta name="theme-color" content="#ffffff">
-
     <style>
         body {
             display: flex;
@@ -25,7 +22,6 @@
             text-align: center;
             padding: 20px;
             border-radius: 12px;
-           
             background: #121212;
         }
         h1 {
@@ -47,43 +43,26 @@
 </head>
 <body>
     <div id="container">
-        <h1 >Senha Atual</h1>
-        <p id="senha-display"style="font-size: 8rem;">Carregando...</p>
-        
+        <h1>Senha Atual</h1>
+        <p id="senha_atual" style="font-size: 8rem;">Carregando...</p>
     </div>
-
-      <div id="container">
-      </div>
-
     <script>
         function atualizarSenhaAtual() {
-            $.getJSON('/get_senha_atual', function(data) {
-                $('#senha_atual').text(data.senha_atual).hide().fadeIn(100);
-            });
+            fetch('/get_senha_atual_setor')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('senha_atual').innerText = data.senha_atual;
+                });
         }
-
-        // Atualiza a cada 5 segundos
-        setInterval(atualizarSenhaAtual, 5000);
         atualizarSenhaAtual();
-
-
-        
+        // Atualização instantânea via Socket.IO
+        const socket = io();
+        socket.on('atualizar_lista', function() {
+            atualizarSenhaAtual();
+        });
+        socket.on('nova_senha_para_avaliacao', function() {
+            atualizarSenhaAtual();
+        });
     </script>
-
-<script>
-    function atualizarSenha() {
-      fetch('/get_senha_atual')
-        .then(response => response.json())
-        .then(data => {
-          document.getElementById('senha-display').innerText = data.senha_atual;
-        })
-        .catch(error => console.error('Erro ao obter a senha:', error));
-    }
-  
-    // Atualiza a cada 5 segundos
-    setInterval(atualizarSenha, 5000);
-    atualizarSenha();
-  </script>
-  
 </body>
 </html>

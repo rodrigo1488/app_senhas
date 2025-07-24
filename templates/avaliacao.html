@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Avaliação de Atendimento</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .stars {
+            display: flex;
+            flex-direction: row-reverse;
+            justify-content: center;
+        }
+        .stars input[type="radio"] {
+            display: none;
+        }
+        .stars label {
+            font-size: 2.5em;
+            color: #ccc;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .stars input[type="radio"]:checked ~ label,
+        .stars label:hover,
+        .stars label:hover ~ label {
+            color: #FFD700;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.js"></script>
+    <script>
+        // Instância global do socket para evitar duplicidade
+        window._socket = window._socket || io();
+        window._socket.on('connect', function() {
+            console.log('[SOCKETIO] Conectado ao servidor Socket.IO!');
+        });
+    </script>
+</head>
+<body>
+    <div class="container">
+        {% if saudacao %}
+            <h1>Obrigado pela avaliação!</h1>
+            <h2>Aguardando chamada de próxima senha...</h2>
+        {% elif senha_id and setor_id and operador_id %}
+            <h1>Avalie o Atendimento</h1>
+            <form method="POST">
+                <div class="stars">
+                    <input type="radio" id="star5" name="nota" value="5"><label for="star5">★</label>
+                    <input type="radio" id="star4" name="nota" value="4"><label for="star4">★</label>
+                    <input type="radio" id="star3" name="nota" value="3"><label for="star3">★</label>
+                    <input type="radio" id="star2" name="nota" value="2"><label for="star2">★</label>
+                    <input type="radio" id="star1" name="nota" value="1" required><label for="star1">★</label>
+                </div>
+                <button type="submit" style="margin-top:20px;">Enviar Avaliação</button>
+            </form>
+        {% else %}
+            <h1>Aguardando chamada de próxima senha...</h1>
+        {% endif %}
+    </div>
+    {% if auto_finalize %}
+    <script>
+        setTimeout(function() {
+            // Se o usuário não enviou, envia nota vazia automaticamente
+            if (!document.querySelector('input[name="nota"]:checked')) {
+                var form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '';
+                var input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'nota';
+                input.value = '';
+                form.appendChild(input);
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }, 5000);
+    </script>
+    {% endif %}
+    {% if saudacao %}
+    <script>
+        // Atualiza a tela em tempo real quando o operador chamar a próxima senha
+        function getCookie(name) {
+            let match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+            if (match) return match[2];
+        }
+        const operadorIdCookie = getCookie('operador_id');
+        window._socket.on('nova_senha_operador', function(data) {
+            if (data.operador_id == operadorIdCookie) {
+                window.location.reload();
+            }
+        });
+    </script>
+    {% endif %}
+    {% if saudacao %}
+    <script>
+        function getCookie(name) {
+            let match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+            if (match) return match[2];
+        }
+        window._socket.on('nova_senha_para_avaliacao', function(data) {
+            console.log('[SOCKETIO] Evento recebido', data);
+            // Redireciona para a tela de avaliação da senha correta
+            window.location.href = `/avaliacao?senha_id=${data.senha_id}&setor_id=${data.setor_id}&operador_id=${data.operador_id}`;
+        });
+    </script>
+    {% endif %}
+</body>
+</html> 
