@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Painel Administrativo</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f8f9fa; }
+        .container { background: #fff; border-radius: 12px; box-shadow: 0 2px 16px rgba(0,0,0,0.08); padding: 32px; margin-top: 40px; }
+        .tab { margin: 20px 0; display: flex; gap: 10px; }
+        .tab-btn { padding: 12px 28px; font-size: 1.1em; border-radius: 8px 8px 0 0; border: none; background: #e9ecef; color: #333; cursor: pointer; transition: background 0.2s; }
+        .tab-btn.active, .tab-btn:hover { background: #007BFF; color: #fff; }
+        .tab-content { display: none; padding: 24px 0 0 0; }
+        .tab-content.active { display: block; }
+        table { margin-top: 10px; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 6px rgba(0,0,0,0.05); }
+        th, td { padding: 14px 18px; text-align: center; }
+        th { background: #007BFF; color: #fff; }
+        td { background: #f9f9f9; }
+        .btn-action { margin: 0 4px; border-radius: 6px; padding: 8px 16px; font-size: 1em; border: none; transition: background 0.2s; }
+        .btn-add { background: #28a745; color: #fff; }
+        .btn-add:hover { background: #218838; }
+        .btn-edit { background: #ffc107; color: #333; }
+        .btn-edit:hover { background: #e0a800; }
+        .btn-delete { background: #dc3545; color: #fff; }
+        .btn-delete:hover { background: #b21f2d; }
+        /* Ícone de engrenagem */
+        #btnConfigGear {
+            background: #fff;
+            border: none;
+            cursor: pointer;
+            font-size: 2.2em;
+            outline: none;
+            border-radius: 50%;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.13);
+            padding: 10px 13px 10px 13px;
+            transition: box-shadow 0.2s, background 0.2s;
+        }
+        #btnConfigGear:hover {
+            background: #f0f0f0;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.18);
+        }
+        /* Modal de configuração */
+        #modalConfig {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0,0,0,0.55);
+            z-index: 3000;
+            align-items: center;
+            justify-content: center;
+            animation: fadeInModal 0.3s;
+        }
+        @keyframes fadeInModal {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        #modalConfig .modal-content {
+            background: #fff;
+            padding: 32px 28px 24px 28px;
+            border-radius: 18px;
+            max-width: 420px;
+            width: 90vw;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.22);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            animation: slideDownModal 0.3s;
+        }
+        @keyframes slideDownModal {
+            from { transform: translateY(-40px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        #modalConfig .close-modal {
+            position: absolute;
+            top: 12px;
+            right: 18px;
+            background: none;
+            border: none;
+            font-size: 2em;
+            color: #888;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        #modalConfig .close-modal:hover {
+            color: #d32f2f;
+        }
+    </style>
+    <script>
+        function showTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(e => e.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(e => e.classList.remove('active'));
+            document.getElementById(tab).classList.add('active');
+            document.getElementById(tab+'-btn').classList.add('active');
+        }
+        window.onload = function() { showTab('operadores'); };
+        // Log de clique nas abas de setor de avaliações
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('#setorTabs .nav-link').forEach(function(btn) {
+                btn.addEventListener('click', function() {
+                    const setorId = this.getAttribute('data-bs-target').replace('#setor-', '');
+                    console.log('[ADMIN] Clique na aba do setor, setor_id enviado:', setorId);
+                });
+            });
+        });
+    </script>
+</head>
+<body>
+    <!-- Ícone de engrenagem para abrir o modal de configuração -->
+    <div style="position:fixed;top:24px;right:32px;z-index:2000;">
+        <button id="btnConfigGear">
+            <!-- SVG engrenagem elegante -->
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#007BFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3.5"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51h.09a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+    </div>
+    <!-- Modal de configuração -->
+    <div id="modalConfig">
+        <div class="modal-content">
+            <button class="close-modal" onclick="fecharModalConfig()">&times;</button>
+            <form id="formConfigProporcao">
+                <h4 style="margin-bottom:18px;text-align:center;">Configuração de Chamada de Senhas</h4>
+                <div class="mb-3">
+                    <label for="proporcaoNormais" class="form-label">Normais para cada Preferencial:</label>
+                    <input type="number" min="1" max="10" class="form-control" id="proporcaoNormais" name="proporcaoNormais" required>
+                </div>
+                <div class="mb-3">
+                    <label for="limitePreferenciais" class="form-label">Limite de Preferenciais para Alerta:</label>
+                    <input type="number" min="1" max="20" class="form-control" id="limitePreferenciais" name="limitePreferenciais" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Salvar Configuração</button>
+                <div id="configMsg" style="margin-top:10px;color:#28a745;font-weight:600;display:none;">Configuração salva!</div>
+            </form>
+        </div>
+    </div>
+    <div class="container">
+        <h1 style="text-align:center; margin-bottom: 30px;">Painel Administrativo</h1>
+        <div class="tab">
+            <button class="tab-btn" id="dashboard-btn" onclick="showTab('dashboard')">Dashboard</button>
+            <button class="tab-btn" id="operadores-btn" onclick="showTab('operadores')">Operadores</button>
+            <button class="tab-btn" id="impressoras-btn" onclick="showTab('impressoras')">Impressoras</button>
+            <button class="tab-btn" id="setores-btn" onclick="showTab('setores')">Setores</button>
+            <button class="tab-btn" id="avaliacoes-btn" onclick="showTab('avaliacoes')">Avaliações</button>
+        </div>
+        <div id="dashboard" class="tab-content">
+            <h2 style="text-align:center;">Dashboard</h2>
+            <div style="display:flex;flex-wrap:wrap;gap:32px;justify-content:center;margin-bottom:32px;">
+                {% for setor, total in atendimentos_dia %}
+                <div style="background:linear-gradient(90deg,#2196f3 0%,#21cbf3 100%);color:#fff;padding:28px 36px;border-radius:18px;min-width:220px;box-shadow:0 2px 12px rgba(0,0,0,0.08);text-align:center;">
+                    <div style="font-size:1.2em;font-weight:600;">{{ setor }}</div>
+                    <div style="font-size:2.2em;font-weight:700;">{{ total }}</div>
+                    <div style="font-size:1em;opacity:0.8;">Atendimentos finalizados hoje</div>
+                </div>
+                {% endfor %}
+            </div>
+            <div style="display:flex;flex-wrap:wrap;gap:32px;justify-content:center;align-items:center;">
+                <div style="background:#fff;padding:24px 32px;border-radius:18px;box-shadow:0 2px 12px rgba(0,0,0,0.08);min-width:340px;">
+                    <h4 style="text-align:center;margin-bottom:18px;">Atendimentos do mês por setor</h4>
+                    {% for setor, total in atendimentos_mes %}
+                    <div style="display:flex;justify-content:space-between;font-size:1.1em;margin-bottom:8px;">
+                        <span style="font-weight:600;">{{ setor }}</span>
+                        <span style="font-weight:700;">{{ total }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div style="background:#fff;padding:24px 32px;border-radius:18px;box-shadow:0 2px 12px rgba(0,0,0,0.08);min-width:340px;">
+                    <h4 style="text-align:center;margin-bottom:18px;">Operador com maior média</h4>
+                    {% if melhor_operador and melhor_operador[1] is not none %}
+                        <div style="font-size:1.3em;font-weight:700;color:#007BFF;">{{ melhor_operador[0] }}</div>
+                        <div style="font-size:1em;color:#555;margin-bottom:6px;">Setor: {{ melhor_operador[2] if melhor_operador|length > 2 else '-' }}</div>
+                        <div style="font-size:2.1em;font-weight:700;margin:10px 0;">
+                            {% set media_valor = melhor_operador[1] if melhor_operador[1] is not none else 0 %}
+                            {% set full_stars = media_valor|round(0, 'floor')|int %}
+                            {% set half_star = 1 if media_valor - full_stars >= 0.5 else 0 %}
+                            {% set empty_stars = 5 - full_stars - half_star %}
+                            <span style="color: #FFD700; font-size: 1.3em;">
+                                {% for _ in range(full_stars|int) %}★{% endfor %}
+                                {% if half_star %}<span style="color:#FFD700;opacity:0.5;">★</span>{% endif %}
+                                {% for _ in range(empty_stars|int) %}<span style="color:#ccc;">★</span>{% endfor %}
+                            </span>
+                            <span style="font-size:0.9em;color:#888;">({{ '%.2f'|format(media_valor) }})</span>
+                        </div>
+                    {% else %}
+                        <div style="color:#888;">Nenhum operador avaliado ainda.</div>
+                    {% endif %}
+                </div>
+                <!-- Card do operador com menor média -->
+                <div style="background:#fff;padding:24px 32px;border-radius:18px;box-shadow:0 2px 12px rgba(0,0,0,0.08);min-width:340px;">
+                    <h4 style="text-align:center;margin-bottom:18px;">Operador com menor média</h4>
+                    {% if pior_operador and pior_operador[1] is not none %}
+                        <div style="font-size:1.3em;font-weight:700;color:#dc3545;">{{ pior_operador[0] }}</div>
+                        <div style="font-size:1em;color:#555;margin-bottom:6px;">Setor: {{ pior_operador[2] if pior_operador|length > 2 else '-' }}</div>
+                        <div style="font-size:2.1em;font-weight:700;margin:10px 0;">
+                            {% set media_valor = pior_operador[1] if pior_operador[1] is not none else 0 %}
+                            {% set full_stars = media_valor|round(0, 'floor')|int %}
+                            {% set half_star = 1 if media_valor - full_stars >= 0.5 else 0 %}
+                            {% set empty_stars = 5 - full_stars - half_star %}
+                            <span style="color: #FFD700; font-size: 1.3em;">
+                                {% for _ in range(full_stars|int) %}★{% endfor %}
+                                {% if half_star %}<span style="color:#FFD700;opacity:0.5;">★</span>{% endif %}
+                                {% for _ in range(empty_stars|int) %}<span style="color:#ccc;">★</span>{% endfor %}
+                            </span>
+                            <span style="font-size:0.9em;color:#888;">({{ '%.2f'|format(media_valor) }})</span>
+                        </div>
+                    {% else %}
+                        <div style="color:#888;">Nenhum operador avaliado ainda.</div>
+                    {% endif %}
+                </div>
+                <div style="background:#fff;padding:24px 32px;border-radius:18px;box-shadow:0 2px 12px rgba(0,0,0,0.08);min-width:340px;display:flex;flex-direction:column;align-items:center;">
+                    <h4 style="text-align:center;margin-bottom:18px;">Distribuição do mês</h4>
+                    <canvas id="graficoPizza" width="220" height="220"></canvas>
+                </div>
+            </div>
+            <!-- Gráficos de pizza por setor/operador -->
+            <div style="display:flex;flex-wrap:wrap;gap:32px;justify-content:center;align-items:flex-start;margin-top:32px;">
+                {% for setor in setores %}
+                    <div style="background:#fff;padding:24px 32px;border-radius:18px;box-shadow:0 2px 12px rgba(0,0,0,0.08);min-width:340px;display:flex;flex-direction:column;align-items:center;">
+                        <h5 style="text-align:center;margin-bottom:12px;">{{ setor[1] }}<br><span style='font-size:0.9em;color:#888;'>Atendimentos do mês por operador</span></h5>
+                        <canvas id="graficoPizzaSetor{{ setor[0] }}" width="220" height="220"></canvas>
+                    </div>
+                {% endfor %}
+            </div>
+            <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+            <script>
+                // Gráfico de pizza dos atendimentos do mês por setor
+                document.addEventListener('DOMContentLoaded', function() {
+                    var ctxPizza = document.getElementById('graficoPizza').getContext('2d');
+                    var setoresPizza = {{ atendimentos_mes|map(attribute=0)|list|tojson }};
+                    var totaisPizza = {{ atendimentos_mes|map(attribute=1)|list|tojson }};
+                    new Chart(ctxPizza, {
+                        type: 'pie',
+                        data: {
+                            labels: setoresPizza,
+                            datasets: [{
+                                data: totaisPizza,
+                                backgroundColor: [
+                                    '#2196f3','#43e97b','#f7971e','#f85032','#ffc107','#21cbf3','#38f9d7','#e73827','#007BFF','#28a745'
+                                ],
+                            }]
+                        },
+                        options: {
+                            plugins: {
+                                legend: { position: 'bottom', labels: { font: { size: 16 } } }
+                            }
+                        }
+                    });
+                    // Gráficos de pizza por setor/operador
+                    var dadosPorSetor = {{ atendimentos_mes_operador_por_setor|tojson }};
+                    {% for setor in setores %}
+                        var setorId = {{ setor[0] }};
+                        var canvasId = 'graficoPizzaSetor' + setorId;
+                        var ctxSetor = document.getElementById(canvasId).getContext('2d');
+                        var operadores = [];
+                        var totais = [];
+                        for (var i = 0; i < dadosPorSetor[setorId].length; i++) {
+                            operadores.push(dadosPorSetor[setorId][i][0]);
+                            totais.push(dadosPorSetor[setorId][i][1]);
+                        }
+                        new Chart(ctxSetor, {
+                            type: 'pie',
+                            data: {
+                                labels: operadores,
+                                datasets: [{
+                                    data: totais,
+                                    backgroundColor: [
+                                        '#2196f3','#43e97b','#f7971e','#f85032','#ffc107','#21cbf3','#38f9d7','#e73827','#007BFF','#28a745'
+                                    ],
+                                }]
+                            },
+                            options: {
+                                plugins: {
+                                    legend: { position: 'bottom', labels: { font: { size: 15 } } }
+                                }
+                            }
+                        });
+                    {% endfor %}
+                });
+            </script>
+        </div>
+        <div id="operadores" class="tab-content">
+            <h2>Operadores</h2>
+            <a href="/admin/operador/add" class="btn btn-add btn-action mb-3">+ Novo Operador</a>
+            <table class="table table-hover">
+                <thead><tr><th>ID</th><th>Foto</th><th>Nome</th><th>Setor</th><th>Ações</th></tr></thead>
+                <tbody>
+                {% for op in operadores %}
+                    <tr>
+                        <td>{{ op[0] }}</td>
+                        <td>
+                            {% if op[3] %}
+                                <img src="/uploads/{{ op[3] }}" alt="Foto de {{ op[1] }}" style="width: 50px; height: 50px; border-radius: 50%; object-fit: cover; border: 2px solid #ddd;">
+                            {% else %}
+                                <div style="width: 50px; height: 50px; border-radius: 50%; background: #f0f0f0; display: flex; align-items: center; justify-content: center; border: 2px solid #ddd;">
+                                    <span style="font-size: 20px; color: #999;">👤</span>
+                                </div>
+                            {% endif %}
+                        </td>
+                        <td>{{ op[1] }}</td>
+                        <td>{{ op[2] }}</td>
+                        <td>
+                            <a href="/admin/operador/edit/{{ op[0] }}" class="btn btn-edit btn-action">Editar</a>
+                            <a href="/admin/operador/delete/{{ op[0] }}" class="btn btn-delete btn-action" onclick="return confirm('Remover operador?')">Remover</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div id="impressoras" class="tab-content">
+            <h2>Impressoras</h2>
+            <a href="/admin/impressora/add" class="btn btn-add btn-action mb-3">+ Nova Impressora</a>
+            <table class="table table-hover">
+                <thead><tr><th>ID</th><th>Nome</th><th>IP</th><th>Porta</th><th>Setor</th><th>Ações</th></tr></thead>
+                <tbody>
+                {% for imp in impressoras %}
+                    <tr><td>{{ imp[0] }}</td><td>{{ imp[1] }}</td><td>{{ imp[2] }}</td><td>{{ imp[3] }}</td><td>{{ imp[4] }}</td>
+                        <td>
+                            <a href="/admin/impressora/delete/{{ imp[0] }}" class="btn btn-delete btn-action" onclick="return confirm('Remover impressora?')">Remover</a>
+                        </td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div id="setores" class="tab-content">
+            <h2>Setores</h2>
+            <a href="/admin/setor/add" class="btn btn-add btn-action mb-3">+ Novo Setor</a>
+            <table class="table table-hover">
+                <thead><tr><th>ID</th><th>Nome</th><th>Descrição</th><th>Senha Setor</th><th>Ações</th></tr></thead>
+                <tbody>
+                {% for setor in setores %}
+                    <tr><td>{{ setor[0] }}</td><td>{{ setor[1] }}</td><td>{{ setor[2] }}</td><td>{{ setor[3] }}</td>
+                        <td>
+                            <a href="/admin/setor/edit/{{ setor[0] }}" class="btn btn-edit btn-action">Editar</a>
+                            <a href="/admin/setor/delete/{{ setor[0] }}" class="btn btn-delete btn-action" onclick="return confirm('Remover setor?')">Remover</a>
+                        </td></tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div id="avaliacoes" class="tab-content">
+            <h2>Avaliações</h2>
+            <table class="table table-hover mt-3">
+                <thead><tr><th>Operador</th><th>Setor</th><th>Média de Avaliação</th></tr></thead>
+                <tbody>
+                {% for setor in setores %}
+                    {% for media in medias_por_setor[setor[0]] %}
+                        <tr>
+                            <td>{{ media[0] }}</td>
+                            <td>{{ setor[1] }}</td>
+                            <td>
+                                {% if media[1] %}
+                                    {% set full_stars = media[1]|round(0, 'floor')|int %}
+                                    {% set half_star = 1 if media[1] - full_stars >= 0.5 else 0 %}
+                                    {% set empty_stars = 5 - full_stars - half_star %}
+                                    <span style="color: #FFD700; font-size: 1.5em;">
+                                        {% for _ in range(full_stars|int) %}★{% endfor %}
+                                        {% if half_star %}<span style="color:#FFD700;opacity:0.5;">★</span>{% endif %}
+                                        {% for _ in range(empty_stars|int) %}<span style="color:#ccc;">★</span>{% endfor %}
+                                    </span>
+                                    <span style="font-size:0.9em;color:#888;">({{ '%.2f'|format(media[1]) }})</span>
+                                {% else %}-{% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Abrir/fechar modal de configuração
+        function abrirModalConfig() {
+            document.getElementById('modalConfig').style.display = 'flex';
+        }
+        function fecharModalConfig() {
+            document.getElementById('modalConfig').style.display = 'none';
+        }
+        document.addEventListener('DOMContentLoaded', function() {
+            var btnGear = document.getElementById('btnConfigGear');
+            if (btnGear) btnGear.addEventListener('click', abrirModalConfig);
+        });
+
+        // Carregar valores atuais dos cookies ou padrão
+        document.addEventListener('DOMContentLoaded', function() {
+            function getCookie(name) {
+                let match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+                if (match) return parseInt(match[2]);
+                return null;
+            }
+            var proporcao = getCookie('proporcao_normais') || 2;
+            var limite = getCookie('limite_preferenciais_alerta') || 3;
+            var propInput = document.getElementById('proporcaoNormais');
+            var limInput = document.getElementById('limitePreferenciais');
+            if (propInput && limInput) {
+                propInput.value = proporcao;
+                limInput.value = limite;
+            }
+        });
+        // Salvar nos cookies ao submeter
+        var formConfig = document.getElementById('formConfigProporcao');
+        if (formConfig) {
+            formConfig.addEventListener('submit', function(e) {
+                e.preventDefault();
+                var proporcao = document.getElementById('proporcaoNormais').value;
+                var limite = document.getElementById('limitePreferenciais').value;
+                document.cookie = 'proporcao_normais=' + proporcao + ';path=/;max-age=' + (60*60*24*365);
+                document.cookie = 'limite_preferenciais_alerta=' + limite + ';path=/;max-age=' + (60*60*24*365);
+                document.getElementById('configMsg').style.display = 'block';
+                setTimeout(function(){ document.getElementById('configMsg').style.display = 'none'; }, 2000);
+                fecharModalConfig();
+            });
+        }
+    </script>
+</body>
+</html> 

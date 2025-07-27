@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Selecionar Setor</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .setor-btn {
+            display: block;
+            width: 100%;
+            max-width: 400px;
+            margin: 20px auto;
+            padding: 30px;
+            font-size: 1.5em;
+            background: #007BFF;
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: background 0.2s, transform 0.2s;
+        }
+        .setor-btn:hover {
+            background: #0056b3;
+            transform: scale(1.03);
+        }
+        .admin-btn {
+            display: block;
+            width: 100%;
+            max-width: 400px;
+            margin: 20px auto;
+            padding: 20px;
+            font-size: 1.2em;
+            background: #28a745;
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            cursor: pointer;
+            transition: background 0.2s, transform 0.2s;
+        }
+        .admin-btn:hover {
+            background: #1e7e34;
+            transform: scale(1.03);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Selecione o Setor</h1>
+        <form method="POST">
+            {% for setor in setores %}
+                <button type="submit" name="setor_id" value="{{ setor[0] }}" class="setor-btn">{{ setor[1] }}<br><small>{{ setor[2] }}</small></button>
+            {% endfor %}
+        </form>
+        <a href="/admin" class="admin-btn">Painel Administrativo</a>
+    </div>
+
+    <!-- Script de teste para 5 cliques -->
+    <script src="{{ url_for('static', filename='test-clicks.js') }}"></script>
+</body>
+</html> 

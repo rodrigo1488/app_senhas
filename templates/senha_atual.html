@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Senha Atual</title>
+    <script src="https://cdn.socket.io/4.4.1/socket.io.min.js"></script>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <meta name="theme-color" content="#ffffff">
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            font-family: 'Arial', sans-serif;
+            background: linear-gradient(135deg, #0c0c0c 0%, #1a1a1a 50%, #0c0c0c 100%);
+            color: #fff;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        body::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(0, 230, 118, 0.1) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(0, 188, 212, 0.1) 0%, transparent 50%);
+            pointer-events: none;
+        }
+        
+        #container {
+            text-align: center;
+            padding: 40px;
+            border-radius: 25px;
+            background: rgba(18, 18, 18, 0.8);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 230, 118, 0.2);
+            box-shadow: 
+                0 20px 40px rgba(0, 0, 0, 0.5),
+                0 0 0 1px rgba(0, 230, 118, 0.1);
+            position: relative;
+            z-index: 1;
+            min-width: 400px;
+            max-width: 600px;
+        }
+        h1 {
+            font-size: 3.5rem;
+            margin-bottom: 30px;
+            color: #00e676;
+            text-shadow: 0 0 20px rgba(0, 230, 118, 0.5);
+            font-weight: 300;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+        
+        #senha_atual {
+            font-size: 8rem;
+            font-weight: bold;
+            animation: fadeIn 0.5s ease-in-out;
+            color: #fff;
+            text-shadow: 
+                0 0 30px rgba(0, 230, 118, 0.8),
+                0 0 60px rgba(0, 230, 118, 0.4);
+            margin: 30px 0;
+            font-family: 'Courier New', monospace;
+            letter-spacing: 5px;
+        }
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        /* Estilos para o card do operador */
+        .operador-card {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            margin-top: 30px;
+            padding: 20px;
+            background: linear-gradient(135deg, rgba(0, 230, 118, 0.1) 0%, rgba(0, 188, 212, 0.1) 100%);
+            border-radius: 20px;
+            border: 2px solid rgba(0, 230, 118, 0.3);
+            backdrop-filter: blur(10px);
+            animation: slideInUp 0.6s ease-out;
+        }
+        
+        .operador-foto {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 3px solid rgba(0, 230, 118, 0.5);
+            background: rgba(0, 230, 118, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 20px rgba(0, 230, 118, 0.3);
+        }
+        
+        .operador-foto img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .avatar-placeholder {
+            font-size: 40px;
+            color: rgba(0, 230, 118, 0.7);
+        }
+        
+        .operador-info {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            text-align: left;
+        }
+        
+        .operador-nome {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: #00e676;
+            text-shadow: 0 0 10px rgba(0, 230, 118, 0.5);
+        }
+        
+        .operador-status {
+            font-size: 1rem;
+            color: #00bcd4;
+            background: rgba(0, 188, 212, 0.2);
+            padding: 5px 15px;
+            border-radius: 15px;
+            display: inline-block;
+            width: fit-content;
+            border: 1px solid rgba(0, 188, 212, 0.3);
+        }
+        
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        /* Responsividade */
+        @media (max-width: 768px) {
+            #container {
+                min-width: 90vw;
+                max-width: 95vw;
+                padding: 30px 20px;
+            }
+            
+            h1 {
+                font-size: 2.5rem;
+            }
+            
+            #senha_atual {
+                font-size: 5rem;
+                letter-spacing: 3px;
+            }
+            
+            .operador-card {
+                flex-direction: column;
+                text-align: center;
+                gap: 15px;
+            }
+            
+            .operador-info {
+                text-align: center;
+            }
+            
+            .operador-nome {
+                font-size: 1.5rem;
+            }
+            
+            .operador-foto {
+                width: 60px;
+                height: 60px;
+            }
+            
+            .avatar-placeholder {
+                font-size: 30px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 2rem;
+            }
+            
+            #senha_atual {
+                font-size: 4rem;
+                letter-spacing: 2px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <h1>Senha Atual</h1>
+        <div id="senha_atual" style="font-size: 8rem; margin: 20px 0;">Carregando...</div>
+        
+        <!-- Card do operador com foto -->
+        <div id="operador_card" class="operador-card" style="display: none;">
+            <div class="operador-foto" id="operador_foto">
+                <div class="avatar-placeholder">👤</div>
+            </div>
+            <div class="operador-info">
+                <div class="operador-nome" id="operador_nome">Operador</div>
+                <div class="operador-status">Atendendo agora</div>
+            </div>
+        </div>
+    </div>
+    <script>
+        function atualizarSenhaAtual() {
+            fetch('/get_senha_atual_setor')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('senha_atual').innerText = data.senha_atual;
+                    
+                    // Atualizar card do operador
+                    var operadorCard = document.getElementById('operador_card');
+                    var operadorNome = document.getElementById('operador_nome');
+                    var operadorFoto = document.getElementById('operador_foto');
+                    
+                    if (data.operador && data.operador !== '') {
+                        if (operadorNome) operadorNome.innerText = data.operador;
+                        if (operadorCard) operadorCard.style.display = 'flex';
+                        
+                        // Atualizar foto do operador
+                        if (operadorFoto) {
+                            if (data.foto_operador) {
+                                operadorFoto.innerHTML = `<img src="/uploads/${data.foto_operador}" alt="Foto de ${data.operador}">`;
+                            } else {
+                                operadorFoto.innerHTML = '<div class="avatar-placeholder">👤</div>';
+                            }
+                        }
+                    } else {
+                        if (operadorCard) operadorCard.style.display = 'none';
+                    }
+                    
+                    // Toca o som ao atualizar a senha
+                    var audio = new Audio('/static/msc/audio.mp3');
+                    audio.play();
+                });
+        }
+        atualizarSenhaAtual();
+        // Atualização instantânea via Socket.IO
+        const socket = io();
+        socket.on('atualizar_lista', function() {
+            atualizarSenhaAtual();
+        });
+        socket.on('nova_senha_para_avaliacao', function() {
+            atualizarSenhaAtual();
+        });
+    </script>
+</body>
+</html>

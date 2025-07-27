@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Opções do Setor</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #f8fafc 0%, #e0e7ef 100%);
+            font-family: 'Montserrat', Arial, sans-serif;
+        }
+        .container {
+            background: #fff;
+            border-radius: 24px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.10);
+            padding: 48px 36px 36px 36px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-width: 420px;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 48px;
+            font-size: 2.3em;
+            color: #222;
+            letter-spacing: 1px;
+        }
+        .opcoes-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 32px;
+            width: 100%;
+        }
+        .opcao-btn {
+            width: 340px;
+            padding: 36px 0;
+            font-size: 1.35em;
+            border: none;
+            border-radius: 18px;
+            color: #fff;
+            font-weight: 600;
+            margin-bottom: 0;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.10);
+            transition: transform 0.15s, box-shadow 0.15s, background 0.2s;
+            letter-spacing: 0.5px;
+            text-align: center;
+            text-decoration: none;
+        }
+        .opcao-btn:hover {
+            transform: scale(1.045);
+            box-shadow: 0 8px 32px rgba(0,0,0,0.13);
+            filter: brightness(1.08);
+        }
+        .btn-retirar { background: linear-gradient(90deg, #2196f3 0%, #21cbf3 100%); }
+        .btn-chamar { background: linear-gradient(90deg, #43e97b 0%, #38f9d7 100%); }
+        .btn-atual { background: linear-gradient(90deg, #f7971e 0%, #ffd200 100%); color: #333; }
+        .btn-avaliar { background: linear-gradient(90deg, #f85032 0%, #e73827 100%); }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Opções do Setor</h1>
+        <div class="opcoes-container">
+            <a href="/senhas" class="opcao-btn btn-retirar">CLIENTE</a>
+            <a href="/senhas_pendentes" class="opcao-btn btn-chamar">OPERADOR</a>
+            <a href="/senha_atual" class="opcao-btn btn-atual">Painel</a>
+            <a href="/avaliacao" class="opcao-btn btn-avaliar">AVALIAÇÃO</a>
+        </div>
+    </div>
+</body>
+</html> 

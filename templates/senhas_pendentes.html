@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Senhas Pendentes</title>
+    <link rel="manifest" href="{{ url_for('static', filename='manifest.json') }}">
+    <meta name="theme-color" content="#ffffff">
+    <style>
+        /* Bloqueando o scroll da página */
+        body, html {
+            height: 100%;
+            overflow: hidden; /* Impede o scroll */
+            margin: 0;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background-color: #f4f4f4;
+            display: flex;
+            flex-direction: column;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .senha{
+            font-size: 32px;
+            color: #FF5733;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+            box-shadow: 5px 5px 15px rgba(0, 0, 0, 0.1), -5px -5px 15px rgba(255, 255, 255, 0.5);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        th, td {
+            padding: 12px;
+            text-align: center;
+        }
+        th {
+            background-color: #4CAF50;
+            color: white;
+        }
+        td {
+            background-color: #fff;
+            color: #333;
+        }
+        button {
+            padding: 15px 30px;
+            font-size: 16px;
+            background-color: #FF5733;
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            box-shadow: 4px 4px 6px rgba(0, 0, 0, 0.1), -4px -4px 6px rgba(255, 255, 255, 0.5);
+            transition: transform 0.2s;
+        }
+        button:hover {
+            transform: scale(1.05);
+        }
+        /* Fixando o botão no canto superior direito */
+        .chamar-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 10;
+        }
+
+        /* Estilos para o overlay de carregamento */
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 999;
+            visibility: hidden;
+        }
+
+        .loading-overlay.active {
+            visibility: visible;
+        }
+
+        .loading-spinner {
+            border: 8px solid #f3f3f3;
+            border-top: 8px solid #3498db;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 2s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* Tabela de próximas senhas com altura fixa e rolagem interna */
+        #tabela-senhas-container {
+            max-height: 350px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+        #tabela-senhas {
+            margin-bottom: 0;
+        }
+
+        /* Cards fixos no rodapé */
+        #cards-atendimento-fixed {
+            position: fixed;
+            left: 0;
+            bottom: 0;
+            width: 100vw;
+            background: #fff;
+            box-shadow: 0 -2px 12px rgba(0,0,0,0.10);
+            z-index: 100;
+            padding: 16px 0 8px 0;
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .card-atendimento {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            padding: 18px 28px;
+            min-width: 200px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        body { padding-bottom: 120px; } /* espaço para não cobrir conteúdo */
+        .alerta-preferenciais {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            background: #ffeb3b;
+            color: #b71c1c;
+            font-weight: bold;
+            font-size: 1.3em;
+            text-align: center;
+            z-index: 9999;
+            padding: 18px 0 14px 0;
+            box-shadow: 0 2px 12px rgba(0,0,0,0.13);
+            display: none;
+        }
+        .alerta-preferenciais .close-alerta {
+            position: absolute;
+            right: 24px;
+            top: 10px;
+            font-size: 1.2em;
+            color: #b71c1c;
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+        
+        /* Estilos para o card da senha atual */
+        .senha-atual-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 20px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+            color: white;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .senha-atual-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(45deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+            pointer-events: none;
+        }
+        
+        .senha-atual-content {
+            position: relative;
+            z-index: 1;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 30px;
+        }
+        
+        .operador-info {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            flex: 1;
+        }
+        
+        .operador-foto {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 4px solid rgba(255,255,255,0.3);
+            background: rgba(255,255,255,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .operador-foto img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .avatar-placeholder {
+            font-size: 40px;
+            color: rgba(255,255,255,0.7);
+        }
+        
+        .operador-detalhes {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .operador-nome {
+            font-size: 1.4em;
+            font-weight: bold;
+            color: white;
+        }
+        
+        .operador-status {
+            font-size: 0.9em;
+            color: rgba(255,255,255,0.8);
+            background: rgba(255,255,255,0.2);
+            padding: 4px 12px;
+            border-radius: 15px;
+            display: inline-block;
+            width: fit-content;
+        }
+        
+        .senha-info {
+            text-align: right;
+            flex-shrink: 0;
+        }
+        
+        .senha-label {
+            font-size: 0.9em;
+            color: rgba(255,255,255,0.8);
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .senha-numero {
+            font-size: 3em;
+            font-weight: bold;
+            color: white;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        /* Responsividade para o card da senha atual */
+        @media (max-width: 768px) {
+            .senha-atual-content {
+                flex-direction: column;
+                text-align: center;
+                gap: 20px;
+            }
+            
+            .operador-info {
+                flex-direction: column;
+                gap: 15px;
+            }
+            
+            .senha-info {
+                text-align: center;
+            }
+            
+            .senha-numero {
+                font-size: 2.5em;
+            }
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.js"></script>
+    <script>
+        const socket = io();
+
+        const tabelaBody = document.getElementById('tabela-senhas-body');
+        socket.on('atualizar_lista', (data) => {
+            // Atualiza a senha atual
+            var elAtual = document.querySelector('.senha-atual');
+            if (elAtual) elAtual.textContent = `Senha Atual: ${data.senha_atual}`;
+            
+            // Atualizar o card da senha atual
+            atualizarSenha();
+            
+            var tabelaBody = document.getElementById('tabela-senhas-body');
+            if (tabelaBody) {
+                tabelaBody.innerHTML = '';
+                if (data.senhas && data.senhas.length === 0) {
+                    tabelaBody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#888;font-size:1.2em;">Sem senhas pendentes</td></tr>';
+                } else if (data.senhas) {
+                    data.senhas.forEach(senha => {
+                        const linha = `<tr>
+                            <td>${senha[0]}</td>
+                            <td>${senha[1]}</td>
+                            <td>${senha[2]}</td>
+                        </tr>`;
+                        tabelaBody.innerHTML += linha;
+                    });
+                }
+            }
+        });
+
+        socket.on('erro', (data) => {
+            // Handle error
+        });
+
+        // Função que ativa o overlay de carregamento e desabilita o botão
+        function showLoading() {
+            // Ativa o overlay de carregamento
+            document.getElementById('loadingOverlay').classList.add('active');
+            // Desabilita o botão
+            document.querySelector('button').disabled = true;
+
+            // Simula o carregamento de 4 segundos
+            setTimeout(function() {
+                hideLoading();
+            }, 3000); // Tempo de carregamento de 4 segundos
+        }
+
+        // Função que desativa o overlay de carregamento e reabilita o botão
+        function hideLoading() {
+            // Remove o overlay de carregamento
+            document.getElementById('loadingOverlay').classList.remove('active');
+            // Reabilita o botão
+            document.querySelector('button').disabled = false;
+        }
+
+        function chamarProximaSenha() {
+            showLoading();  // Exibe a tela de carregamento
+            socket.emit('chamar_proxima');  // Emite o evento para o backend
+
+            // Toca o som ao clicar no botão
+            var audio = new Audio('/static/msc/audio.mp3');  // Certifique-se de que 'alerta.mp3' está no mesmo diretório ou forneça o caminho correto
+            audio.play();
+        }
+    </script>
+</head>
+<body>
+    
+    <h1>Senhas Pendentes</h1>
+
+    <!-- Card da senha atual com foto do operador -->
+    <div class="senha-atual-card" id="senha-atual-card" style="display: none;">
+        <div class="senha-atual-content">
+            <div class="operador-info">
+                <div class="operador-foto" id="operador-foto">
+                    <div class="avatar-placeholder">👤</div>
+                </div>
+                <div class="operador-detalhes">
+                    <div class="operador-nome" id="operador-nome">Operador</div>
+                    <div class="operador-status">Atendendo agora</div>
+                </div>
+            </div>
+            <div class="senha-info">
+                <div class="senha-label">Senha Atual</div>
+                <div class="senha-numero" id="senha-display">Carregando...</div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="senha-atual" style="display: none;"></div>
+    <!-- Tabela de próximas senhas com altura fixa -->
+    <div id="tabela-senhas-container">
+        <table id="tabela-senhas">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Senha</th>
+                    <th>Tipo</th>
+                </tr>
+            </thead>
+            <tbody id="tabela-senhas-body">
+                {% if senhas and senhas|length > 0 %}
+                    {% for s in senhas %}
+                    <tr>
+                        <td>{{ s[0] }}</td>
+                        <td>{{ s[1] }}</td>
+                        <td>{{ s[2] }}</td>
+                    </tr>
+                    {% endfor %}
+                {% else %}
+                    <tr><td colspan="3" style="text-align:center;color:#888;font-size:1.2em;">Sem senhas pendentes</td></tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+    
+    <!-- Botão fixo no canto superior direito -->
+    <div class="chamar-btn">
+        <button onclick="abrirModalOperador()">Chamar Próxima Senha</button>
+    </div>
+
+    <!-- Modal de identificação do operador -->
+    <div id="modalOperador" style="display:none;position:fixed;top:0;left:0;width:100vw;height:100vh;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;">
+        <div style="background:#fff;padding:30px;border-radius:10px;max-width:350px;margin:auto;">
+            <h2>Selecione o Operador</h2>
+            <form id="formOperador" method="POST" action="/chamar_proxima">
+                <div style="display:flex;flex-direction:column;gap:10px;">
+                {% for op in operadores %}
+                    <button type="submit" name="operador_id" value="{{ op[0] }}" style="padding:15px;font-size:1.2em;border-radius:8px;background:#007BFF;color:#fff;border:none;display:flex;align-items:center;gap:10px;justify-content:center;">
+                        {% if op[2] %}
+                            <img src="/uploads/{{ op[2] }}" alt="Foto de {{ op[1] }}" style="width: 30px; height: 30px; border-radius: 50%; object-fit: cover; border: 2px solid #fff;">
+                        {% else %}
+                            <div style="width: 30px; height: 30px; border-radius: 50%; background: #f0f0f0; display: flex; align-items: center; justify-content: center; border: 2px solid #fff;">
+                                <span style="font-size: 16px; color: #999;">👤</span>
+                            </div>
+                        {% endif %}
+                        {{ op[1] }}
+                    </button>
+                {% endfor %}
+                </div>
+                <button type="button" onclick="fecharModalOperador()" style="width:100%;margin-top:10px;background:#ccc;">Cancelar</button>
+            </form>
+        </div>
+    </div>
+    <script>
+        function abrirModalOperador() {
+            document.getElementById('modalOperador').style.display = 'flex';
+        }
+        function fecharModalOperador() {
+            document.getElementById('modalOperador').style.display = 'none';
+        }
+    </script>
+
+    <!-- Overlay de carregamento -->
+    <div class="loading-overlay" id="loadingOverlay">
+        <div class="loading-spinner"></div>
+    </div>
+
+    <script>
+        function atualizarSenha() {
+          fetch('/get_senha_atual_setor')
+            .then(response => response.json())
+            .then(data => {
+              var elSenha = document.getElementById('senha-display');
+              var elOperador = document.getElementById('operador-nome');
+              var elFoto = document.getElementById('operador-foto');
+              var elCard = document.getElementById('senha-atual-card');
+              
+              if (elSenha) elSenha.innerText = data.senha_atual;
+              
+              if (data.operador && data.operador !== '') {
+                if (elOperador) elOperador.innerText = data.operador;
+                if (elCard) elCard.style.display = 'block';
+                
+                // Atualizar foto do operador
+                if (elFoto) {
+                  if (data.foto_operador) {
+                    elFoto.innerHTML = `<img src="/uploads/${data.foto_operador}" alt="Foto de ${data.operador}">`;
+                  } else {
+                    elFoto.innerHTML = '<div class="avatar-placeholder">👤</div>';
+                  }
+                }
+              } else {
+                if (elCard) elCard.style.display = 'none';
+              }
+            })
+            .catch(error => console.error('Erro ao obter a senha:', error));
+        }
+      
+        // Atualiza a cada 5 segundos
+        setInterval(atualizarSenha, 5000);
+        atualizarSenha();
+    </script>
+
+    <script>
+        // Função para setar cookies ao clicar no operador
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('#formOperador button[type="submit"]').forEach(function(btn) {
+                btn.addEventListener('click', function(e) {
+                    // Seta o operador_id no cookie
+                    document.cookie = 'operador_id=' + encodeURIComponent(this.value) + ';path=/';
+                    // O cookie da senha será setado após o backend responder (após chamar_proxima)
+                });
+            });
+        });
+    </script>
+
+    <script>
+        // Atualização em tempo real dos cards de atendimento
+        socket.on('atualizar_atendimentos', function(data) {
+            fetch('/get_atendimentos')
+                .then(response => response.json())
+                .then(atendimentos => {
+                    const cardsDiv = document.getElementById('cards-atendimento-fixed');
+                    cardsDiv.innerHTML = '';
+                    if (atendimentos.length === 0) {
+                        cardsDiv.innerHTML = '<div style="color:#888;font-size:1.1em;">Nenhum atendimento em andamento</div>';
+                    } else {
+                                atendimentos.forEach(function(a) {
+            const card = document.createElement('div');
+            card.className = 'card-atendimento';
+            
+            // Criar HTML para a foto do operador
+            let fotoHtml = '';
+            if (a.foto_perfil) {
+                fotoHtml = `<img src="/uploads/${a.foto_perfil}" alt="Foto de ${a.nome}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #ddd; margin-bottom: 8px;">`;
+            } else {
+                fotoHtml = `<div style="width: 40px; height: 40px; border-radius: 50%; background: #f0f0f0; display: flex; align-items: center; justify-content: center; border: 2px solid #ddd; margin-bottom: 8px;"><span style="font-size: 20px; color: #999;">👤</span></div>`;
+            }
+            
+            card.innerHTML = `
+                ${fotoHtml}
+                <div style="font-weight:bold;font-size:1.1em;color:#007BFF;margin-bottom:6px;">${a.nome}</div>
+                <div style="font-size:1.5em;color:#FF5733;">${a.senha}</div>
+                <div style="font-size:0.95em;color:#888;">Tipo: ${a.tipo}</div>
+            `;
+            cardsDiv.appendChild(card);
+        });
+                    }
+                });
+        });
+
+        // Atualização em tempo real da lista de senhas pendentes
+        socket.on('atualizar_lista_senhas', function(data) {
+            fetch('/get_senhas_pendentes')
+                .then(response => response.json())
+                .then(senhas => {
+                    const tabelaBody = document.getElementById('tabela-senhas-body');
+                    if (tabelaBody) {
+                        tabelaBody.innerHTML = '';
+                        if (senhas && senhas.length === 0) {
+                            tabelaBody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#888;font-size:1.2em;">Sem senhas pendentes</td></tr>';
+                        } else if (senhas) {
+                            senhas.forEach(function(s) {
+                                const linha = `<tr><td>${s.id}</td><td>${s.senha}</td><td>${s.tipo}</td></tr>`;
+                                tabelaBody.innerHTML += linha;
+                            });
+                        }
+                    }
+                });
+        });
+
+        // Alerta de preferenciais acumuladas
+        socket.on('alerta_preferenciais', function(data) {
+            console.log('[SOCKET] alerta_preferenciais recebido:', data);
+            var alerta = document.getElementById('alertaPreferenciais');
+            var msg = document.getElementById('alertaPreferenciaisMsg');
+            if (alerta && msg) {
+                msg.textContent = `Atenção: ${data.qtd} senhas preferenciais aguardando! Priorize o atendimento.`;
+                alerta.style.display = 'block';
+                // Esconde automaticamente após 10 segundos
+                if (alerta._timeout) clearTimeout(alerta._timeout);
+                alerta._timeout = setTimeout(function() {
+                    alerta.style.display = 'none';
+                }, 10000);
+            }
+        });
+    </script>
+
+    <!-- Cards de atendimento dos operadores fixos no rodapé -->
+    <div id="cards-atendimento-fixed">
+        {% for atendimento in atendimentos %}
+        <div class="card-atendimento">
+            {% if atendimento[4] %}
+                <img src="/uploads/{{ atendimento[4] }}" alt="Foto de {{ atendimento[1] }}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #ddd; margin-bottom: 8px;">
+            {% else %}
+                <div style="width: 40px; height: 40px; border-radius: 50%; background: #f0f0f0; display: flex; align-items: center; justify-content: center; border: 2px solid #ddd; margin-bottom: 8px;">
+                    <span style="font-size: 20px; color: #999;">👤</span>
+                </div>
+            {% endif %}
+            <div style="font-weight:bold;font-size:1.1em;color:#007BFF;margin-bottom:6px;">{{ atendimento[1] }}</div>
+            <div style="font-size:1.5em;color:#FF5733;">{{ atendimento[2] }}</div>
+            <div style="font-size:0.95em;color:#888;">Tipo: {{ atendimento[3] }}</div>
+        </div>
+        {% endfor %}
+    </div>
+
+    <!-- Alerta de preferenciais acumuladas -->
+    <div id="alertaPreferenciais" class="alerta-preferenciais" style="display:none;">
+        <span id="alertaPreferenciaisMsg"></span>
+        <button class="close-alerta" onclick="document.getElementById('alertaPreferenciais').style.display='none'">&times;</button>
+    </div>
+
+</body>
+</html>

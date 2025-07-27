@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Avaliação de Atendimento</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .stars {
+            display: flex;
+            flex-direction: row-reverse;
+            justify-content: center;
+        }
+        .stars input[type="radio"] {
+            display: none;
+        }
+        .stars label {
+            font-size: 2.5em;
+            color: #ccc;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+        .stars input[type="radio"]:checked ~ label,
+        .stars label:hover,
+        .stars label:hover ~ label {
+            color: #FFD700;
+        }
+        
+        /* Estilos para o card do operador */
+        .operador-card {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 20px;
+            margin: 20px auto 30px auto;
+            padding: 20px;
+            background: linear-gradient(135deg, rgba(0, 123, 255, 0.1) 0%, rgba(0, 86, 179, 0.1) 100%);
+            border-radius: 15px;
+            border: 2px solid rgba(0, 123, 255, 0.3);
+            max-width: 400px;
+            box-shadow: 0 4px 15px rgba(0, 123, 255, 0.1);
+        }
+        
+        .operador-foto {
+            width: 70px;
+            height: 70px;
+            border-radius: 50%;
+            overflow: hidden;
+            border: 3px solid rgba(0, 123, 255, 0.4);
+            background: rgba(0, 123, 255, 0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        
+        .operador-foto img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        
+        .avatar-placeholder {
+            font-size: 35px;
+            color: rgba(0, 123, 255, 0.6);
+        }
+        
+        .operador-info {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+            text-align: left;
+        }
+        
+        .operador-nome {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: #007BFF;
+        }
+        
+        .operador-status {
+            font-size: 0.9rem;
+            color: #666;
+            background: rgba(0, 123, 255, 0.1);
+            padding: 4px 12px;
+            border-radius: 12px;
+            display: inline-block;
+            width: fit-content;
+        }
+        
+        /* Responsividade */
+        @media (max-width: 768px) {
+            .operador-card {
+                flex-direction: column;
+                text-align: center;
+                gap: 15px;
+                margin: 15px auto 25px auto;
+            }
+            
+            .operador-info {
+                text-align: center;
+            }
+            
+            .operador-nome {
+                font-size: 1.2rem;
+            }
+            
+            .operador-foto {
+                width: 60px;
+                height: 60px;
+            }
+            
+            .avatar-placeholder {
+                font-size: 30px;
+            }
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.js"></script>
+    <script>
+        // Instância global do socket para evitar duplicidade
+        window._socket = window._socket || io();
+        window._socket.on('connect', function() {
+            console.log('[SOCKETIO] Conectado ao servidor Socket.IO!');
+        });
+    </script>
+</head>
+<body>
+    <div class="container">
+        {% if saudacao %}
+            <h1>Obrigado pela avaliação!</h1>
+            <h2>Aguardando chamada de próxima senha...</h2>
+        {% elif senha_id and setor_id and operador_id %}
+            <h1>Avalie o Atendimento</h1>
+            
+            <!-- Card do operador com foto -->
+            {% if operador_nome %}
+            <div class="operador-card">
+                <div class="operador-foto">
+                    {% if operador_foto %}
+                        <img src="/uploads/{{ operador_foto }}" alt="Foto de {{ operador_nome }}">
+                    {% else %}
+                        <div class="avatar-placeholder">👤</div>
+                    {% endif %}
+                </div>
+                <div class="operador-info">
+                    <div class="operador-nome">{{ operador_nome }}</div>
+                    <div class="operador-status">Aguardando sua avaliação</div>
+                </div>
+            </div>
+            {% endif %}
+            
+            {% if senha_texto %}
+                <div style="font-size:2.1em;color:#007BFF;margin-bottom:10px;">Senha: <b>{{ senha_texto }}</b></div>
+            {% endif %}
+            <div id="timerBarContainer" style="width:100%;max-width:400px;margin:0 auto 18px auto;height:18px;background:#eee;border-radius:8px;overflow:hidden;">
+                <div id="timerBar" style="height:100%;width:100%;background:linear-gradient(90deg,#43e97b,#38f9d7);transition:width 0.2s;"></div>
+            </div>
+            <form method="POST" id="formAvaliacao">
+                <div class="stars">
+                    <input type="radio" id="star5" name="nota" value="5"><label for="star5">★</label>
+                    <input type="radio" id="star4" name="nota" value="4"><label for="star4">★</label>
+                    <input type="radio" id="star3" name="nota" value="3"><label for="star3">★</label>
+                    <input type="radio" id="star2" name="nota" value="2"><label for="star2">★</label>
+                    <input type="radio" id="star1" name="nota" value="1" required><label for="star1">★</label>
+                </div>
+                <button type="submit" style="margin-top:20px;">Enviar Avaliação</button>
+            </form>
+            <script>
+                // Timeout para avaliação automática após 8 segundos
+                var autoAvaliaTimeout = setTimeout(function() {
+                    if (!document.querySelector('input[name="nota"]:checked')) {
+                        var form = document.createElement('form');
+                        form.method = 'POST';
+                        form.action = '';
+                        var input = document.createElement('input');
+                        input.type = 'hidden';
+                        input.name = 'nota';
+                        input.value = '';
+                        form.appendChild(input);
+                        document.body.appendChild(form);
+                        form.submit();
+                    }
+                }, 8000);
+                // Barra de tempo visual
+                var timerBar = document.getElementById('timerBar');
+                var timerBarContainer = document.getElementById('timerBarContainer');
+                var timerStart = Date.now();
+                var timerDuration = 8000;
+                function updateTimerBar() {
+                    var elapsed = Date.now() - timerStart;
+                    var percent = Math.max(0, 100 - (elapsed / timerDuration) * 100);
+                    if (timerBar) timerBar.style.width = percent + '%';
+                    if (percent > 0) {
+                        requestAnimationFrame(updateTimerBar);
+                    }
+                }
+                if (timerBar) updateTimerBar();
+                // Se chegar nova senha para avaliação, cancela o timeout e esconde a barra
+                window._socket.on('nova_senha_para_avaliacao', function(data) {
+                    // Só redireciona se o operador_id do evento for igual ao do cookie
+                    function getCookie(name) {
+                        let match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+                        if (match) return match[2];
+                    }
+                    var operadorIdCookie = getCookie('operador_id');
+                    if (String(data.operador_id) === String(operadorIdCookie)) {
+                        if (autoAvaliaTimeout) clearTimeout(autoAvaliaTimeout);
+                        if (timerBarContainer) timerBarContainer.style.display = 'none';
+                        window.location.href = `/avaliacao?senha_id=${data.senha_id}&setor_id=${data.setor_id}&operador_id=${data.operador_id}`;
+                    }
+                });
+                // Se o usuário clicar em uma estrela ou enviar, esconde a barra
+                document.querySelectorAll('input[name="nota"]').forEach(function(radio) {
+                    radio.addEventListener('change', function() {
+                        if (timerBarContainer) timerBarContainer.style.display = 'none';
+                        if (autoAvaliaTimeout) clearTimeout(autoAvaliaTimeout);
+                    });
+                });
+                document.getElementById('formAvaliacao').addEventListener('submit', function(e) {
+                    var nota = document.querySelector('input[name="nota"]:checked');
+                    if (nota) {
+                        var valor = parseInt(nota.value);
+                        var audio = null;
+                        if (valor >= 3) {
+                            audio = new Audio('/static/msc/nota_ruim.mp3');
+                        } else if (valor > 0) {
+                            audio = new Audio('/static/msc/nota_boa.mp3');
+                        }
+                        if (audio) {
+                            e.preventDefault();
+                            audio.play();
+                            audio.onended = function() { e.target.submit(); };
+                        }
+                    }
+                    if (timerBarContainer) timerBarContainer.style.display = 'none';
+                    if (autoAvaliaTimeout) clearTimeout(autoAvaliaTimeout);
+                });
+            </script>
+        {% else %}
+            <h1>Aguardando chamada de próxima senha...</h1>
+        {% endif %}
+    </div>
+    {% if auto_finalize %}
+    <script>
+        setTimeout(function() {
+            // Se o usuário não enviou, envia nota vazia automaticamente
+            if (!document.querySelector('input[name="nota"]:checked')) {
+                var form = document.createElement('form');
+                form.method = 'POST';
+                form.action = '';
+                var input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'nota';
+                input.value = '';
+                form.appendChild(input);
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }, 5000);
+    </script>
+    {% endif %}
+    {% if saudacao %}
+    <script>
+        // Atualiza a tela em tempo real quando o operador chamar a próxima senha
+        function getCookie(name) {
+            let match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+            if (match) return match[2];
+        }
+        const operadorIdCookie = getCookie('operador_id');
+        window._socket.on('nova_senha_operador', function(data) {
+            if (data.operador_id == operadorIdCookie) {
+                window.location.reload();
+            }
+        });
+    </script>
+    {% endif %}
+    {% if saudacao %}
+    <script>
+        function getCookie(name) {
+            let match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+            if (match) return match[2];
+        }
+        window._socket.on('nova_senha_para_avaliacao', function(data) {
+            console.log('[SOCKETIO] Evento recebido', data);
+            // Redireciona para a tela de avaliação da senha correta
+            window.location.href = `/avaliacao?senha_id=${data.senha_id}&setor_id=${data.setor_id}&operador_id=${data.operador_id}`;
+        });
+    </script>
+    {% endif %}
+</body>
+</html> 

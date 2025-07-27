@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Adicionar Setor</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600&display=swap" rel="stylesheet">
+    <style>
+        body {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: linear-gradient(135deg, #f8fafc 0%, #e0e7ef 100%);
+            font-family: 'Montserrat', Arial, sans-serif;
+        }
+        .container {
+            background: #fff;
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.10);
+            padding: 40px 32px 32px 32px;
+            min-width: 350px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        h1 {
+            text-align: center;
+            margin-bottom: 32px;
+            font-size: 2em;
+            color: #222;
+        }
+        form {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+        label {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+        }
+        input {
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
+            font-size: 1.1em;
+            background: #f8fafc;
+            transition: border 0.2s;
+        }
+        input:focus {
+            border: 1.5px solid #007BFF;
+            outline: none;
+        }
+        button[type="submit"] {
+            background: linear-gradient(90deg, #43e97b 0%, #38f9d7 100%);
+            color: #fff;
+            font-weight: 700;
+            border: none;
+            border-radius: 8px;
+            padding: 14px 0;
+            font-size: 1.15em;
+            margin-top: 10px;
+            cursor: pointer;
+            transition: background 0.2s, transform 0.15s;
+        }
+        button[type="submit"]:hover {
+            background: linear-gradient(90deg, #28a745 0%, #38f9d7 100%);
+            transform: scale(1.03);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Adicionar Setor</h1>
+        <form method="POST">
+            <label for="nome">Nome:</label>
+            <input type="text" name="nome" id="nome" required>
+            <label for="descricao">Descrição:</label>
+            <input type="text" name="descricao" id="descricao">
+            <label for="senha_setor">Senha do Setor:</label>
+            <input type="text" name="senha_setor" id="senha_setor" required>
+            <button type="submit">Adicionar</button>
+        </form>
+    </div>
+</body>
+</html> 
