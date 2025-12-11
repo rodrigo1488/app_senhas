@@ -135,12 +135,13 @@
     </div>
     <div class="container">
         <h1 style="text-align:center; margin-bottom: 30px;">Painel Administrativo</h1>
-        <div class="tab">
+                <div class="tab">
             <button class="tab-btn" id="dashboard-btn" onclick="showTab('dashboard')">Dashboard</button>
             <button class="tab-btn" id="operadores-btn" onclick="showTab('operadores')">Operadores</button>
             <button class="tab-btn" id="impressoras-btn" onclick="showTab('impressoras')">Impressoras</button>
             <button class="tab-btn" id="setores-btn" onclick="showTab('setores')">Setores</button>
             <button class="tab-btn" id="avaliacoes-btn" onclick="showTab('avaliacoes')">Avaliações</button>
+            <button class="tab-btn" id="configuracoes-btn" onclick="showTab('configuracoes')">Configurações</button>
         </div>
         <div id="dashboard" class="tab-content">
             <h2 style="text-align:center;">Dashboard</h2>
@@ -366,6 +367,94 @@
                 </tbody>
             </table>
         </div>
+        <div id="configuracoes" class="tab-content">
+            <h2>Configurações do Sistema</h2>
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Configuração da Empresa</h5>
+                            <p class="card-text">Configure o nome da empresa que aparecerá nas impressões de senhas.</p>
+                            <a href="/admin/configuracao" class="btn btn-primary">Configurar Empresa</a>
+                            <a href="/test_cookie" class="btn btn-secondary mt-2">Testar Cookies</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Configuração do Ngrok</h5>
+                            <p class="card-text">Configure a URL do ngrok para permitir notificações externas aos clientes.</p>
+                            <form id="formNgrok" method="POST" action="/admin/configuracao/ngrok">
+                                <div class="mb-3">
+                                    <label for="ngrok_url" class="form-label">URL do Ngrok:</label>
+                                    <input type="url" class="form-control" id="ngrok_url" name="ngrok_url" 
+                                           value="{{ ngrok_url or '' }}" 
+                                           placeholder="https://exemplo.ngrok.io"
+                                           pattern="https?://.*">
+                                    <div class="form-text">
+                                        Exemplo: https://abc123.ngrok.io<br>
+                                        Deixe vazio para usar apenas rede local
+                                    </div>
+                                </div>
+                                <button type="submit" class="btn btn-primary">Salvar URL do Ngrok</button>
+                            </form>
+                            <div id="ngrokMsg" style="margin-top:10px;display:none;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Status da configuração -->
+            <div class="row mt-4">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Status da Configuração</h5>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <div class="d-flex align-items-center">
+                                        <div class="me-3">
+                                            {% if ngrok_url %}
+                                                <span style="color: #28a745; font-size: 1.5em;">✅</span>
+                                            {% else %}
+                                                <span style="color: #dc3545; font-size: 1.5em;">❌</span>
+                                            {% endif %}
+                                        </div>
+                                        <div>
+                                            <strong>Ngrok:</strong><br>
+                                            {% if ngrok_url %}
+                                                <span style="color: #28a745;">Configurado</span><br>
+                                                <small class="text-muted">{{ ngrok_url }}</small>
+                                            {% else %}
+                                                <span style="color: #dc3545;">Não configurado</span><br>
+                                                <small class="text-muted">Clientes precisarão estar na rede local</small>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="d-flex align-items-center">
+                                        <div class="me-3">
+                                            <span style="color: #007bff; font-size: 1.5em;">ℹ️</span>
+                                        </div>
+                                        <div>
+                                            <strong>Como usar:</strong><br>
+                                            <small class="text-muted">
+                                                1. Execute: ngrok http 5000<br>
+                                                2. Copie a URL gerada<br>
+                                                3. Cole no campo acima<br>
+                                                4. Salve a configuração
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
@@ -409,6 +498,63 @@
                 document.getElementById('configMsg').style.display = 'block';
                 setTimeout(function(){ document.getElementById('configMsg').style.display = 'none'; }, 2000);
                 fecharModalConfig();
+            });
+        }
+        
+        // Gerenciar formulário do ngrok
+        var formNgrok = document.getElementById('formNgrok');
+        if (formNgrok) {
+            formNgrok.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                var ngrokUrl = document.getElementById('ngrok_url').value.trim();
+                var msgDiv = document.getElementById('ngrokMsg');
+                
+                // Validar URL
+                if (ngrokUrl && !ngrokUrl.match(/^https?:\/\/.+/)) {
+                    msgDiv.textContent = 'Por favor, insira uma URL válida (ex: https://exemplo.ngrok.io)';
+                    msgDiv.style.color = '#dc3545';
+                    msgDiv.style.display = 'block';
+                    return;
+                }
+                
+                // Enviar via AJAX
+                fetch('/api/configuracao/ngrok', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        ngrok_url: ngrokUrl
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        msgDiv.textContent = data.message;
+                        msgDiv.style.color = '#28a745';
+                        msgDiv.style.display = 'block';
+                        
+                        // Recarregar a página após 2 segundos para atualizar o status
+                        setTimeout(function() {
+                            window.location.reload();
+                        }, 2000);
+                    } else {
+                        msgDiv.textContent = data.message;
+                        msgDiv.style.color = '#dc3545';
+                        msgDiv.style.display = 'block';
+                    }
+                })
+                .catch(error => {
+                    msgDiv.textContent = 'Erro ao salvar configuração: ' + error.message;
+                    msgDiv.style.color = '#dc3545';
+                    msgDiv.style.display = 'block';
+                });
+                
+                // Esconder mensagem após 5 segundos
+                setTimeout(function() {
+                    msgDiv.style.display = 'none';
+                }, 5000);
             });
         }
     </script>

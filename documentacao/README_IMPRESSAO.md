@@ -15,20 +15,33 @@ O sistema de senhas agora suporta impressão térmica usando a biblioteca `pytho
 - **Porta**: 9100 (padrão para impressoras térmicas)
 - **Protocolo**: ESC/POS via rede
 
+### 3. Configuração da Empresa
+- **Nome da Empresa**: Configurado via interface web ou variável `NOME_EMPRESA_PADRAO`
+- **Interface Web**: Painel administrativo → Configurações → Configurar Empresa
+- **Cookie**: Prioridade sobre valor padrão (duração: 1 ano)
+- **Setor**: Buscado automaticamente do banco de dados
+- **Descrição**: Incluída se disponível no cadastro do setor
+
 ## Funcionalidades
 
 ### 1. Impressão de Senhas
 - **Rota**: `/retirar_senha/<tipo>`
-- **Função**: `imprimir_senha_com_ip(senha, impressora_ip)`
-- **Layout**: Senha centralizada com data/hora e instruções
+- **Função**: `imprimir_senha_com_ip(senha, impressora_ip, nome_setor, descricao_setor)`
+- **Layout**: Nome da empresa + setor + senha como imagem bitmap + texto ESC/POS
+- **Imagem**: Gerada dinamicamente com PIL
 
-### 2. Layout da Impressão (Otimizado)
+### 2. Layout da Impressão (Com Imagem Bitmap)
 ```
 ================================
 
+        EMPRESA EXEMPLO
+
+        Setor: Atendimento
+        Descrição do Setor
+
             SENHA
 
-            N1234
+       [IMAGEM BITMAP DA SENHA]
 
 ================================
 Data: 25/07/2025
@@ -39,10 +52,26 @@ na tela de atendimento
 ================================
 ```
 
+**Características da Imagem da Senha:**
+- **Formato**: Bitmap 1-bit (preto e branco puro)
+- **Largura**: Máximo 384px (compatível com impressoras térmicas)
+- **Altura**: 80px (otimizada para orientação horizontal)
+- **Fonte**: Sistema (Arial, Calibri, Verdana) ou padrão
+- **Tamanho**: Automático (ajusta conforme necessário)
+- **Centralização**: Automática
+- **Orientação**: Horizontal garantida
+
 ### 3. Teste de Conectividade
 - **Rota**: `/test_impressora?ip=192.168.1.100`
 - **Função**: Testa se a impressora está acessível
 - **Retorno**: JSON com status de sucesso/erro
+- **Inclui**: Teste de imagem bitmap da senha
+
+### 4. Geração de Imagem Bitmap
+- **Função**: `gerar_imagem_senha(senha, largura_maxima=384)`
+- **Biblioteca**: PIL (Pillow)
+- **Formato**: 1-bit (preto e branco puro)
+- **Fallback**: Texto ESC/POS se falhar
 
 ## Gerenciamento de Conexões
 
@@ -166,6 +195,24 @@ Edite a função `imprimir_senha_com_ip()` para personalizar:
 - Formatação da data/hora
 - Espaçamentos entre elementos
 
+#### Personalização da Empresa:
+```python
+# No arquivo app.py, linha ~50
+NOME_EMPRESA_PADRAO = "SUA EMPRESA AQUI"  # Personalize com o nome da sua empresa
+```
+
+**Via Interface Web:**
+- Acesse o painel administrativo
+- Clique na aba "Configurações"
+- Clique em "Configurar Empresa"
+- Digite o nome da empresa
+- Clique em "Salvar Configuração"
+
+**Via Cookie:**
+- O nome da empresa pode ser configurado via cookie `nome_empresa`
+- Duração: 1 ano
+- Prioridade sobre o valor padrão
+
 #### Comandos de Fonte ESC/POS Utilizados:
 - `\x1B\x21\x30` - Fonte grande (para título e número da senha)
 - `\x1B\x21\x00` - Fonte normal (para data/hora e instruções)
@@ -213,4 +260,21 @@ Edite a função `imprimir_senha_com_ip()` para personalizar:
 - ✅ Fonte menor para informações secundárias (data/hora, instruções)
 - ✅ Layout mais compacto e eficiente
 - ✅ Eliminação de espaços em branco desnecessários
-- ✅ Formatação consistente entre impressão e teste 
+- ✅ Formatação consistente entre impressão e teste
+
+### 5. Impressão de Imagem Bitmap
+- ✅ Senha impressa como imagem bitmap de alta qualidade
+- ✅ Formato 1-bit otimizado para impressoras térmicas
+- ✅ Largura máxima de 384px (compatível)
+- ✅ Fonte automática do sistema (Arial, Calibri, Verdana)
+- ✅ Centralização automática do texto
+- ✅ Fallback para texto ESC/POS se falhar
+- ✅ Ajuste automático de tamanho da fonte
+- ✅ Tamanho de fonte aumentado em 20% para melhor legibilidade
+
+### 6. Informações da Empresa e Setor
+- ✅ Nome da empresa configurável via variável
+- ✅ Nome do setor buscado automaticamente do banco
+- ✅ Descrição do setor incluída se disponível
+- ✅ Layout profissional com hierarquia visual
+- ✅ Fonte diferenciada para nome da empresa 

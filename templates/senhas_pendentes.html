@@ -101,6 +101,58 @@
             animation: spin 2s linear infinite;
         }
 
+        /* Painel para chamadas concorrentes (modo split) */
+        .concorrentes-container {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            width: 360px;
+            background: rgba(255,255,255,0.95);
+            box-shadow: 0 4px 18px rgba(0,0,0,0.12);
+            border-radius: 14px;
+            padding: 12px;
+            z-index: 1200;
+            display: none;
+        }
+        .concorrentes-title {
+            font-weight: 700;
+            color: #444;
+            font-size: 0.95em;
+            margin-bottom: 8px;
+        }
+        .concorrentes-cards {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+        }
+        .concorrente-card {
+            background: linear-gradient(135deg, #eef2ff 0%, #f8fbff 100%);
+            border: 1px solid #e0e7ff;
+            border-radius: 10px;
+            padding: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-height: 88px;
+        }
+        .concorrente-senha {
+            font-size: 1.3em;
+            font-weight: 800;
+            color: #3949ab;
+        }
+        .concorrente-operador {
+            font-size: 0.95em;
+            color: #555;
+        }
+        .concorrente-hora {
+            font-size: 0.8em;
+            color: #777;
+        }
+        .btn-disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
         @keyframes spin {
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
@@ -143,6 +195,24 @@
             display: flex;
             flex-direction: column;
             align-items: center;
+            position: relative;
+        }
+        
+        .btn-chamar-novamente {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            cursor: pointer;
+            margin-top: 10px;
+            transition: all 0.2s;
+        }
+        
+        .btn-chamar-novamente:hover {
+            background: #218838;
+            transform: scale(1.05);
         }
         body { padding-bottom: 120px; } /* espaço para não cobrir conteúdo */
         .alerta-preferenciais {
@@ -255,6 +325,143 @@
             width: fit-content;
         }
         
+        /* Estilos para o popup do pedido */
+        .pedido-popup {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .pedido-popup-content {
+            background: white;
+            border-radius: 20px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .pedido-popup-header {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            color: white;
+            padding: 20px;
+            border-radius: 20px 20px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .pedido-popup-header h2 {
+            margin: 0;
+            font-size: 1.4em;
+        }
+        
+        .close-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 2em;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: background 0.3s;
+        }
+        
+        .close-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .pedido-popup-body {
+            padding: 25px;
+        }
+        
+        .senha-info-popup {
+            background: #e9ecef;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            text-align: center;
+            border-left: 5px solid #28a745;
+        }
+        
+        .senha-number-popup {
+            font-size: 3em;
+            font-weight: bold;
+            color: #333;
+            margin: 10px 0;
+        }
+        
+        .senha-setor-popup {
+            color: #666;
+            font-size: 1.2em;
+            font-weight: 500;
+        }
+        
+        .pedido-content h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+        
+        .pedido-text {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #28a745;
+            line-height: 1.6;
+            color: #333;
+            font-size: 1em;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .pedido-popup-footer {
+            padding: 20px;
+            text-align: center;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        .confirm-btn {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .confirm-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.3);
+        }
+        
         .senha-info {
             text-align: right;
             flex-shrink: 0;
@@ -273,6 +480,31 @@
             font-weight: bold;
             color: white;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        /* Estilos para o botão Ver Pedido */
+        .btn-ver-pedido {
+            background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-size: 0.9em;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 15px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(255, 107, 107, 0.3);
+        }
+        
+        .btn-ver-pedido:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 107, 107, 0.4);
+            background: linear-gradient(45deg, #ee5a24, #ff6b6b);
+        }
+        
+        .btn-ver-pedido:active {
+            transform: translateY(0);
         }
         
         /* Responsividade para o card da senha atual */
@@ -299,10 +531,54 @@
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.js"></script>
     <script>
-        const socket = io();
+        // Conectar ao Socket.IO
+        var socket = io();
+
+        // Estados de controle
+        let chamadaEmProgresso = false;
+        let timeoutChamada = null;
+        let ultimaSenhaConhecida = null;
+        let atualizandoSenha = false;
+        const TEMPO_TIMEOUT_CHAMADA = 12000; // 12s de segurança
+        const TEMPO_EXIBICAO_CONCORRENTE = 1800; // ms
+        let filaConcorrentes = [];
+        let exibindoConcorrentes = false;
+        // Fila para serializar chamadas e evitar simultaneidade
+        const filaChamadas = [];
+        let processandoFila = false;
+        let pendenteAtualResolver = null;
+        
+        // Função para pegar cookie
+        function getCookie(name) {
+            const nameEQ = name + "=";
+            const ca = document.cookie.split(';');
+            for(let i = 0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+                if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+            }
+            return null;
+        }
+        
+        // Entrar na sala do setor quando conectar
+        socket.on('connect', function() {
+            console.log('[SOCKET] Conectado ao servidor');
+            
+            // Pegar o setor_id do cookie
+            var setorId = getCookie('setor_id');
+            if (setorId) {
+                socket.emit('join_setor', { setor_id: setorId });
+                console.log('[SOCKET] Entrando na sala do setor:', setorId);
+            }
+        });
+        
+        socket.on('joined_setor', function(data) {
+            console.log('[SOCKET] Entrou na sala do setor:', data.setor_id);
+        });
 
         const tabelaBody = document.getElementById('tabela-senhas-body');
         socket.on('atualizar_lista', (data) => {
+            console.log('Evento atualizar_lista recebido:', data);
             // Atualiza a senha atual
             var elAtual = document.querySelector('.senha-atual');
             if (elAtual) elAtual.textContent = `Senha Atual: ${data.senha_atual}`;
@@ -327,45 +603,204 @@
                 }
             }
         });
+        
+        socket.on('nova_senha_para_avaliacao', function(data) {
+            console.log('Evento nova_senha_para_avaliacao recebido:', data);
+            atualizarSenha();
+        });
+        
+        socket.on('atualizar_atendimentos', function(data) {
+            console.log('Evento atualizar_atendimentos recebido:', data);
+            atualizarSenha();
+        });
 
         socket.on('erro', (data) => {
             // Handle error
         });
 
-        // Função que ativa o overlay de carregamento e desabilita o botão
+        function setBotoesChamadaDisabled(disabled) {
+            document.querySelectorAll('.chamar-btn button, #formOperador button[type="submit"]').forEach(btn => {
+                btn.disabled = disabled;
+                btn.classList.toggle('btn-disabled', disabled);
+            });
+        }
+
         function showLoading() {
-            // Ativa o overlay de carregamento
             document.getElementById('loadingOverlay').classList.add('active');
-            // Desabilita o botão
-            document.querySelector('button').disabled = true;
-
-            // Simula o carregamento de 4 segundos
-            setTimeout(function() {
-                hideLoading();
-            }, 3000); // Tempo de carregamento de 4 segundos
+            setBotoesChamadaDisabled(true);
         }
 
-        // Função que desativa o overlay de carregamento e reabilita o botão
         function hideLoading() {
-            // Remove o overlay de carregamento
             document.getElementById('loadingOverlay').classList.remove('active');
-            // Reabilita o botão
-            document.querySelector('button').disabled = false;
+            setBotoesChamadaDisabled(false);
         }
 
-        function chamarProximaSenha() {
-            showLoading();  // Exibe a tela de carregamento
-            socket.emit('chamar_proxima');  // Emite o evento para o backend
+        function iniciarChamada() {
+            if (chamadaEmProgresso) return;
+            chamadaEmProgresso = true;
+            showLoading();
+            clearTimeout(timeoutChamada);
+            timeoutChamada = setTimeout(() => {
+                console.warn('[CHAMADA] Timeout atingido, liberando UI');
+                finalizarChamada(false);
+            }, TEMPO_TIMEOUT_CHAMADA);
+        }
 
-            // Toca o som ao clicar no botão
-            var audio = new Audio('/static/msc/audio.mp3');  // Certifique-se de que 'alerta.mp3' está no mesmo diretório ou forneça o caminho correto
-            audio.play();
+        function finalizarChamada(ok = true) {
+            if (!chamadaEmProgresso) return;
+            chamadaEmProgresso = false;
+            clearTimeout(timeoutChamada);
+            hideLoading();
+            if (!ok) {
+                console.warn('[CHAMADA] Finalizada com alerta/timeout');
+            }
+        }
+
+        function resolverPendente(ok = true) {
+            if (pendenteAtualResolver) {
+                const resolver = pendenteAtualResolver;
+                pendenteAtualResolver = null;
+                resolver(ok);
+            }
+        }
+
+        // Fila para serializar disparos de chamadas
+        function enfileirarChamada(acao) {
+            filaChamadas.push(acao);
+            processarFilaChamadas();
+        }
+
+        function processarFilaChamadas() {
+            if (processandoFila) return;
+            if (filaChamadas.length === 0) return;
+            processandoFila = true;
+            const acao = filaChamadas.shift();
+            executarAcaoFila(acao)
+                .catch(err => console.error('[FILA] Erro na ação:', err))
+                .finally(() => {
+                    processandoFila = false;
+                    processarFilaChamadas();
+                });
+        }
+
+        function executarAcaoFila(acao) {
+            return new Promise((resolve) => {
+                let timeoutFila = null;
+                const concluir = (ok) => {
+                    if (timeoutFila) clearTimeout(timeoutFila);
+                    pendenteAtualResolver = null;
+                    finalizarChamada(ok);
+                    resolve();
+                };
+                pendenteAtualResolver = concluir;
+
+                // Timeout de segurança adicional para fila
+                timeoutFila = setTimeout(() => {
+                    console.warn('[FILA] Timeout fila atingido');
+                    concluir(false);
+                }, TEMPO_TIMEOUT_CHAMADA);
+
+                if (acao.tipo === 'proxima') {
+                    iniciarChamada();
+                    fetch('/chamar_proxima', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                        body: new URLSearchParams({ operador_id: acao.operadorId })
+                    })
+                    .then(res => {
+                        if (!res.ok) throw new Error('Resposta HTTP não OK');
+                        return res.json().catch(() => ({}));
+                    })
+                    .catch(err => {
+                        console.error('[FILA] Erro ao chamar próxima:', err);
+                        concluir(false);
+                    });
+                } else if (acao.tipo === 'repetir') {
+                    iniciarChamada();
+                    fetch('/chamar_senha_novamente', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            senha: acao.senha,
+                            operador_id: acao.operadorId
+                        })
+                    })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data && data.success) {
+                            var audio = new Audio('/static/msc/audio.mp3');
+                            audio.play();
+                            // Aguarda confirmação via socket/atualizarSenha; se não vier, timeout cuida
+                            setTimeout(() => {
+                                if (pendenteAtualResolver) {
+                                    pendenteAtualResolver(true);
+                                }
+                            }, 1500);
+                        } else {
+                            throw new Error(data && data.error ? data.error : 'Erro ao chamar novamente');
+                        }
+                    })
+                    .catch(err => {
+                        console.error('[FILA] Erro ao chamar novamente:', err);
+                        concluir(false);
+                    });
+                } else {
+                    console.warn('[FILA] Ação desconhecida');
+                    concluir(false);
+                }
+            });
+        }
+
+        function registrarChamadaConcorrente(info) {
+            if (!info || !info.senha) return;
+            // Evitar duplicados imediatos
+            const jaFila = filaConcorrentes.some(i => i.senha === info.senha && i.operador === info.operador);
+            if (!jaFila) filaConcorrentes.push(info);
+            if (!exibindoConcorrentes) {
+                processarConcorrentes();
+            }
+        }
+
+        function processarConcorrentes() {
+            const painel = document.getElementById('painelConcorrentes');
+            const cards = document.getElementById('concorrentesCards');
+            if (!painel || !cards) return;
+            if (filaConcorrentes.length === 0) {
+                painel.style.display = 'none';
+                exibindoConcorrentes = false;
+                return;
+            }
+
+            exibindoConcorrentes = true;
+            const lote = filaConcorrentes.splice(0, 2); // split em até 2
+            cards.innerHTML = '';
+            lote.forEach(item => {
+                const div = document.createElement('div');
+                div.className = 'concorrente-card';
+                div.innerHTML = `
+                    <div class="concorrente-senha">${item.senha}</div>
+                    <div class="concorrente-operador">${item.operador || 'Operador'}</div>
+                    <div class="concorrente-hora">${item.hora || ''}</div>
+                `;
+                cards.appendChild(div);
+            });
+            painel.style.display = 'block';
+
+            setTimeout(() => {
+                processarConcorrentes();
+            }, TEMPO_EXIBICAO_CONCORRENTE);
         }
     </script>
 </head>
 <body>
     
     <h1>Senhas Pendentes</h1>
+
+    <!-- Painel de chamadas concorrentes (split) -->
+    <div id="painelConcorrentes" class="concorrentes-container">
+        <div class="concorrentes-title">Chamadas simultâneas</div>
+        <div id="concorrentesCards" class="concorrentes-cards"></div>
+    </div>
 
     <!-- Card da senha atual com foto do operador -->
     <div class="senha-atual-card" id="senha-atual-card" style="display: none;">
@@ -382,6 +817,10 @@
             <div class="senha-info">
                 <div class="senha-label">Senha Atual</div>
                 <div class="senha-numero" id="senha-display">Carregando...</div>
+                <!-- Botão Ver Pedido (aparece apenas se tem_pedido = true) -->
+                <button id="btn-ver-pedido" class="btn-ver-pedido" style="display: none;" onclick="verPedidoAtual()">
+                    📋 Ver Pedido
+                </button>
             </div>
         </div>
     </div>
@@ -416,6 +855,8 @@
     <!-- Botão fixo no canto superior direito -->
     <div class="chamar-btn">
         <button onclick="abrirModalOperador()">Chamar Próxima Senha</button>
+        <!-- Botão de teste para notificação -->
+        <button onclick="testarNotificacao()" style="background: #ff6b6b; margin-left: 10px; display: none;" >🧪 Testar Notificação</button>
     </div>
 
     <!-- Modal de identificação do operador -->
@@ -456,20 +897,63 @@
     </div>
 
     <script>
+        // Submeter chamada via fetch para evitar reload e controlar loading
+        document.addEventListener('DOMContentLoaded', function() {
+            const formOperador = document.getElementById('formOperador');
+            if (formOperador) {
+                formOperador.addEventListener('submit', function(e) {
+                    e.preventDefault();
+                    const btn = e.submitter;
+                    const operadorId = btn ? btn.value : null;
+                    if (!operadorId) {
+                        console.warn('[CHAMAR] operador_id não encontrado');
+                        return;
+                    }
+                    enfileirarChamada({ tipo: 'proxima', operadorId });
+                    fecharModalOperador();
+                });
+            }
+        });
         function atualizarSenha() {
+          if (atualizandoSenha) {
+            console.log('Já está atualizando, ignorando...');
+            return;
+          }
+          
+          atualizandoSenha = true;
+          console.log('Atualizando senha...');
+          
           fetch('/get_senha_atual_setor')
             .then(response => response.json())
             .then(data => {
+              console.log('Dados recebidos:', data);
               var elSenha = document.getElementById('senha-display');
               var elOperador = document.getElementById('operador-nome');
               var elFoto = document.getElementById('operador-foto');
               var elCard = document.getElementById('senha-atual-card');
+              var elBtnVerPedido = document.getElementById('btn-ver-pedido');
               
-              if (elSenha) elSenha.innerText = data.senha_atual;
+              console.log('Elementos encontrados:', {
+                senha: !!elSenha,
+                operador: !!elOperador,
+                foto: !!elFoto,
+                card: !!elCard,
+                btnVerPedido: !!elBtnVerPedido
+              });
+              
+              // Verificar se é uma nova senha
+              const senhaAtual = data.senha_atual || 'Nenhuma';
+              const novaSenha = ultimaSenhaConhecida !== null && ultimaSenhaConhecida !== senhaAtual;
+              
+              if (elSenha) elSenha.innerText = senhaAtual;
               
               if (data.operador && data.operador !== '') {
+                console.log('Operador encontrado:', data.operador);
                 if (elOperador) elOperador.innerText = data.operador;
-                if (elCard) elCard.style.display = 'block';
+                if (elCard) {
+                  elCard.style.display = 'block';
+                  console.log('Card da senha atual exibido');
+                }
                 
                 // Atualizar foto do operador
                 if (elFoto) {
@@ -479,16 +963,110 @@
                     elFoto.innerHTML = '<div class="avatar-placeholder">👤</div>';
                   }
                 }
+                
+                // Controlar visibilidade do botão "Ver Pedido"
+                if (elBtnVerPedido) {
+                  console.log('Verificando se deve mostrar botão Ver Pedido:', {
+                    tem_pedido: data.tem_pedido,
+                    pedido: data.pedido
+                  });
+                  
+                  if (data.tem_pedido && data.pedido) {
+                    elBtnVerPedido.style.display = 'inline-block';
+                    console.log('✅ Botão Ver Pedido exibido');
+                  } else {
+                    elBtnVerPedido.style.display = 'none';
+                    console.log('❌ Botão Ver Pedido oculto');
+                  }
+                }
               } else {
+                console.log('Nenhum operador ativo');
                 if (elCard) elCard.style.display = 'none';
+                if (elBtnVerPedido) elBtnVerPedido.style.display = 'none';
+              }
+              
+              // Toca o som APENAS quando for uma nova senha
+              if (novaSenha && senhaAtual !== 'Nenhuma' && senhaAtual !== 'Aguardando próxima senha...') {
+                console.log('🎵 Tocando som para nova senha:', senhaAtual);
+                var audio = new Audio('/static/msc/audio.mp3');
+                audio.play();
+                
+                // Registrar para painel de chamadas concorrentes
+                registrarChamadaConcorrente({
+                    senha: senhaAtual,
+                    operador: data.operador || 'Operador',
+                    hora: new Date().toLocaleTimeString()
+                });
+
+                // Se havia uma chamada em progresso, liberar loading agora
+                if (chamadaEmProgresso) {
+                    finalizarChamada(true);
+                }
+                resolverPendente(true);
+                
+                // Verificar se a nova senha tem pedido
+                verificarPedidoDaSenha(senhaAtual);
+              } else if (novaSenha) {
+                console.log('Nova senha detectada, mas não é uma senha válida:', senhaAtual);
+              } else {
+                console.log('Mesma senha, não tocando som');
+              }
+              
+              // Atualizar a última senha conhecida
+              ultimaSenhaConhecida = senhaAtual;
+            })
+            .catch(error => {
+              console.error('Erro ao obter a senha:', error);
+            })
+            .finally(() => {
+              atualizandoSenha = false;
+            });
+        }
+        
+        // Função para verificar se uma senha específica tem pedido
+        function verificarPedidoDaSenha(senha) {
+          console.log('[VERIFICAR_PEDIDO] Verificando pedido para senha:', senha);
+          fetch('/get_senhas_pendentes')
+            .then(response => response.json())
+            .then(senhas => {
+              console.log('[VERIFICAR_PEDIDO] Senhas recebidas:', senhas);
+              if (senhas && senhas.length > 0) {
+                // Buscar a senha específica que foi chamada
+                const senhaChamada = senhas.find(s => s.senha === senha && s.tem_pedido && s.pedido);
+                console.log('[VERIFICAR_PEDIDO] Buscando senha:', senha);
+                console.log('[VERIFICAR_PEDIDO] Senha encontrada:', senhaChamada);
+                
+                if (senhaChamada) {
+                  console.log('[VERIFICAR_PEDIDO] ✅ Senha chamada tem pedido:', senhaChamada);
+                  // Exibir popup com o pedido
+                  showPedidoPopup(senhaChamada.senha, 'Setor Atual', senhaChamada.pedido);
+                } else {
+                  console.log('[VERIFICAR_PEDIDO] ❌ Senha chamada NÃO tem pedido');
+                }
+              } else {
+                console.log('[VERIFICAR_PEDIDO] Nenhuma senha pendente encontrada');
               }
             })
-            .catch(error => console.error('Erro ao obter a senha:', error));
+            .catch(error => {
+              console.error('[VERIFICAR_PEDIDO] Erro ao verificar pedido da senha:', error);
+            });
         }
       
-        // Atualiza a cada 5 segundos
-        setInterval(atualizarSenha, 5000);
-        atualizarSenha();
+        // Atualiza a cada 10 segundos (reduzido de 5 para 10)
+        setInterval(function() {
+            if (!atualizandoSenha) {
+                atualizarSenha();
+            }
+        }, 10000);
+        
+        // Atualizar imediatamente quando a página carregar
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM carregado, atualizando senha...');
+            atualizarSenha();
+        });
+        
+        // Atualizar também imediatamente (apenas uma vez)
+        setTimeout(atualizarSenha, 1000);
     </script>
 
     <script>
@@ -515,29 +1093,37 @@
                     if (atendimentos.length === 0) {
                         cardsDiv.innerHTML = '<div style="color:#888;font-size:1.1em;">Nenhum atendimento em andamento</div>';
                     } else {
-                                atendimentos.forEach(function(a) {
-            const card = document.createElement('div');
-            card.className = 'card-atendimento';
-            
-            // Criar HTML para a foto do operador
-            let fotoHtml = '';
-            if (a.foto_perfil) {
-                fotoHtml = `<img src="/uploads/${a.foto_perfil}" alt="Foto de ${a.nome}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #ddd; margin-bottom: 8px;">`;
-            } else {
-                fotoHtml = `<div style="width: 40px; height: 40px; border-radius: 50%; background: #f0f0f0; display: flex; align-items: center; justify-content: center; border: 2px solid #ddd; margin-bottom: 8px;"><span style="font-size: 20px; color: #999;">👤</span></div>`;
-            }
-            
-            card.innerHTML = `
-                ${fotoHtml}
-                <div style="font-weight:bold;font-size:1.1em;color:#007BFF;margin-bottom:6px;">${a.nome}</div>
-                <div style="font-size:1.5em;color:#FF5733;">${a.senha}</div>
-                <div style="font-size:0.95em;color:#888;">Tipo: ${a.tipo}</div>
-            `;
-            cardsDiv.appendChild(card);
-        });
+                        atendimentos.forEach(function(a) {
+                            const card = document.createElement('div');
+                            card.className = 'card-atendimento';
+                            
+                            // Criar HTML para a foto do operador
+                            let fotoHtml = '';
+                            if (a.foto_perfil) {
+                                fotoHtml = `<img src="/uploads/${a.foto_perfil}" alt="Foto de ${a.nome}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #ddd; margin-bottom: 8px;">`;
+                            } else {
+                                fotoHtml = `<div style="width: 40px; height: 40px; border-radius: 50%; background: #f0f0f0; display: flex; align-items: center; justify-content: center; border: 2px solid #ddd; margin-bottom: 8px;"><span style="font-size: 20px; color: #999;">👤</span></div>`;
+                            }
+                            
+                            card.innerHTML = `
+                                ${fotoHtml}
+                                <div style="font-weight:bold;font-size:1.1em;color:#007BFF;margin-bottom:6px;">${a.nome}</div>
+                                <div style="font-size:1.5em;color:#FF5733;">${a.senha}</div>
+                                <div style="font-size:0.95em;color:#888;">Tipo: ${a.tipo}</div>
+                                <button class="btn-chamar-novamente" onclick="chamarSenhaNovamente('${a.senha}', '${a.operador_id}')">
+                                    🔔 Chamar Novamente
+                                </button>
+                            `;
+                            cardsDiv.appendChild(card);
+                        });
                     }
                 });
         });
+        
+        // Função para chamar senha novamente
+        function chamarSenhaNovamente(senha, operadorId) {
+            enfileirarChamada({ tipo: 'repetir', senha, operadorId });
+        }
 
         // Atualização em tempo real da lista de senhas pendentes
         socket.on('atualizar_lista_senhas', function(data) {
@@ -574,6 +1160,255 @@
                 }, 10000);
             }
         });
+        
+        // Event listener para senha chamada com pedido
+        socket.on('senha_chamada_com_pedido', function(data) {
+            console.log('[SOCKET] senha_chamada_com_pedido recebido:', data);
+            console.log('[SOCKET] Dados recebidos:', {
+                senha: data.senha,
+                setor: data.setor,
+                pedido: data.pedido,
+                setor_id: data.setor_id
+            });
+            
+            // Verificar se o popup existe
+            var popup = document.getElementById('pedidoPopup');
+            if (!popup) {
+                console.error('[SOCKET] Popup não encontrado!');
+                return;
+            }
+            
+            console.log('[SOCKET] Popup encontrado, exibindo...');
+            showPedidoPopup(data.senha, data.setor || 'N/A', data.pedido);
+        });
+        
+        // Função para verificar se há pedidos pendentes
+        function verificarPedidosPendentes() {
+            console.log('[PEDIDOS] Verificando pedidos pendentes...');
+            fetch('/get_senhas_pendentes')
+                .then(response => response.json())
+                .then(senhas => {
+                    console.log('[PEDIDOS] Resposta recebida:', senhas);
+                    if (senhas && senhas.length > 0) {
+                        // Verificar se alguma senha tem pedido
+                        const senhaComPedido = senhas.find(s => s.tem_pedido && s.pedido);
+                        if (senhaComPedido) {
+                            console.log('[PEDIDOS] Senha com pedido encontrada:', senhaComPedido);
+                            // Armazenar para uso posterior
+                            window.senhaComPedido = senhaComPedido;
+                        } else {
+                            console.log('[PEDIDOS] Nenhuma senha com pedido encontrada');
+                        }
+                    } else {
+                        console.log('[PEDIDOS] Nenhuma senha pendente encontrada');
+                    }
+                })
+                .catch(error => {
+                    console.error('[PEDIDOS] Erro ao verificar pedidos pendentes:', error);
+                });
+        }
+        
+        // Verificar pedidos pendentes quando a página carregar
+        document.addEventListener('DOMContentLoaded', function() {
+            verificarPedidosPendentes();
+        });
+        
+        // Função para testar notificação
+        function testarNotificacao() {
+            console.log('[TESTE] testarNotificacao chamada');
+            
+            if (socket) {
+                console.log('[TESTE] Enviando notificação de teste...');
+                socket.emit('pedido_confirmado', {
+                    senha: 'N9999',
+                    pedido: 'Pedido de teste para notificação',
+                    mensagem: 'Pedido sendo preparado - TESTE'
+                });
+                console.log('[TESTE] Notificação de teste enviada');
+                
+                // Mostrar mensagem de sucesso
+                alert('Notificação de teste enviada! Verifique a página do cliente.');
+            } else {
+                console.error('[TESTE] Socket não encontrado!');
+                alert('Erro: Socket não encontrado!');
+            }
+        }
+        
+        // Função para ver o pedido da senha atual
+        function verPedidoAtual() {
+            console.log('[VER_PEDIDO] Função verPedidoAtual chamada');
+            
+            fetch('/get_senha_atual_setor')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('[VER_PEDIDO] Dados da senha atual:', data);
+                    
+                    if (data.tem_pedido && data.pedido) {
+                        console.log('[VER_PEDIDO] Exibindo popup com pedido:', data.pedido);
+                        showPedidoPopup(data.senha_atual, 'Setor Atual', data.pedido);
+                    } else {
+                        console.log('[VER_PEDIDO] Senha atual não tem pedido');
+                        alert('Esta senha não possui pedido registrado.');
+                    }
+                })
+                .catch(error => {
+                    console.error('[VER_PEDIDO] Erro ao buscar dados da senha atual:', error);
+                    alert('Erro ao buscar dados da senha atual.');
+                });
+        }
+        
+        // Funções para o popup do pedido
+        function showPedidoPopup(senha, setor, pedido) {
+            console.log('[POPUP] showPedidoPopup chamada com:', { senha, setor, pedido });
+            
+            var popupSenhaNumber = document.getElementById('popupSenhaNumber');
+            var popupSenhaSetor = document.getElementById('popupSenhaSetor');
+            var popupPedidoText = document.getElementById('popupPedidoText');
+            var pedidoPopup = document.getElementById('pedidoPopup');
+            
+            console.log('[POPUP] Elementos encontrados:', {
+                popupSenhaNumber: !!popupSenhaNumber,
+                popupSenhaSetor: !!popupSenhaSetor,
+                popupPedidoText: !!popupPedidoText,
+                pedidoPopup: !!pedidoPopup
+            });
+            
+            if (!popupSenhaNumber || !popupSenhaSetor || !popupPedidoText || !pedidoPopup) {
+                console.error('[POPUP] Elementos do popup não encontrados!');
+                return;
+            }
+            
+            console.log('[POPUP] Atualizando conteúdo do popup...');
+            popupSenhaNumber.textContent = senha;
+            popupSenhaSetor.textContent = `Setor: ${setor}`;
+            popupPedidoText.textContent = pedido;
+            pedidoPopup.style.display = 'flex';
+            
+            // Atualizar título e botão para o operador
+            const popupTitle = document.querySelector('.pedido-popup-header h2');
+            const confirmBtn = document.getElementById('confirmarPedido');
+            
+            if (popupTitle) {
+                popupTitle.textContent = '📋 Pedido do Cliente';
+                console.log('[POPUP] Título atualizado');
+            }
+            if (confirmBtn) {
+                confirmBtn.textContent = '✅ Confirmar Recebimento';
+                console.log('[POPUP] Botão atualizado');
+            }
+            
+            console.log('[POPUP] ✅ Popup exibido com sucesso');
+            
+            // Tocar som de alerta
+            var audio = new Audio('/static/msc/audio.mp3');
+            audio.play();
+            console.log('[POPUP] Som de alerta tocado');
+        }
+        
+        function closePedidoPopup() {
+            console.log('[POPUP] closePedidoPopup chamada');
+            const popup = document.getElementById('pedidoPopup');
+            
+            if (popup) {
+                console.log('[POPUP] Popup encontrado, fechando...');
+                popup.style.display = 'none';
+                console.log('[POPUP] Popup fechado com sucesso');
+            } else {
+                console.error('[POPUP] Popup não encontrado!');
+            }
+        }
+        
+        function confirmarPedido() {
+            console.log('[POPUP] confirmarPedido chamada');
+            console.log('[POPUP] Confirmando pedido...');
+            
+            // Pegar dados do popup
+            const senhaElement = document.getElementById('popupSenhaNumber');
+            const pedidoElement = document.getElementById('popupPedidoText');
+            
+            console.log('[POPUP] Elementos encontrados:', {
+                senhaElement: !!senhaElement,
+                pedidoElement: !!pedidoElement
+            });
+            
+            if (!senhaElement || !pedidoElement) {
+                console.error('[POPUP] Elementos do popup não encontrados!');
+                return;
+            }
+            
+            const senha = senhaElement.textContent;
+            const pedido = pedidoElement.textContent;
+            
+            console.log('[POPUP] Dados do pedido:', { senha, pedido });
+            
+            // Enviar notificação para o cliente via Socket.IO
+            if (socket) {
+                console.log('[POPUP] Socket encontrado, enviando notificação...');
+                socket.emit('pedido_confirmado', {
+                    senha: senha,
+                    pedido: pedido,
+                    mensagem: 'Pedido sendo preparado'
+                });
+                console.log('[POPUP] Notificação enviada via Socket.IO');
+            } else {
+                console.error('[POPUP] Socket não encontrado!');
+            }
+            
+            closePedidoPopup();
+            console.log('Pedido confirmado pelo operador - iniciando atendimento');
+            
+            // Mostrar mensagem de confirmação
+            var alerta = document.createElement('div');
+            alerta.style.cssText = `
+                position: fixed;
+                top: 20px;
+                left: 50%;
+                transform: translateX(-50%);
+                background: #28a745;
+                color: white;
+                padding: 15px 25px;
+                border-radius: 10px;
+                z-index: 9999;
+                font-weight: bold;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            `;
+            alerta.textContent = '✅ Pedido confirmado! Iniciando atendimento...';
+            document.body.appendChild(alerta);
+            
+            // Remover mensagem após 3 segundos
+            setTimeout(() => {
+                if (alerta.parentNode) {
+                    alerta.parentNode.removeChild(alerta);
+                }
+            }, 3000);
+        }
+        
+        // Event listeners para o popup
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('[POPUP] Configurando event listeners...');
+            
+            const closeBtn = document.getElementById('closePedidoPopup');
+            const confirmBtn = document.getElementById('confirmarPedido');
+            
+            console.log('[POPUP] Elementos encontrados:', {
+                closeBtn: !!closeBtn,
+                confirmBtn: !!confirmBtn
+            });
+            
+            if (closeBtn) {
+                closeBtn.addEventListener('click', function() {
+                    console.log('[POPUP] Botão fechar clicado');
+                    closePedidoPopup();
+                });
+            }
+            
+            if (confirmBtn) {
+                confirmBtn.addEventListener('click', function() {
+                    console.log('[POPUP] Botão confirmar clicado');
+                    confirmarPedido();
+                });
+            }
+        });
     </script>
 
     <!-- Cards de atendimento dos operadores fixos no rodapé -->
@@ -590,6 +1425,9 @@
             <div style="font-weight:bold;font-size:1.1em;color:#007BFF;margin-bottom:6px;">{{ atendimento[1] }}</div>
             <div style="font-size:1.5em;color:#FF5733;">{{ atendimento[2] }}</div>
             <div style="font-size:0.95em;color:#888;">Tipo: {{ atendimento[3] }}</div>
+            <button class="btn-chamar-novamente" onclick="chamarSenhaNovamente('{{ atendimento[2] }}', '{{ atendimento[0] }}')">
+                🔔 Chamar Novamente
+            </button>
         </div>
         {% endfor %}
     </div>
@@ -598,6 +1436,31 @@
     <div id="alertaPreferenciais" class="alerta-preferenciais" style="display:none;">
         <span id="alertaPreferenciaisMsg"></span>
         <button class="close-alerta" onclick="document.getElementById('alertaPreferenciais').style.display='none'">&times;</button>
+    </div>
+
+    <!-- Popup do Pedido -->
+    <div id="pedidoPopup" class="pedido-popup" style="display: none;">
+        <div class="pedido-popup-content">
+            <div class="pedido-popup-header">
+                <h2>📋 Pedido do Cliente</h2>
+                <button id="closePedidoPopup" class="close-btn">&times;</button>
+            </div>
+            <div class="pedido-popup-body">
+                <div class="senha-info-popup">
+                    <div class="senha-number-popup" id="popupSenhaNumber">N/A</div>
+                    <div class="senha-setor-popup" id="popupSenhaSetor">Setor: N/A</div>
+                </div>
+                <div class="pedido-content">
+                    <h3>📝 Pedido:</h3>
+                    <div class="pedido-text" id="popupPedidoText">Carregando...</div>
+                </div>
+            </div>
+            <div class="pedido-popup-footer">
+                <button id="confirmarPedido" class="btn confirm-btn">
+                    ✅ Confirmar Recebimento
+                </button>
+            </div>
+        </div>
     </div>
 
 </body>

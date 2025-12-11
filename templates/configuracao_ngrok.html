@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <title>Configuração do Ngrok</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f8f9fa; }
+        .container { background: #fff; border-radius: 12px; box-shadow: 0 2px 16px rgba(0,0,0,0.08); padding: 32px; margin-top: 40px; }
+        .card { border: none; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .btn-back { background: #6c757d; color: white; border: none; padding: 10px 20px; border-radius: 5px; text-decoration: none; }
+        .btn-back:hover { background: #5a6268; color: white; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Configuração do Ngrok</h1>
+            <a href="/admin" class="btn-back">← Voltar ao Admin</a>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Configurar URL do Ngrok</h5>
+                        <p class="card-text">
+                            Configure a URL do ngrok para permitir que clientes externos recebam notificações 
+                            sem precisar estar conectados na rede local do servidor.
+                        </p>
+                        
+                        <form method="POST">
+                            <div class="mb-3">
+                                <label for="ngrok_url" class="form-label">URL do Ngrok:</label>
+                                <input type="url" class="form-control" id="ngrok_url" name="ngrok_url" 
+                                       value="{{ ngrok_url or '' }}" 
+                                       placeholder="https://exemplo.ngrok.io"
+                                       pattern="https?://.*">
+                                <div class="form-text">
+                                    <strong>Exemplo:</strong> https://abc123.ngrok.io<br>
+                                    <strong>Importante:</strong> Deixe vazio para usar apenas rede local
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Salvar Configuração</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Como usar o Ngrok</h5>
+                        <ol class="card-text">
+                            <li>Baixe o ngrok em <a href="https://ngrok.com" target="_blank">ngrok.com</a></li>
+                            <li>Execute no terminal: <code>ngrok http 5000</code></li>
+                            <li>Copie a URL gerada (ex: https://abc123.ngrok.io)</li>
+                            <li>Cole no campo ao lado</li>
+                            <li>Salve a configuração</li>
+                        </ol>
+                        
+                        <div class="alert alert-info">
+                            <strong>Dica:</strong> A URL do ngrok muda a cada reinicialização, 
+                            então você precisará atualizar esta configuração sempre que reiniciar o ngrok.
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card mt-3">
+                    <div class="card-body">
+                        <h5 class="card-title">Status Atual</h5>
+                        {% if ngrok_url %}
+                            <div class="d-flex align-items-center">
+                                <span style="color: #28a745; font-size: 1.5em; margin-right: 10px;">✅</span>
+                                <div>
+                                    <strong>Configurado</strong><br>
+                                    <small class="text-muted">{{ ngrok_url }}</small>
+                                </div>
+                            </div>
+                        {% else %}
+                            <div class="d-flex align-items-center">
+                                <span style="color: #dc3545; font-size: 1.5em; margin-right: 10px;">❌</span>
+                                <div>
+                                    <strong>Não configurado</strong><br>
+                                    <small class="text-muted">Clientes precisarão estar na rede local</small>
+                                </div>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ 'success' if category == 'success' else 'danger' }} mt-3">
+                        {{ message }}
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html> 

@@ -2,9 +2,32 @@
 <html lang="pt-br">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Avaliação de Atendimento</title>
     <link rel="stylesheet" href="/static/style.css">
     <style>
+        /* Desabilitar zoom e seleção de texto */
+        body {
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            -khtml-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        /* Permitir seleção apenas em campos de input */
+        input, textarea, select {
+            -webkit-user-select: text;
+            -moz-user-select: text;
+            -ms-user-select: text;
+            user-select: text;
+        }
+        
         .stars {
             display: flex;
             flex-direction: row-reverse;
@@ -116,12 +139,143 @@
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.js"></script>
     <script>
+        // Detectar se está em WebView
+        function isWebView() {
+            return /WebView|wv|AndroidWebView|FBAV|FBAN|Instagram|Line|Twitter|LinkedInApp|WhatsApp|Telegram/i.test(navigator.userAgent);
+        }
+        
+        // Configurações específicas para WebView
+        if (isWebView()) {
+            console.log('[WEBVIEW] Detectado WebView - aplicando configurações específicas');
+            
+            // Forçar atualização da página a cada 5 segundos em WebView
+            setInterval(function() {
+                console.log('[WEBVIEW] Forçando atualização da página...');
+                // Forçar recarregamento sem cache
+                window.location.reload(true);
+            }, 5000);
+            
+            // Prevenir cache do navegador
+            window.addEventListener('pageshow', function(event) {
+                if (event.persisted) {
+                    window.location.reload();
+                }
+            });
+            
+            // Forçar recarregamento ao focar na janela
+            window.addEventListener('focus', function() {
+                console.log('[WEBVIEW] Janela focada, verificando atualizações...');
+                setTimeout(function() {
+                    window.location.reload(true);
+                }, 1000);
+            });
+        }
+        
         // Instância global do socket para evitar duplicidade
         window._socket = window._socket || io();
         window._socket.on('connect', function() {
             console.log('[SOCKETIO] Conectado ao servidor Socket.IO!');
         });
-    </script>
+        
+        // Fallback para WebView - tentar reconectar socket se desconectar
+        window._socket.on('disconnect', function() {
+            console.log('[SOCKETIO] Desconectado do servidor!');
+            if (isWebView()) {
+                console.log('[WEBVIEW] Tentando reconectar socket...');
+                setTimeout(function() {
+                    window._socket.connect();
+                }, 1000);
+            }
+        });
+        
+        // Função para detectar 3 cliques consecutivos
+        (function() {
+            let clickCount = 0;
+            let clickTimer = null;
+            const CLICK_TIMEOUT = 1000; // 1 segundo para cliques consecutivos
+            const REQUIRED_CLICKS = 3; // 3 cliques para recarregar
+            
+            function handleConsecutiveClicks() {
+                clickCount++;
+                console.log(`[CLIQUES] Clique ${clickCount} de ${REQUIRED_CLICKS}`);
+                
+                if (clickTimer) {
+                    clearTimeout(clickTimer);
+                }
+                
+                if (clickCount >= REQUIRED_CLICKS) {
+                    console.log('[CLIQUES] 3 cliques consecutivos detectados! Recarregando página...');
+                    window.location.reload();
+                    return;
+                }
+                
+                clickTimer = setTimeout(function() {
+                    console.log('[CLIQUES] Timeout atingido, resetando contador');
+                    clickCount = 0;
+                }, CLICK_TIMEOUT);
+            }
+            
+            // Adicionar listener de clique ao documento
+            document.addEventListener('click', function(event) {
+                // Ignorar cliques em elementos interativos
+                const tagName = event.target.tagName;
+                const isInteractive = tagName === 'A' || tagName === 'BUTTON' || 
+                                    tagName === 'INPUT' || tagName === 'SELECT' || 
+                                    tagName === 'TEXTAREA';
+                
+                // Ignorar cliques dentro de formulários ou elementos interativos
+                const isInForm = event.target.closest('form') || 
+                                event.target.closest('a') || 
+                                event.target.closest('button') || 
+                                event.target.closest('input') || 
+                                event.target.closest('select') || 
+                                event.target.closest('textarea');
+                
+                if (!isInteractive && !isInForm) {
+                    handleConsecutiveClicks();
+                }
+            });
+            
+                    console.log('[CLIQUES] Sistema de 3 cliques consecutivos ativado');
+    })();
+    
+    // Prevenir zoom via gestos e duplo clique
+    document.addEventListener('gesturestart', function(e) {
+        e.preventDefault();
+    });
+    
+    document.addEventListener('gesturechange', function(e) {
+        e.preventDefault();
+    });
+    
+    document.addEventListener('gestureend', function(e) {
+        e.preventDefault();
+    });
+    
+    // Prevenir zoom via duplo clique
+    let lastTouchEnd = 0;
+    document.addEventListener('touchend', function(event) {
+        const now = (new Date()).getTime();
+        if (now - lastTouchEnd <= 300) {
+            event.preventDefault();
+        }
+        lastTouchEnd = now;
+    }, false);
+    
+    // Prevenir zoom via Ctrl+scroll
+    document.addEventListener('wheel', function(e) {
+        if (e.ctrlKey) {
+            e.preventDefault();
+        }
+    }, { passive: false });
+    
+    // Prevenir zoom via Ctrl+plus/minus
+    document.addEventListener('keydown', function(e) {
+        if (e.ctrlKey && (e.key === '+' || e.key === '-' || e.key === '=')) {
+            e.preventDefault();
+        }
+    });
+</script>
 </head>
 <body>
     <div class="container">
@@ -258,7 +412,7 @@
         }, 5000);
     </script>
     {% endif %}
-    {% if saudacao %}
+            {% if saudacao %}
     <script>
         // Atualiza a tela em tempo real quando o operador chamar a próxima senha
         function getCookie(name) {
@@ -266,11 +420,43 @@
             if (match) return match[2];
         }
         const operadorIdCookie = getCookie('operador_id');
+        
+        // Função para verificar se há nova senha via polling (fallback para WebView)
+        function checkForNewSenha() {
+            if (isWebView()) {
+                fetch('/check_webview_update')
+                    .then(response => response.json())
+                    .then(data => {
+                        console.log('[WEBVIEW] Verificação de atualização:', data);
+                        
+                        if (data.force_reload) {
+                            console.log('[WEBVIEW] Forçando recarregamento devido a avaliação pendente');
+                            window.location.reload(true);
+                            return;
+                        }
+                        
+                        if (data.senha_atual && data.senha_atual !== '{{ senha_atual if senha_atual else "" }}') {
+                            console.log('[WEBVIEW] Nova senha detectada via polling, recarregando...');
+                            window.location.reload(true);
+                        }
+                    })
+                    .catch(error => {
+                        console.log('[WEBVIEW] Erro no polling:', error);
+                    });
+            }
+        }
+        
+        // Socket.IO para navegadores normais
         window._socket.on('nova_senha_operador', function(data) {
             if (data.operador_id == operadorIdCookie) {
                 window.location.reload();
             }
         });
+        
+        // Polling para WebView a cada 3 segundos
+        if (isWebView()) {
+            setInterval(checkForNewSenha, 3000);
+        }
     </script>
     {% endif %}
     {% if saudacao %}

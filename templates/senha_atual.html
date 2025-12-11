@@ -70,6 +70,24 @@
             margin: 30px 0;
             font-family: 'Courier New', monospace;
             letter-spacing: 5px;
+            line-height: 1.2;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+            hyphens: auto;
+            text-align: center;
+            min-height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        /* Estilo específico para mensagem de aguardando */
+        #senha_atual.aguardando {
+            font-size: 3.5rem;
+            line-height: 1.3;
+            min-height: 100px;
+            padding: 20px;
         }
         @keyframes fadeIn {
             from { opacity: 0; }
@@ -166,6 +184,14 @@
             #senha_atual {
                 font-size: 5rem;
                 letter-spacing: 3px;
+                min-height: 80px;
+                line-height: 1.1;
+            }
+            
+            #senha_atual.aguardando {
+                font-size: 2.5rem;
+                min-height: 70px;
+                padding: 15px;
             }
             
             .operador-card {
@@ -200,6 +226,14 @@
             #senha_atual {
                 font-size: 4rem;
                 letter-spacing: 2px;
+                min-height: 60px;
+                line-height: 1.0;
+            }
+            
+            #senha_atual.aguardando {
+                font-size: 2rem;
+                min-height: 50px;
+                padding: 10px;
             }
         }
     </style>
@@ -207,7 +241,7 @@
 <body>
     <div id="container">
         <h1>Senha Atual</h1>
-        <div id="senha_atual" style="font-size: 8rem; margin: 20px 0;">Carregando...</div>
+        <div id="senha_atual">Carregando...</div>
         
         <!-- Card do operador com foto -->
         <div id="operador_card" class="operador-card" style="display: none;">
@@ -221,20 +255,427 @@
         </div>
     </div>
     <script>
+        // Variável para armazenar a última senha conhecida
+        let ultimaSenhaConhecida = null;
+        
+        // Variável para controlar se o áudio foi desbloqueado (necessário para autoplay)
+        let audioDesbloqueado = false;
+        
+        // Função para desbloquear o áudio (chamada na primeira interação do usuário)
+        function desbloquearAudio() {
+            if (!audioDesbloqueado) {
+                // Criar um áudio silencioso e tocar para desbloquear autoplay
+                const audio = new Audio('data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBSuBzvLZiTYIG2m98OSdTgwOUKzn8LZjGwU7kdfyznksBSR3x/DdkEAKFF606euoVRQKRp/g8r5sIQUrgc7y2Yk2CBtpvfDknU4MDlCs5/C2YxsFO5HX8s55LAUkd8fw3ZBAC');
+                audio.volume = 0.01;
+                audio.play().then(() => {
+                    audioDesbloqueado = true;
+                    console.log('✅ Áudio desbloqueado para autoplay');
+                }).catch(err => {
+                    console.warn('⚠️ Não foi possível desbloquear áudio:', err);
+                });
+            }
+        }
+        
+        // Desbloquear áudio na primeira interação do usuário
+        document.addEventListener('click', desbloquearAudio, { once: true });
+        document.addEventListener('touchstart', desbloquearAudio, { once: true });
+        document.addEventListener('keydown', desbloquearAudio, { once: true });
+        
+        // Função para tocar o som da senha
+        function tocarSomSenha() {
+            try {
+                // Usar o caminho correto do Flask
+                const audioPath = '{{ url_for("static", filename="msc/audio.mp3") }}';
+                console.log('🎵 Tentando tocar som do caminho:', audioPath);
+                
+                const audio = new Audio(audioPath);
+                
+                // Configurar volume
+                audio.volume = 1.0;
+                
+                // Eventos para debug
+                audio.addEventListener('loadstart', () => {
+                    console.log('🔄 Áudio iniciando carregamento...');
+                });
+                
+                audio.addEventListener('canplay', () => {
+                    console.log('✅ Áudio pronto para tocar');
+                });
+                
+                audio.addEventListener('play', () => {
+                    console.log('▶️ Áudio começou a tocar');
+                });
+                
+                audio.addEventListener('ended', () => {
+                    console.log('⏹️ Áudio terminou');
+                });
+                
+                audio.addEventListener('error', (e) => {
+                    console.error('❌ Erro ao tocar áudio:', e);
+                    console.error('   Tipo de erro:', audio.error);
+                    console.error('   Código:', audio.error ? audio.error.code : 'N/A');
+                    console.error('   Mensagem:', audio.error ? audio.error.message : 'N/A');
+                    
+                    // Tentar caminho alternativo
+                    console.log('🔄 Tentando caminho alternativo...');
+                    const audioAlt = new Audio('/static/msc/audio.mp3');
+                    audioAlt.volume = 1.0;
+                    audioAlt.play().catch(err => {
+                        console.error('❌ Erro também no caminho alternativo:', err);
+                    });
+                });
+                
+                // Tentar tocar o áudio
+                const playPromise = audio.play();
+                
+                if (playPromise !== undefined) {
+                    playPromise
+                        .then(() => {
+                            console.log('✅ Som tocado com sucesso');
+                        })
+                        .catch(error => {
+                            console.error('❌ Erro ao tocar som (autoplay bloqueado?):', error);
+                            console.log('💡 Dica: Alguns navegadores bloqueiam autoplay. Tente clicar na página primeiro.');
+                            
+                            // Tentar novamente após um pequeno delay
+                            setTimeout(() => {
+                                audio.play().catch(err => {
+                                    console.error('❌ Erro na segunda tentativa:', err);
+                                });
+                            }, 100);
+                        });
+                }
+                
+            } catch (error) {
+                console.error('❌ Erro ao criar objeto Audio:', error);
+            }
+        }
+        
+        // Função para ler a senha em voz alta
+        function lerSenha(senha) {
+            // Verificar se a Web Speech API está disponível
+            if ('speechSynthesis' in window) {
+                // Cancelar qualquer leitura anterior
+                window.speechSynthesis.cancel();
+                
+                // Criar o texto a ser lido
+                // Formatar a senha para leitura (ex: "N1234" -> "Senha N um dois três quatro")
+                let textoParaLer = 'Senha ';
+                
+                // Separar letra e números
+                const letra = senha.charAt(0);
+                const numeros = senha.substring(1);
+                
+                // Adicionar a letra
+                textoParaLer += letra + ' ';
+                
+                // Adicionar cada número por extenso
+                const numerosPorExtenso = {
+                    '0': 'zero',
+                    '1': 'um',
+                    '2': 'dois',
+                    '3': 'três',
+                    '4': 'quatro',
+                    '5': 'cinco',
+                    '6': 'seis',
+                    '7': 'sete',
+                    '8': 'oito',
+                    '9': 'nove'
+                };
+                
+                for (let i = 0; i < numeros.length; i++) {
+                    const digito = numeros[i];
+                    if (numerosPorExtenso[digito]) {
+                        textoParaLer += numerosPorExtenso[digito] + ' ';
+                    }
+                }
+                
+                // Criar a utterance
+                const utterance = new SpeechSynthesisUtterance(textoParaLer);
+                
+                // Configurar a voz em português
+                utterance.lang = 'pt-BR';
+                utterance.rate = 0.75; // Velocidade mais fluida (0.1 a 10) - balanceada entre clareza e fluidez
+                utterance.pitch = 1.15; // Tom mais alto para voz feminina mais natural (0 a 2)
+                utterance.volume = 1.0; // Volume (0 a 1)
+                
+                // Obter todas as vozes disponíveis
+                const voices = window.speechSynthesis.getVoices();
+                
+                // Listar todas as vozes disponíveis no console (para debug)
+                console.log('🎤 Vozes disponíveis no sistema:', voices.length);
+                voices.forEach((voice, index) => {
+                    if (voice.lang.includes('pt') || voice.lang.includes('PT')) {
+                        console.log(`   ${index + 1}. ${voice.name} (${voice.lang}) - ${voice.gender || 'gênero não especificado'}`);
+                    }
+                });
+                
+                // Priorizar vozes femininas mais fluidas e modernas
+                // Vozes premium/neural geralmente têm nomes específicos
+                let portugueseVoice = null;
+                
+                // Lista de nomes de vozes femininas conhecidas e fluidas (em ordem de preferência)
+                const vozesFemininasPreferidas = [
+                    // Vozes Windows (mais fluidas)
+                    'maria', 'helena', 'heloisa', 'lucia', 'vitória', 'isabela', 'ana',
+                    // Vozes Google/Chrome (neural, muito fluidas)
+                    'google português do brasil', 'pt-br', 'brazil',
+                    // Vozes macOS (Siri-like, muito fluidas)
+                    'lucia', 'maria', 'helena',
+                    // Vozes genéricas
+                    'female', 'mulher', 'feminina', 'woman'
+                ];
+                
+                // Função para verificar se uma voz é feminina
+                function isFemaleVoice(voice) {
+                    const nameLower = voice.name.toLowerCase();
+                    return vozesFemininasPreferidas.some(pref => nameLower.includes(pref)) ||
+                           (voice.gender && voice.gender === 'female') ||
+                           nameLower.includes('female') ||
+                           nameLower.includes('mulher') ||
+                           nameLower.includes('feminina');
+                }
+                
+                // Função para verificar qualidade da voz (vozes neural/premium são melhores)
+                function isHighQualityVoice(voice) {
+                    const nameLower = voice.name.toLowerCase();
+                    return nameLower.includes('neural') ||
+                           nameLower.includes('premium') ||
+                           nameLower.includes('enhanced') ||
+                           nameLower.includes('google') ||
+                           nameLower.includes('siri') ||
+                           nameLower.includes('cortana');
+                }
+                
+                // Estratégia 1: Voz feminina em português de alta qualidade (neural/premium)
+                portugueseVoice = voices.find(voice => {
+                    const isPortuguese = voice.lang.includes('pt') || voice.lang.includes('PT');
+                    return isPortuguese && isFemaleVoice(voice) && isHighQualityVoice(voice);
+                });
+                
+                // Estratégia 2: Voz feminina em português (qualquer qualidade)
+                if (!portugueseVoice) {
+                    portugueseVoice = voices.find(voice => {
+                        const isPortuguese = voice.lang.includes('pt') || voice.lang.includes('PT');
+                        return isPortuguese && isFemaleVoice(voice);
+                    });
+                }
+                
+                // Estratégia 3: Voz em português (qualquer gênero, mas preferir nomes femininos)
+                if (!portugueseVoice) {
+                    // Tentar vozes com nomes femininos primeiro
+                    portugueseVoice = voices.find(voice => {
+                        const isPortuguese = voice.lang.includes('pt') || voice.lang.includes('PT');
+                        const nameLower = voice.name.toLowerCase();
+                        return isPortuguese && (
+                            nameLower.includes('maria') ||
+                            nameLower.includes('helena') ||
+                            nameLower.includes('heloisa') ||
+                            nameLower.includes('lucia') ||
+                            nameLower.includes('vitória') ||
+                            nameLower.includes('isabela')
+                        );
+                    });
+                }
+                
+                // Estratégia 4: Qualquer voz em português
+                if (!portugueseVoice) {
+                    portugueseVoice = voices.find(voice => 
+                        voice.lang.includes('pt') || voice.lang.includes('PT')
+                    );
+                }
+                
+                // Estratégia 5: Voz feminina de alta qualidade (qualquer idioma)
+                if (!portugueseVoice) {
+                    portugueseVoice = voices.find(voice => 
+                        isFemaleVoice(voice) && isHighQualityVoice(voice)
+                    );
+                }
+                
+                // Estratégia 6: Qualquer voz feminina disponível
+                if (!portugueseVoice) {
+                    portugueseVoice = voices.find(voice => isFemaleVoice(voice));
+                }
+                
+                if (portugueseVoice) {
+                    utterance.voice = portugueseVoice;
+                    console.log('✅ Voz selecionada:', portugueseVoice.name);
+                    console.log('   Idioma:', portugueseVoice.lang);
+                    console.log('   Gênero:', portugueseVoice.gender || 'não especificado');
+                    console.log('   Qualidade:', isHighQualityVoice(portugueseVoice) ? 'Alta (Neural/Premium)' : 'Padrão');
+                } else {
+                    console.log('⚠️ Nenhuma voz feminina encontrada, usando voz padrão do sistema');
+                    // Ajustar pitch para tentar simular voz feminina
+                    utterance.pitch = 1.3;
+                    utterance.rate = 0.6; // Ainda mais lenta se não tiver voz específica
+                }
+                
+                // Eventos para debug
+                utterance.onstart = function() {
+                    console.log('🔊 Iniciando leitura da senha:', senha);
+                };
+                
+                utterance.onend = function() {
+                    console.log('✅ Leitura da senha concluída');
+                };
+                
+                utterance.onerror = function(event) {
+                    console.error('❌ Erro na leitura:', event.error);
+                };
+                
+                // Reproduzir a voz
+                window.speechSynthesis.speak(utterance);
+                
+            } else {
+                console.warn('⚠️ Web Speech API não está disponível neste navegador');
+            }
+        }
+        
+        // Função para listar todas as vozes disponíveis (útil para debug)
+        function listarVozesDisponiveis() {
+            if ('speechSynthesis' in window) {
+                const voices = window.speechSynthesis.getVoices();
+                console.log('📋 TODAS AS VOZES DISPONÍVEIS NO SISTEMA:');
+                console.log('='.repeat(60));
+                
+                const vozesPortugues = voices.filter(v => v.lang.includes('pt') || v.lang.includes('PT'));
+                const vozesFemininas = voices.filter(v => {
+                    const name = v.name.toLowerCase();
+                    return name.includes('female') || name.includes('mulher') || 
+                           name.includes('feminina') || name.includes('maria') ||
+                           name.includes('helena') || name.includes('heloisa') ||
+                           name.includes('lucia') || name.includes('vitória') ||
+                           (v.gender && v.gender === 'female');
+                });
+                
+                console.log(`\n🇧🇷 VOZES EM PORTUGUÊS (${vozesPortugues.length}):`);
+                vozesPortugues.forEach((voice, i) => {
+                    const isFemale = vozesFemininas.includes(voice);
+                    const quality = voice.name.toLowerCase().includes('neural') || 
+                                  voice.name.toLowerCase().includes('premium') ? '⭐ PREMIUM' : '   Padrão';
+                    console.log(`   ${i + 1}. ${voice.name.padEnd(30)} ${voice.lang.padEnd(10)} ${isFemale ? '👩' : '👤'} ${quality}`);
+                });
+                
+                console.log(`\n👩 VOZES FEMININAS (${vozesFemininas.length}):`);
+                vozesFemininas.forEach((voice, i) => {
+                    const isPortuguese = voice.lang.includes('pt') || voice.lang.includes('PT');
+                    const quality = voice.name.toLowerCase().includes('neural') || 
+                                  voice.name.toLowerCase().includes('premium') ? '⭐ PREMIUM' : '   Padrão';
+                    console.log(`   ${i + 1}. ${voice.name.padEnd(30)} ${voice.lang.padEnd(10)} ${isPortuguese ? '🇧🇷' : '🌐'} ${quality}`);
+                });
+                
+                console.log('='.repeat(60));
+            }
+        }
+        
+        // Carregar vozes quando disponíveis (alguns navegadores carregam assincronamente)
+        if ('speechSynthesis' in window) {
+            // Tentar carregar vozes imediatamente
+            let voices = window.speechSynthesis.getVoices();
+            if (voices.length === 0) {
+                // Se não houver vozes, aguardar o evento 'voiceschanged'
+                window.speechSynthesis.onvoiceschanged = function() {
+                    voices = window.speechSynthesis.getVoices();
+                    console.log('🎤 Vozes carregadas:', voices.length);
+                    // Listar vozes disponíveis após carregar
+                    setTimeout(listarVozesDisponiveis, 500);
+                };
+            } else {
+                console.log('🎤 Vozes disponíveis:', voices.length);
+                // Listar vozes disponíveis
+                setTimeout(listarVozesDisponiveis, 500);
+            }
+        }
+        
+        // Expor função global para testar vozes (útil para debug)
+        window.testarVoz = function(nomeVoz) {
+            if ('speechSynthesis' in window) {
+                const voices = window.speechSynthesis.getVoices();
+                const voice = voices.find(v => v.name.toLowerCase().includes(nomeVoz.toLowerCase()));
+                
+                if (voice) {
+                    const utterance = new SpeechSynthesisUtterance('Senha N um dois três quatro');
+                    utterance.voice = voice;
+                    utterance.lang = 'pt-BR';
+                    utterance.rate = 0.75;
+                    utterance.pitch = 1.15;
+                    window.speechSynthesis.speak(utterance);
+                    console.log('✅ Testando voz:', voice.name);
+                } else {
+                    console.log('❌ Voz não encontrada. Use listarVozesDisponiveis() para ver todas as vozes.');
+                }
+            }
+        };
+        
+        // Expor função para listar vozes globalmente
+        window.listarVozesDisponiveis = listarVozesDisponiveis;
+        
         function atualizarSenhaAtual() {
+            if (atualizandoSenhaAtual) {
+                console.log('Já está atualizando senha atual, ignorando...');
+                return;
+            }
+            
+            atualizandoSenhaAtual = true;
+            console.log('Atualizando senha atual...');
+            
             fetch('/get_senha_atual_setor')
                 .then(response => response.json())
                 .then(data => {
-                    document.getElementById('senha_atual').innerText = data.senha_atual;
+                    console.log('Dados recebidos:', data);
+                    var senhaElement = document.getElementById('senha_atual');
+                    
+                    // Verificar se é uma nova senha
+                    const senhaAtual = data.senha_atual || 'Nenhuma';
+                    // Nova senha = mudou de uma senha para outra (não é a primeira vez e é diferente)
+                    // OU é a primeira vez que temos uma senha válida
+                    const primeiraSenhaValida = ultimaSenhaConhecida === null && 
+                                                 senhaAtual !== 'Nenhuma' && 
+                                                 senhaAtual !== 'Aguardando próxima senha...' && 
+                                                 senhaAtual !== 'Setor não selecionado.';
+                    const novaSenha = (ultimaSenhaConhecida !== null && ultimaSenhaConhecida !== senhaAtual) || primeiraSenhaValida;
+                    
+                    // Debug detalhado
+                    console.log('📊 Debug de nova senha:');
+                    console.log('   Senha atual recebida:', senhaAtual);
+                    console.log('   Última senha conhecida:', ultimaSenhaConhecida);
+                    console.log('   É primeira senha válida?', primeiraSenhaValida);
+                    console.log('   É nova senha?', novaSenha);
+                    console.log('   Condição completa:', novaSenha && senhaAtual !== 'Nenhuma' && senhaAtual !== 'Aguardando próxima senha...' && senhaAtual !== 'Setor não selecionado.');
+                    
+                    if (senhaElement) {
+                        senhaElement.innerText = senhaAtual;
+                        
+                        // Aplicar classe específica para mensagem de aguardando
+                        if (senhaAtual === 'Aguardando próxima senha...') {
+                            senhaElement.classList.add('aguardando');
+                        } else {
+                            senhaElement.classList.remove('aguardando');
+                        }
+                        
+                        console.log('Senha atualizada:', senhaAtual);
+                    } else {
+                        console.error('Elemento senha_atual não encontrado');
+                    }
                     
                     // Atualizar card do operador
                     var operadorCard = document.getElementById('operador_card');
                     var operadorNome = document.getElementById('operador_nome');
                     var operadorFoto = document.getElementById('operador_foto');
                     
+                    console.log('Elementos encontrados:', {
+                        operadorCard: !!operadorCard,
+                        operadorNome: !!operadorNome,
+                        operadorFoto: !!operadorFoto
+                    });
+                    
                     if (data.operador && data.operador !== '') {
+                        console.log('Operador encontrado:', data.operador);
                         if (operadorNome) operadorNome.innerText = data.operador;
-                        if (operadorCard) operadorCard.style.display = 'flex';
+                        if (operadorCard) {
+                            operadorCard.style.display = 'flex';
+                            console.log('Card do operador exibido');
+                        }
                         
                         // Atualizar foto do operador
                         if (operadorFoto) {
@@ -245,21 +686,76 @@
                             }
                         }
                     } else {
+                        console.log('Nenhum operador ativo');
                         if (operadorCard) operadorCard.style.display = 'none';
                     }
                     
-                    // Toca o som ao atualizar a senha
-                    var audio = new Audio('/static/msc/audio.mp3');
-                    audio.play();
+                    // Toca o som e lê a senha APENAS quando for uma nova senha
+                    if (novaSenha && senhaAtual !== 'Nenhuma' && senhaAtual !== 'Aguardando próxima senha...' && senhaAtual !== 'Setor não selecionado.') {
+                        console.log('🎵 Nova senha detectada! Senha:', senhaAtual);
+                        console.log('   Última senha conhecida:', ultimaSenhaConhecida);
+                        console.log('   É uma nova senha?', novaSenha);
+                        
+                        // Tocar o som
+                        tocarSomSenha();
+                        
+                        // Ler a senha em voz alta
+                        console.log('🔊 Lendo senha em voz alta:', senhaAtual);
+                        lerSenha(senhaAtual);
+                    } else if (novaSenha) {
+                        console.log('⚠️ Nova senha detectada, mas não é uma senha válida:', senhaAtual);
+                    } else {
+                        console.log('ℹ️ Mesma senha ou aguardando, não tocando som nem lendo');
+                        console.log('   Senha atual:', senhaAtual);
+                        console.log('   Última senha conhecida:', ultimaSenhaConhecida);
+                    }
+                    
+                    // Atualizar a última senha conhecida
+                    ultimaSenhaConhecida = senhaAtual;
+                })
+                .catch(error => {
+                    console.error('Erro ao atualizar senha:', error);
+                    var senhaElement = document.getElementById('senha_atual');
+                    if (senhaElement) {
+                        senhaElement.innerText = 'Erro';
+                    }
+                })
+                .finally(() => {
+                    atualizandoSenhaAtual = false;
                 });
         }
+        
+        // Variável para controlar se já está atualizando
+        let atualizandoSenhaAtual = false;
+        
+        // Atualizar imediatamente
         atualizarSenhaAtual();
+        
+        // Atualizar a cada 10 segundos (reduzido de 5 para 10)
+        setInterval(function() {
+            if (!atualizandoSenhaAtual) {
+                atualizarSenhaAtual();
+            }
+        }, 10000);
+        
         // Atualização instantânea via Socket.IO
         const socket = io();
+        socket.on('connect', function() {
+            console.log('Socket.IO conectado em senha_atual.html');
+        });
+        
         socket.on('atualizar_lista', function() {
+            console.log('Evento atualizar_lista recebido');
             atualizarSenhaAtual();
         });
+        
         socket.on('nova_senha_para_avaliacao', function() {
+            console.log('Evento nova_senha_para_avaliacao recebido');
+            atualizarSenhaAtual();
+        });
+        
+        socket.on('atualizar_atendimentos', function() {
+            console.log('Evento atualizar_atendimentos recebido');
             atualizarSenhaAtual();
         });
     </script>

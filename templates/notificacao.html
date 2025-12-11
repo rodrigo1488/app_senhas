@@ -1,0 +1,1870 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monitoramento de Senha</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        /* Alertas no topo */
+        .top-alerts {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            padding: 20px;
+        }
+        
+        .alert {
+            background: #ff6b6b;
+            color: white;
+            padding: 25px;
+            border-radius: 15px;
+            margin: 10px 0;
+            font-size: 1.4em;
+            font-weight: bold;
+            text-align: center;
+            animation: pulse 1s infinite;
+            display: none;
+            box-shadow: 0 8px 25px rgba(255, 107, 107, 0.4);
+            border: 3px solid #fff;
+        }
+        
+        .alert.warning {
+            background: linear-gradient(45deg, #ffc107, #ff8f00);
+            color: #333;
+            box-shadow: 0 8px 25px rgba(255, 193, 7, 0.4);
+        }
+        
+        .alert.called {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            color: white;
+            box-shadow: 0 8px 25px rgba(40, 167, 69, 0.4);
+            font-size: 1.6em;
+        }
+        
+        .alert.pedido-preparando {
+            background: linear-gradient(45deg, #ff8c00, #ff6b35);
+            color: white;
+            box-shadow: 0 8px 25px rgba(255, 140, 0, 0.4);
+            font-size: 1.4em;
+            animation: pulse 1.5s infinite;
+        }
+        
+        .alert.pedido-producao {
+            background: linear-gradient(45deg, #17a2b8, #138496);
+            color: white;
+            box-shadow: 0 8px 25px rgba(23, 162, 184, 0.4);
+            font-size: 1.4em;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.02); }
+            100% { transform: scale(1); }
+        }
+        
+        .alert.show {
+            display: block;
+        }
+        
+        /* Container principal */
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+            margin-top: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+        }
+        
+        .message {
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        
+        .btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: transform 0.2s;
+            margin: 10px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+        }
+        
+        .btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            font-weight: bold;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .qr-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin: 20px 0;
+            border-left: 4px solid #667eea;
+        }
+        
+        .qr-info h3 {
+            margin-top: 0;
+            color: #333;
+        }
+        
+        .qr-info p {
+            margin: 10px 0;
+            color: #666;
+        }
+        
+        .polling-status {
+            background: #fff3cd;
+            color: #856404;
+            border: 1px solid #ffeaa7;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 15px;
+            font-size: 0.9em;
+        }
+        
+        .queue-card {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            color: white;
+            padding: 25px;
+            border-radius: 15px;
+            margin: 20px 0;
+            box-shadow: 0 8px 25px rgba(40, 167, 69, 0.3);
+            animation: glow 2s ease-in-out infinite alternate;
+            border: 2px solid #fff;
+        }
+        
+        @keyframes glow {
+            from { box-shadow: 0 8px 25px rgba(40, 167, 69, 0.3); }
+            to { box-shadow: 0 8px 35px rgba(40, 167, 69, 0.5); }
+        }
+        
+        .queue-number {
+            font-size: 4em;
+            font-weight: bold;
+            margin: 10px 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .queue-text {
+            font-size: 1.3em;
+            margin: 8px 0;
+            font-weight: 500;
+        }
+        
+        .queue-message {
+            font-size: 1.1em;
+            margin-top: 15px;
+            opacity: 0.9;
+        }
+        
+        .sound-toggle {
+            background: #28a745;
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 25px;
+            margin: 10px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: all 0.3s;
+        }
+        
+        .sound-toggle.off {
+            background: #dc3545;
+        }
+        
+        .sound-toggle:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        /* Indicador de monitoramento ativo */
+        .monitoring-indicator {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 25px;
+            margin: 15px 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(40, 167, 69, 0.3);
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        .monitoring-icon {
+            font-size: 1.2em;
+            animation: spin 2s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .senha-info {
+            background: #e9ecef;
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+            border-left: 5px solid #667eea;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        }
+        
+        .senha-number {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #333;
+            margin: 8px 0;
+        }
+        
+        .senha-setor {
+            color: #666;
+            font-size: 1.2em;
+            font-weight: 500;
+        }
+        
+        .config-info {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 15px 0;
+            border-left: 4px solid #2196f3;
+            font-size: 0.9em;
+        }
+        
+        /* Estilos para o campo de pedido */
+        .pedido-section {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 15px;
+            margin: 20px 0;
+            border-left: 5px solid #28a745;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        }
+        
+        .pedido-section h3 {
+            margin-top: 0;
+            color: #333;
+            font-size: 1.3em;
+            margin-bottom: 10px;
+        }
+        
+        .pedido-description {
+            color: #666;
+            margin-bottom: 15px;
+            font-size: 0.95em;
+            line-height: 1.4;
+        }
+        
+        .pedido-input-container {
+            position: relative;
+            margin-bottom: 15px;
+        }
+        
+        .pedido-input-container textarea {
+            width: 100%;
+            padding: 15px;
+            border: 2px solid #e9ecef;
+            border-radius: 10px;
+            font-family: Arial, sans-serif;
+            font-size: 1em;
+            resize: vertical;
+            min-height: 100px;
+            transition: border-color 0.3s;
+            box-sizing: border-box;
+        }
+        
+        .pedido-input-container textarea:focus {
+            outline: none;
+            border-color: #28a745;
+            box-shadow: 0 0 0 3px rgba(40, 167, 69, 0.1);
+        }
+        
+        .pedido-counter {
+            text-align: right;
+            font-size: 0.8em;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .pedido-btn {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 25px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin: 10px 0;
+        }
+        
+        .pedido-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.3);
+        }
+        
+        .pedido-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .pedido-status {
+            margin-top: 15px;
+            padding: 12px;
+            border-radius: 8px;
+            font-weight: 500;
+            text-align: center;
+        }
+        
+        .pedido-status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .pedido-status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        /* Estilos para o popup do pedido */
+        .pedido-popup {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        
+        .pedido-popup-content {
+            background: white;
+            border-radius: 20px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        
+        .pedido-popup-header {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            color: white;
+            padding: 20px;
+            border-radius: 20px 20px 0 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .pedido-popup-header h2 {
+            margin: 0;
+            font-size: 1.4em;
+        }
+        
+        .close-btn {
+            background: none;
+            border: none;
+            color: white;
+            font-size: 2em;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            transition: background 0.3s;
+        }
+        
+        .close-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        
+        .pedido-popup-body {
+            padding: 25px;
+        }
+        
+        .senha-info-popup {
+            background: #e9ecef;
+            padding: 20px;
+            border-radius: 15px;
+            margin-bottom: 20px;
+            text-align: center;
+            border-left: 5px solid #28a745;
+        }
+        
+        .senha-number-popup {
+            font-size: 3em;
+            font-weight: bold;
+            color: #333;
+            margin: 10px 0;
+        }
+        
+        .senha-setor-popup {
+            color: #666;
+            font-size: 1.2em;
+            font-weight: 500;
+        }
+        
+        .pedido-content h3 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.2em;
+        }
+        
+        .pedido-text {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #28a745;
+            line-height: 1.6;
+            color: #333;
+            font-size: 1em;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .pedido-popup-footer {
+            padding: 20px;
+            text-align: center;
+            border-top: 1px solid #e9ecef;
+        }
+        
+        .confirm-btn {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            color: white;
+            border: none;
+            padding: 15px 30px;
+            border-radius: 25px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .confirm-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(40, 167, 69, 0.3);
+        }
+        
+        /* Responsividade */
+        @media (max-width: 480px) {
+            .container {
+                padding: 20px;
+                margin-top: 10px;
+            }
+            
+            .alert {
+                font-size: 1.2em;
+                padding: 20px;
+            }
+            
+            .alert.called {
+                font-size: 1.4em;
+            }
+            
+            .queue-number {
+                font-size: 3em;
+            }
+            
+            .senha-number {
+                font-size: 2em;
+            }
+            
+            .pedido-section {
+                padding: 20px;
+            }
+            
+            .pedido-input-container textarea {
+                font-size: 0.9em;
+                padding: 12px;
+            }
+            
+            .pedido-popup-content {
+                width: 95%;
+                margin: 10px;
+            }
+            
+            .pedido-popup-header {
+                padding: 15px;
+            }
+            
+            .pedido-popup-header h2 {
+                font-size: 1.2em;
+            }
+            
+            .pedido-popup-body {
+                padding: 20px;
+            }
+            
+            .senha-number-popup {
+                font-size: 2.5em;
+            }
+        }
+
+        /* Card do Pedido Salvo */
+        .pedido-salvo-card {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            color: white;
+            padding: 25px;
+            border-radius: 15px;
+            margin: 20px 0;
+            box-shadow: 0 8px 25px rgba(40, 167, 69, 0.3);
+            border: 2px solid #fff;
+        }
+        
+        .pedido-salvo-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+        
+        .pedido-salvo-header h3 {
+            margin: 0;
+            font-size: 1.3em;
+            color: white;
+        }
+        
+        .pedido-salvo-icon {
+            font-size: 1.5em;
+        }
+        
+        .pedido-salvo-content {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 15px;
+            border-radius: 10px;
+            border-left: 4px solid rgba(255, 255, 255, 0.3);
+        }
+        
+        .pedido-salvo-text {
+            line-height: 1.6;
+            color: white;
+            font-size: 1em;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        /* Tela de Atendimento Finalizado */
+        .atendimento-finalizado {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 3000;
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        
+        .finalizado-card {
+            background: white;
+            border-radius: 25px;
+            padding: 40px;
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideInUp 0.6s ease-out;
+        }
+        
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .finalizado-icon {
+            font-size: 5em;
+            margin-bottom: 20px;
+            animation: bounce 2s infinite;
+        }
+        
+        @keyframes bounce {
+            0%, 20%, 50%, 80%, 100% {
+                transform: translateY(0);
+            }
+            40% {
+                transform: translateY(-10px);
+            }
+            60% {
+                transform: translateY(-5px);
+            }
+        }
+        
+        .finalizado-title {
+            font-size: 2.5em;
+            color: #28a745;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+        
+        .finalizado-message {
+            font-size: 1.2em;
+            color: #666;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+        
+        .finalizado-senha {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            color: white;
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+            font-size: 2em;
+            font-weight: bold;
+            box-shadow: 0 8px 25px rgba(40, 167, 69, 0.3);
+        }
+        
+        .finalizado-info {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 15px;
+            margin: 20px 0;
+            border-left: 5px solid #28a745;
+        }
+        
+        .finalizado-info h3 {
+            color: #333;
+            margin-top: 0;
+            margin-bottom: 10px;
+        }
+        
+        .finalizado-info p {
+            color: #666;
+            margin: 5px 0;
+        }
+        
+        /* Tela de Carregamento */
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 4000;
+            animation: fadeIn 0.3s ease-in-out;
+        }
+        
+        .loading-card {
+            background: white;
+            border-radius: 25px;
+            padding: 40px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            animation: slideInUp 0.6s ease-out;
+        }
+        
+        .loading-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+            animation: spin 2s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .loading-title {
+            font-size: 1.8em;
+            color: #333;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+        
+        .loading-message {
+            font-size: 1.1em;
+            color: #666;
+            margin-bottom: 20px;
+            line-height: 1.6;
+        }
+        
+        .loading-progress {
+            width: 100%;
+            height: 8px;
+            background: #e9ecef;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 20px 0;
+        }
+        
+        .loading-bar {
+            height: 100%;
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            border-radius: 10px;
+            animation: progress 2s ease-in-out infinite;
+            width: 0%;
+        }
+        
+        @keyframes progress {
+            0% { width: 0%; }
+            50% { width: 70%; }
+            100% { width: 100%; }
+        }
+        
+        .loading-status {
+            font-size: 0.9em;
+            color: #888;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <!-- Tela de Carregamento -->
+    <div id="loadingScreen" class="loading-screen">
+        <div class="loading-card">
+            <div class="loading-icon">🔄</div>
+            <div class="loading-title">Carregando...</div>
+            <div class="loading-message">
+                Verificando status da sua senha<br>
+                e configurando o monitoramento
+            </div>
+            
+            <div class="loading-progress">
+                <div class="loading-bar"></div>
+            </div>
+            
+            <div class="loading-status" id="loadingStatus">
+                Conectando ao servidor...
+            </div>
+        </div>
+    </div>
+
+    <!-- Alertas no topo da página -->
+    <div class="top-alerts">
+        <div id="alert" class="alert called">
+            🎉 SUA SENHA FOI CHAMADA! 🎉<br>
+            <span style="font-size: 0.8em; opacity: 0.9;">Dirija-se ao guichê imediatamente!</span>
+        </div>
+        
+        <div id="warningAlert" class="alert warning">
+            ⚠️ ATENÇÃO! ⚠️<br>
+            <span id="warningMessage">Você está próximo de ser chamado!</span>
+        </div>
+        
+        <div id="pedidoPreparandoAlert" class="alert pedido-preparando">
+            🍳 PEDIDO SENDO PREPARADO! 🍳<br>
+            <span id="pedidoPreparandoMessage">Seu pedido está sendo preparado!</span>
+        </div>
+        
+        <div id="pedidoProducaoAlert" class="alert pedido-producao">
+            🏭 PEDIDO EM PRODUÇÃO! 🏭<br>
+            <span id="pedidoProducaoMessage">Seu pedido está sendo preparado pelo operador!</span>
+        </div>
+    </div>
+
+    <!-- Tela de Atendimento Finalizado -->
+    <div id="atendimentoFinalizado" class="atendimento-finalizado" style="display: none;">
+        <div class="finalizado-card">
+            <div class="finalizado-icon">✅</div>
+            <div class="finalizado-title">Atendimento Finalizado!</div>
+            <div class="finalizado-message">
+                Seu atendimento foi concluído com sucesso.<br>
+                Obrigado por utilizar nossos serviços!
+            </div>
+            
+            <div class="finalizado-senha" id="finalizadoSenhaNumber">
+                Senha: N/A
+            </div>
+            
+            <div class="finalizado-info">
+                <h3>📋 Resumo do Atendimento</h3>
+                <p><strong>Setor:</strong> <span id="finalizadoSetor">N/A</span></p>
+                <p><strong>Status:</strong> <span style="color: #28a745; font-weight: bold;">✅ Finalizado</span></p>
+                <p><strong>Horário:</strong> <span id="finalizadoHorario">N/A</span></p>
+            </div>
+            
+            <div class="finalizado-message" style="margin-top: 30px; font-size: 1.1em; color: #28a745; font-weight: bold;">
+                🎉 Obrigado por utilizar nossos serviços! 🎉
+            </div>
+        </div>
+    </div>
+
+    <!-- Popup do Pedido -->
+    <div id="pedidoPopup" class="pedido-popup" style="display: none;">
+        <div class="pedido-popup-content">
+            <div class="pedido-popup-header">
+                <h2>📋 Pedido do Cliente</h2>
+                <button id="closePedidoPopup" class="close-btn">&times;</button>
+            </div>
+            <div class="pedido-popup-body">
+                <div class="senha-info-popup">
+                    <div class="senha-number-popup" id="popupSenhaNumber">N/A</div>
+                    <div class="senha-setor-popup" id="popupSenhaSetor">Setor: N/A</div>
+                </div>
+                <div class="pedido-content">
+                    <h3>📝 Pedido:</h3>
+                    <div class="pedido-text" id="popupPedidoText">Carregando...</div>
+                </div>
+            </div>
+            <div class="pedido-popup-footer">
+                <button id="confirmarPedido" class="btn confirm-btn">
+                    ✅ Confirmar Recebimento
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container" style="display: none;">
+        <div class="icon">🔔</div>
+        <h1>Monitoramento de Senha</h1>
+        
+        <div class="senha-info">
+            <div class="senha-number" id="senhaNumber">N/A</div>
+            <div class="senha-setor" id="senhaSetor">Setor: N/A</div>
+        </div>
+        
+        <!-- Campo de Pedido -->
+        <div class="pedido-section" id="pedidoSection">
+            <h3>📝 Adiantar seu Pedido</h3>
+            <p class="pedido-description">Descreva o que você precisa para agilizar seu atendimento:</p>
+            
+            <div class="pedido-input-container">
+                <textarea 
+                    id="pedidoInput" 
+                    placeholder="Ex: Preciso de um documento, quero fazer uma consulta, preciso de informações sobre..."
+                    maxlength="500"
+                    rows="4"
+                ></textarea>
+                <div class="pedido-counter">
+                    <span id="pedidoCounter">0</span>/500 caracteres
+                </div>
+            </div>
+            
+            <button id="salvarPedido" class="btn pedido-btn">
+                💾 Salvar Pedido
+            </button>
+            
+            <div class="pedido-status" id="pedidoStatus" style="display: none;"></div>
+        </div>
+        
+        <!-- Card do Pedido Salvo -->
+        <div class="pedido-salvo-card" id="pedidoSalvoCard" style="display: none;">
+            <div class="pedido-salvo-header">
+                <h3>📋 Seu Pedido</h3>
+                <div class="pedido-salvo-icon">✅</div>
+            </div>
+            <div class="pedido-salvo-content">
+                <div class="pedido-salvo-text" id="pedidoSalvoText">Carregando...</div>
+            </div>
+        </div>
+        
+        <div class="queue-card" id="queueCard" style="display: none;">
+            <div class="queue-text">👥 Pessoas na sua frente:</div>
+            <div class="queue-number" id="queueNumber">0</div>
+            <div class="queue-message">Você está na fila! Aguarde sua vez.</div>
+        </div>
+        
+        <div class="config-info" id="configInfo" style="display: none;">
+            <strong>⚙️ Configurações Salvas:</strong><br>
+            <span id="configDetails">Carregando...</span>
+        </div>
+        
+        <div class="qr-info" style="display: none;">
+            <h3>📱 Como funciona:</h3>
+            <p>1. Clique em "Iniciar Monitoramento"</p>
+            <p>2. Mantenha esta página aberta</p>
+            <p>3. Você será alertado quando for sua vez!</p>
+        </div>
+        
+        <div class="message">
+            Você será alertado quando for sua vez de ser atendido.
+        </div>
+        
+        <button id="enableNotifications" class="btn">
+            🔔 Iniciar Monitoramento
+        </button>
+        
+        <!-- Indicador de monitoramento ativo -->
+        <div id="monitoringIndicator" class="monitoring-indicator" style="display: none;">
+            <div class="monitoring-icon">🔄</div>
+            <div class="monitoring-text">Monitorando sua senha</div>
+        </div>
+        
+        <button id="soundToggle" class="sound-toggle" style="display: none;">
+            🔊 Som Ativado
+        </button>
+        
+        <div id="status" class="status" style="display: none;"></div>
+        
+        <div id="pollingStatus" class="polling-status" style="display: none;">
+            🔄 Monitorando sua senha...
+        </div>
+    </div>
+
+    <script>
+        const token = '{{ token }}';
+        let pollingInterval = null;
+        let soundEnabled = true;
+        let socket = null;
+        let senhaInfo = null;
+        let lastAlertedStatus = null;
+        let isMonitoring = false;
+        let isLoading = true;
+        let lastQueuePosition = null; // Controle da última posição na fila
+        let lastWarningAlertPosition = null; // Controle do último alerta de proximidade
+        
+        // Funções de Cookie
+        function setCookie(name, value, hours = 2) {
+            const expires = new Date();
+            expires.setTime(expires.getTime() + (hours * 60 * 60 * 1000));
+            document.cookie = `${name}=${value};expires=${expires.toUTCString()};path=/;SameSite=Lax`;
+        }
+        
+        function getCookie(name) {
+            const nameEQ = name + "=";
+            const ca = document.cookie.split(';');
+            for(let i = 0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) === ' ') c = c.substring(1, c.length);
+                if (c.indexOf(nameEQ) === 0) return c.substring(nameEQ.length, c.length);
+            }
+            return null;
+        }
+        
+        function deleteCookie(name) {
+            document.cookie = `${name}=;expires=Thu, 01 Jan 1970 00:00:00 UTC;path=/;`;
+        }
+        
+        // Salvar configurações
+        function saveConfig() {
+            const config = {
+                token: token,
+                soundEnabled: soundEnabled,
+                isMonitoring: isMonitoring,
+                foiChamado: lastAlertedStatus === 'C',
+                timestamp: new Date().toISOString()
+            };
+            setCookie('senha_config', JSON.stringify(config), 2);
+            console.log('Configurações salvas:', config);
+        }
+        
+        // Carregar configurações
+        function loadConfig() {
+            const configStr = getCookie('senha_config');
+            if (configStr) {
+                try {
+                    const config = JSON.parse(configStr);
+                    if (config.token === token) {
+                        soundEnabled = config.soundEnabled;
+                        isMonitoring = config.isMonitoring;
+                        
+                        // Restaurar status de chamada
+                        if (config.foiChamado) {
+                            lastAlertedStatus = 'C';
+                        }
+                        
+                        // Atualizar interface (sem mostrar cards)
+                        updateSoundButton();
+                        // showConfigInfo(config); // Comentado para não mostrar
+                        
+                        console.log('Configurações carregadas:', config);
+                        return true;
+                    }
+                } catch (e) {
+                    console.error('Erro ao carregar configurações:', e);
+                }
+            }
+            return false;
+        }
+        
+        // Mostrar informações de configuração
+        function showConfigInfo(config) {
+            const configInfo = document.getElementById('configInfo');
+            const configDetails = document.getElementById('configDetails');
+            
+            if (config) {
+                const date = new Date(config.timestamp);
+                configDetails.innerHTML = `
+                    Som: ${config.soundEnabled ? '✅ Ativado' : '❌ Desativado'}<br>
+                    Monitoramento: ${config.isMonitoring ? '✅ Ativo' : '❌ Inativo'}<br>
+                    Status: ${config.foiChamado ? '🎉 Chamado' : '⏳ Aguardando'}<br>
+                    Última atualização: ${date.toLocaleTimeString()}
+                `;
+                configInfo.style.display = 'block';
+            }
+        }
+        
+        // Atualizar botão de som
+        function updateSoundButton() {
+            const btn = document.getElementById('soundToggle');
+            if (soundEnabled) {
+                btn.textContent = '🔊 Som Ativado';
+                btn.classList.remove('off');
+            } else {
+                btn.textContent = '🔇 Som Desativado';
+                btn.classList.add('off');
+            }
+            // Manter botão escondido
+            btn.style.display = 'none';
+        }
+        
+        // Funções para a tela de carregamento
+        function updateLoadingStatus(message) {
+            const statusElement = document.getElementById('loadingStatus');
+            if (statusElement) {
+                statusElement.textContent = message;
+            }
+            console.log('[LOADING]', message);
+        }
+        
+        function hideLoadingScreen() {
+            const loadingScreen = document.getElementById('loadingScreen');
+            const container = document.querySelector('.container');
+            
+            if (loadingScreen && container) {
+                // Fade out da tela de carregamento
+                loadingScreen.style.opacity = '0';
+                loadingScreen.style.transition = 'opacity 0.5s ease-out';
+                
+                setTimeout(() => {
+                    loadingScreen.style.display = 'none';
+                    container.style.display = 'block';
+                    
+                    // Fade in do container principal
+                    container.style.opacity = '0';
+                    container.style.transition = 'opacity 0.5s ease-in';
+                    
+                    setTimeout(() => {
+                        container.style.opacity = '1';
+                    }, 100);
+                    
+                    isLoading = false;
+                    console.log('[LOADING] Tela de carregamento ocultada, interface principal exibida');
+                }, 500);
+            }
+        }
+        
+        function showLoadingScreen() {
+            const loadingScreen = document.getElementById('loadingScreen');
+            const container = document.querySelector('.container');
+            
+            if (loadingScreen && container) {
+                container.style.display = 'none';
+                loadingScreen.style.display = 'flex';
+                loadingScreen.style.opacity = '1';
+                isLoading = true;
+                console.log('[LOADING] Tela de carregamento exibida');
+            }
+        }
+        
+        // Conectar ao Socket.IO
+        function connectSocket() {
+            socket = io();
+            
+            socket.on('connect', function() {
+                console.log('Conectado ao servidor Socket.IO');
+                showStatus('✅ Conectado ao servidor', 'success');
+                
+                // Entrar na sala específica do token
+                console.log('[SOCKET] Entrando na sala do token:', token);
+                socket.emit('join_token_room', { token: token });
+            });
+            
+            socket.on('joined_token_room', function(data) {
+                console.log('[SOCKET] Entrou na sala do token:', data.token);
+            });
+            
+            socket.on('disconnect', function() {
+                console.log('Desconectado do servidor');
+                showStatus('❌ Desconectado do servidor', 'error');
+            });
+            
+            socket.on('posicao_fila', function(data) {
+                updateQueuePosition(data);
+            });
+            
+            socket.on('senha_proxima', function(data) {
+                // Só mostrar alerta se a posição diminuiu (alguém saiu da fila)
+                if (lastWarningAlertPosition === null || data.posicao < lastWarningAlertPosition) {
+                    showWarningAlert(data.posicao);
+                    lastWarningAlertPosition = data.posicao;
+                }
+            });
+            
+            socket.on('senha_chamada', function(data) {
+                // Verificar se já não foi alertado para esta senha
+                if (data.token === token && lastAlertedStatus !== 'C') {
+                    showCalledAlert();
+                    lastAlertedStatus = 'C';
+                }
+            });
+            
+            socket.on('senha_chamada_com_pedido', function(data) {
+                if (data.token === token) {
+                    showPedidoPopup(data.senha, data.setor || 'N/A', data.pedido);
+                }
+            });
+            
+            socket.on('pedido_preparando', function(data) {
+                console.log('[SOCKET] pedido_preparando recebido:', data);
+                showPedidoPreparandoAlert(data);
+            });
+        }
+        
+        // Atualizar posição na fila
+        function updateQueuePosition(data) {
+            const queueCard = document.getElementById('queueCard');
+            const queueNumber = document.getElementById('queueNumber');
+            
+            // Verificar se a posição mudou
+            if (lastQueuePosition !== data.posicao) {
+                console.log(`[FILA] Posição mudou de ${lastQueuePosition} para ${data.posicao}`);
+                lastQueuePosition = data.posicao;
+                
+                if (data.posicao > 0) {
+                    queueCard.style.display = 'block';
+                    queueNumber.textContent = data.posicao;
+                    
+                    // Alerta quando estiver próximo (1-3 pessoas na frente) E a posição diminuiu
+                    if (data.posicao <= 3) {
+                        // Só mostrar alerta se a posição diminuiu (alguém saiu da fila)
+                        if (lastWarningAlertPosition === null || data.posicao < lastWarningAlertPosition) {
+                            console.log(`[ALERTA] Mostrando alerta para posição ${data.posicao} (anterior: ${lastWarningAlertPosition})`);
+                            showWarningAlert(data.posicao);
+                            lastWarningAlertPosition = data.posicao;
+                        } else {
+                            console.log(`[ALERTA] Ignorando alerta - posição não diminuiu (atual: ${data.posicao}, anterior: ${lastWarningAlertPosition})`);
+                        }
+                    } else {
+                        // Resetar o controle de alerta quando sair da zona de proximidade
+                        if (lastWarningAlertPosition !== null) {
+                            console.log(`[ALERTA] Saindo da zona de proximidade, resetando controle`);
+                            lastWarningAlertPosition = null;
+                        }
+                    }
+                } else {
+                    // Posição 0 = próximo a ser chamado
+                    queueCard.style.display = 'none';
+                    lastWarningAlertPosition = null;
+                }
+            }
+        }
+        
+        // Criar áudio para alerta
+        function createAudio(frequency = 800, duration = 0.5) {
+            try {
+                const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+                
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+                
+                oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime);
+                oscillator.type = 'sine';
+                
+                gainNode.gain.setValueAtTime(0.5, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
+                
+                oscillator.start(audioContext.currentTime);
+                oscillator.stop(audioContext.currentTime + duration);
+                
+                return true;
+            } catch (e) {
+                console.log('Áudio não suportado:', e);
+                return false;
+            }
+        }
+        
+        // Tocar som de alerta
+        function playAlertSound(frequency = 800) {
+            if (soundEnabled) {
+                createAudio(frequency);
+            }
+        }
+        
+        // Mostrar status
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = message;
+            statusDiv.className = `status ${type}`;
+            // Manter sempre escondido
+            statusDiv.style.display = 'none';
+        }
+        
+        // Mostrar status de polling
+        function showPollingStatus(show = true) {
+            const pollingDiv = document.getElementById('pollingStatus');
+            // Manter sempre escondido
+            pollingDiv.style.display = 'none';
+        }
+        
+        // Mostrar alerta de proximidade
+        function showWarningAlert(posicao = null) {
+            const alertDiv = document.getElementById('warningAlert');
+            const warningMessage = document.getElementById('warningMessage');
+            
+            // Verificar se o alerta já está visível para evitar sobreposição
+            if (alertDiv.classList.contains('show')) {
+                console.log('[ALERTA] Alerta já está visível, ignorando nova chamada');
+                return;
+            }
+            
+            if (posicao) {
+                if (posicao === 1) {
+                    warningMessage.textContent = 'Você é o próximo! Prepare-se!';
+                } else if (posicao === 2) {
+                    warningMessage.textContent = 'Apenas 2 pessoas na sua frente!';
+                } else if (posicao === 3) {
+                    warningMessage.textContent = 'Apenas 3 pessoas na sua frente!';
+                } else {
+                    warningMessage.textContent = `Apenas ${posicao} pessoas na sua frente!`;
+                }
+            } else {
+                warningMessage.textContent = 'Você está próximo de ser chamado!';
+            }
+            
+            console.log(`[ALERTA] Mostrando alerta de proximidade: ${posicao} pessoas na frente`);
+            alertDiv.classList.add('show');
+            
+            // Tocar som de alerta (frequência mais alta)
+            playAlertSound(1000);
+            
+            // Vibrar se suportado
+            if ('vibrate' in navigator) {
+                navigator.vibrate([100, 50, 100, 50, 100]);
+            }
+            
+            // Focar a janela
+            window.focus();
+            
+            // Esconder após 8 segundos
+            setTimeout(() => {
+                alertDiv.classList.remove('show');
+            }, 8000);
+        }
+        
+        // Mostrar alerta de senha chamada
+        function showCalledAlert() {
+            const alertDiv = document.getElementById('alert');
+            alertDiv.classList.add('show');
+            
+            // Verificar se há pedido salvo
+            const textarea = document.getElementById('pedidoInput');
+            const pedido = textarea.value.trim();
+            
+            // Se há pedido, mostrar popup de confirmação
+            if (pedido) {
+                showPedidoPopup(senhaInfo.senha, senhaInfo.setor, pedido);
+            }
+            
+            // Tocar som de alerta (frequência mais baixa)
+            playAlertSound(600);
+            
+            // Vibrar se suportado
+            if ('vibrate' in navigator) {
+                navigator.vibrate([200, 100, 200, 100, 200, 100, 200]);
+            }
+            
+            // Focar a janela
+            window.focus();
+            
+            // Salvar status
+            saveConfig();
+            
+            // Não parar o polling - manter monitoramento
+            showStatus('🎉 Sua senha foi chamada!', 'success');
+            
+            // Manter o alerta visível por mais tempo
+            setTimeout(() => {
+                alertDiv.classList.remove('show');
+            }, 15000);
+        }
+        
+        // Mostrar alerta de pedido sendo preparado
+        function showPedidoPreparandoAlert(data) {
+            const alertDiv = document.getElementById('pedidoPreparandoAlert');
+            const messageDiv = document.getElementById('pedidoPreparandoMessage');
+            
+            // Atualizar mensagem se fornecida
+            if (data.mensagem) {
+                messageDiv.textContent = data.mensagem;
+            }
+            
+            alertDiv.classList.add('show');
+            
+            // Tocar som de alerta específico para pedido sendo preparado
+            playAlertSound(700);
+            
+            // Vibrar se suportado
+            if ('vibrate' in navigator) {
+                navigator.vibrate([150, 50, 150, 50, 150, 50, 150, 50, 150]);
+            }
+            
+            // Focar a janela
+            window.focus();
+            
+            // Esconder após 10 segundos
+            setTimeout(() => {
+                alertDiv.classList.remove('show');
+            }, 10000);
+            
+            console.log('[PEDIDO_PREPARANDO] Alerta exibido:', data);
+        }
+        
+        // Mostrar alerta de pedido em produção
+        function showPedidoProducaoAlert() {
+            const alertDiv = document.getElementById('pedidoProducaoAlert');
+            
+            alertDiv.classList.add('show');
+            
+            // Tocar som de alerta específico para pedido em produção
+            playAlertSound(600);
+            
+            // Vibrar se suportado
+            if ('vibrate' in navigator) {
+                navigator.vibrate([200, 100, 200, 100, 200, 100, 200]);
+            }
+            
+            // Focar a janela
+            window.focus();
+            
+            // Manter visível por mais tempo (15 segundos)
+            setTimeout(() => {
+                alertDiv.classList.remove('show');
+            }, 15000);
+            
+            console.log('[PEDIDO_PRODUCAO] Alerta exibido');
+        }
+        
+        // Mostrar tela de atendimento finalizado
+        function showAtendimentoFinalizado(data) {
+            console.log('[FINALIZADO] Mostrando tela de atendimento finalizado:', data);
+            
+            // Esconder tela de carregamento se estiver visível
+            const loadingScreen = document.getElementById('loadingScreen');
+            if (loadingScreen && loadingScreen.style.display !== 'none') {
+                loadingScreen.style.display = 'none';
+                isLoading = false;
+                console.log('[FINALIZADO] Tela de carregamento ocultada');
+            }
+            
+            // Atualizar informações na tela
+            const senhaNumber = document.getElementById('finalizadoSenhaNumber');
+            const setor = document.getElementById('finalizadoSetor');
+            const horario = document.getElementById('finalizadoHorario');
+            
+            if (senhaNumber) {
+                senhaNumber.textContent = `Senha: ${data.senha || 'N/A'}`;
+            }
+            
+            if (setor) {
+                setor.textContent = data.setor || 'N/A';
+            }
+            
+            if (horario) {
+                const agora = new Date();
+                horario.textContent = agora.toLocaleTimeString('pt-BR');
+            }
+            
+            // Mostrar a tela de finalizado
+            const finalizadoDiv = document.getElementById('atendimentoFinalizado');
+            if (finalizadoDiv) {
+                finalizadoDiv.style.display = 'flex';
+                
+                // Tocar som de finalização
+                playAlertSound(500);
+                
+                // Vibrar se suportado
+                if ('vibrate' in navigator) {
+                    navigator.vibrate([300, 100, 300, 100, 300, 100, 300]);
+                }
+                
+                // Focar a janela
+                window.focus();
+                
+                // Parar o polling
+                stopPolling();
+                
+                // Esconder todos os outros elementos
+                const container = document.querySelector('.container');
+                if (container) {
+                    container.style.display = 'none';
+                }
+                
+                console.log('[FINALIZADO] Tela de atendimento finalizado exibida');
+            }
+        }
+        
+        // Verificar se a senha foi chamada
+        async function checkSenhaStatus() {
+            try {
+                const response = await fetch(`/api/verificar_senha/${token}`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Atualizar informações da senha
+                    if (data.senha && !senhaInfo) {
+                        document.getElementById('senhaNumber').textContent = data.senha;
+                        document.getElementById('senhaSetor').textContent = `Setor: ${data.setor}`;
+                        senhaInfo = data;
+                    }
+                    
+                    // Carregar pedido salvo se existir
+                    if (data.pedido && !document.getElementById('pedidoInput').disabled) {
+                        const textarea = document.getElementById('pedidoInput');
+                        const btn = document.getElementById('salvarPedido');
+                        
+                        // Esconder a seção de pedido
+                        const pedidoSection = document.getElementById('pedidoSection');
+                        if (pedidoSection) {
+                            pedidoSection.style.display = 'none';
+                        }
+                        
+                        // Mostrar o card do pedido salvo
+                        const pedidoSalvoCard = document.getElementById('pedidoSalvoCard');
+                        const pedidoSalvoText = document.getElementById('pedidoSalvoText');
+                        
+                        if (pedidoSalvoCard && pedidoSalvoText) {
+                            pedidoSalvoText.textContent = data.pedido;
+                            pedidoSalvoCard.style.display = 'block';
+                        }
+                        
+                        showPedidoStatus('📝 Pedido carregado do servidor', 'success');
+                    }
+                    
+                    // Verificar se o atendimento foi finalizado (status F)
+                    if (data.status === 'F' || data.finalizado) {
+                        console.log('[CHECK] Status finalizado detectado, mostrando tela de finalizado');
+                        showAtendimentoFinalizado(data);
+                        return; // Não continuar com outras verificações
+                    }
+                    
+                    // Se não está finalizado, esconder tela de carregamento e mostrar interface principal
+                    if (isLoading) {
+                        console.log('[CHECK] Status não finalizado, mostrando interface principal');
+                        hideLoadingScreen();
+                        isLoading = false;
+                    }
+                    
+                    // Verificar se o status mudou para evitar alertas duplicados
+                    if (data.chamada && lastAlertedStatus !== 'C') {
+                        showCalledAlert();
+                        lastAlertedStatus = 'C';
+                        
+                        // Se há pedido, mostrar popup de confirmação
+                        if (data.pedido) {
+                            showPedidoPopup(data.senha, data.setor, data.pedido);
+                        }
+                    } else if (!data.chamada) {
+                        lastAlertedStatus = 'A';
+                    }
+                    
+                    // Verificar se o pedido foi confirmado pelo operador
+                    if (data.pedido_confirmado) {
+                        showPedidoProducaoAlert();
+                    }
+                }
+            } catch (error) {
+                console.error('Erro ao verificar status:', error);
+                
+                // Em caso de erro, esconder tela de carregamento e mostrar interface de erro
+                if (isLoading) {
+                    hideLoadingScreen();
+                    isLoading = false;
+                }
+            }
+        }
+        
+        // Iniciar polling
+        function startPolling() {
+            showPollingStatus(true);
+            pollingInterval = setInterval(checkSenhaStatus, 3000);
+            isMonitoring = true;
+            saveConfig();
+        }
+        
+        // Parar polling
+        function stopPolling() {
+            if (pollingInterval) {
+                clearInterval(pollingInterval);
+                pollingInterval = null;
+            }
+            showPollingStatus(false);
+            isMonitoring = false;
+            saveConfig();
+        }
+        
+        // Iniciar monitoramento
+        async function enableNotifications() {
+            const btn = document.getElementById('enableNotifications');
+            btn.disabled = true;
+            btn.textContent = '⏳ Processando...';
+            
+            try {
+                updateLoadingStatus('Conectando ao servidor...');
+                
+                // Conectar ao Socket.IO
+                connectSocket();
+                
+                updateLoadingStatus('Registrando no servidor...');
+                
+                // Registrar no servidor
+                const response = await fetch(`/api/registrar_token/${token}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        token: token,
+                        timestamp: new Date().toISOString()
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    updateLoadingStatus('Verificando status da senha...');
+                    
+                    // Verificar status inicial da senha
+                    await checkSenhaStatus();
+                    
+                    updateLoadingStatus('Configurando monitoramento...');
+                    
+                    // Esconder o botão de monitoramento
+                    btn.style.display = 'none';
+                    
+                    // Mostrar indicador de monitoramento ativo
+                    const monitoringIndicator = document.getElementById('monitoringIndicator');
+                    if (monitoringIndicator) {
+                        monitoringIndicator.style.display = 'flex';
+                    }
+                    
+                    // Manter botão de som escondido
+                    const soundToggle = document.getElementById('soundToggle');
+                    if (soundToggle) {
+                        soundToggle.style.display = 'none';
+                    }
+                    
+                    // Iniciar polling
+                    startPolling();
+                    
+                    // Solicitar posição na fila
+                    if (socket) {
+                        socket.emit('solicitar_posicao', { token: token });
+                    }
+                    
+                    updateLoadingStatus('Monitoramento ativo!');
+                    
+                    // A tela de carregamento será escondida pela verificação de status
+                    // Se status = 'F', vai para tela de finalizado
+                    // Se status != 'F', vai para interface principal
+                    
+                } else {
+                    throw new Error(result.error || 'Erro ao registrar no servidor');
+                }
+                
+            } catch (error) {
+                console.error('Erro:', error);
+                updateLoadingStatus(`Erro: ${error.message}`);
+                
+                // Aguardar um pouco antes de esconder a tela de carregamento
+                setTimeout(() => {
+                    hideLoadingScreen();
+                    isLoading = false;
+                    
+                    showStatus(`❌ Erro: ${error.message}`, 'error');
+                    btn.disabled = false;
+                    btn.textContent = '🔔 Tentar Novamente';
+                    btn.style.display = 'block';
+                    
+                    // Esconder indicador de monitoramento em caso de erro
+                    const monitoringIndicator = document.getElementById('monitoringIndicator');
+                    if (monitoringIndicator) {
+                        monitoringIndicator.style.display = 'none';
+                    }
+                }, 2000);
+            }
+        }
+        
+        // Toggle som
+        function toggleSound() {
+            soundEnabled = !soundEnabled;
+            updateSoundButton();
+            saveConfig();
+        }
+        
+        // Funções para o campo de pedido
+        function updatePedidoCounter() {
+            const textarea = document.getElementById('pedidoInput');
+            const counter = document.getElementById('pedidoCounter');
+            const length = textarea.value.length;
+            counter.textContent = length;
+            
+            // Mudar cor do contador quando próximo do limite
+            if (length > 450) {
+                counter.style.color = '#dc3545';
+            } else if (length > 400) {
+                counter.style.color = '#ffc107';
+            } else {
+                counter.style.color = '#666';
+            }
+        }
+        
+        function showPedidoStatus(message, type = 'success') {
+            const statusDiv = document.getElementById('pedidoStatus');
+            statusDiv.textContent = message;
+            statusDiv.className = `pedido-status ${type}`;
+            statusDiv.style.display = 'block';
+            
+            // Esconder após 5 segundos
+            setTimeout(() => {
+                statusDiv.style.display = 'none';
+            }, 5000);
+        }
+        
+        async function salvarPedido() {
+            const textarea = document.getElementById('pedidoInput');
+            const btn = document.getElementById('salvarPedido');
+            const pedido = textarea.value.trim();
+            
+            if (!pedido) {
+                showPedidoStatus('Por favor, descreva seu pedido antes de salvar.', 'error');
+                return;
+            }
+            
+            btn.disabled = true;
+            btn.textContent = '⏳ Salvando...';
+            
+            try {
+                const response = await fetch(`/api/salvar_pedido/${token}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        pedido: pedido
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    // Esconder a seção de pedido
+                    const pedidoSection = document.getElementById('pedidoSection');
+                    if (pedidoSection) {
+                        pedidoSection.style.display = 'none';
+                    }
+                    
+                    // Mostrar o card do pedido salvo
+                    const pedidoSalvoCard = document.getElementById('pedidoSalvoCard');
+                    const pedidoSalvoText = document.getElementById('pedidoSalvoText');
+                    
+                    if (pedidoSalvoCard && pedidoSalvoText) {
+                        pedidoSalvoText.textContent = pedido;
+                        pedidoSalvoCard.style.display = 'block';
+                    }
+                    
+                    showPedidoStatus('✅ Pedido salvo com sucesso! O atendente será informado.', 'success');
+                } else {
+                    throw new Error(result.error || 'Erro ao salvar pedido');
+                }
+                
+            } catch (error) {
+                console.error('Erro ao salvar pedido:', error);
+                showPedidoStatus(`❌ Erro: ${error.message}`, 'error');
+                btn.disabled = false;
+                btn.textContent = '💾 Salvar Pedido';
+            }
+        }
+        
+        // Event listeners
+        document.getElementById('enableNotifications').addEventListener('click', enableNotifications);
+        document.getElementById('soundToggle').addEventListener('click', toggleSound);
+        document.getElementById('salvarPedido').addEventListener('click', salvarPedido);
+        document.getElementById('pedidoInput').addEventListener('input', updatePedidoCounter);
+        document.getElementById('closePedidoPopup').addEventListener('click', closePedidoPopup);
+        document.getElementById('confirmarPedido').addEventListener('click', confirmarPedido);
+        
+        // Funções para o popup do pedido
+        function showPedidoPopup(senha, setor, pedido) {
+            document.getElementById('popupSenhaNumber').textContent = senha;
+            document.getElementById('popupSenhaSetor').textContent = `Setor: ${setor}`;
+            document.getElementById('popupPedidoText').textContent = pedido;
+            document.getElementById('pedidoPopup').style.display = 'flex';
+            
+            // Atualizar título e botão para o cliente
+            const popupTitle = document.querySelector('.pedido-popup-header h2');
+            const confirmBtn = document.getElementById('confirmarPedido');
+            
+            popupTitle.textContent = '🎉 Sua Senha Foi Chamada!';
+            confirmBtn.textContent = '✅ Entendi, Vou ao Guichê';
+            
+            // Tocar som de alerta
+            playAlertSound(800);
+            
+            // Vibrar se suportado
+            if ('vibrate' in navigator) {
+                navigator.vibrate([300, 100, 300, 100, 300]);
+            }
+            
+            // Focar a janela
+            window.focus();
+        }
+        
+        function closePedidoPopup() {
+            document.getElementById('pedidoPopup').style.display = 'none';
+        }
+        
+        function confirmarPedido() {
+            closePedidoPopup();
+            showStatus('✅ Perfeito! Dirija-se ao guichê indicado.', 'success');
+            
+            // Parar o polling após confirmação
+            stopPolling();
+            
+            // Esconder indicador de monitoramento
+            const monitoringIndicator = document.getElementById('monitoringIndicator');
+            if (monitoringIndicator) {
+                monitoringIndicator.style.display = 'none';
+            }
+            
+            // Não mostrar o botão novamente - manter escondido
+            console.log('Monitoramento finalizado - botão permanece escondido');
+        }
+        
+        // Carregar configurações ao iniciar
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('[INIT] Página carregada, iniciando processo...');
+            
+            // Mostrar tela de carregamento
+            showLoadingScreen();
+            
+            const configLoaded = loadConfig();
+            
+            // Iniciar monitoramento automaticamente após um pequeno delay
+            setTimeout(() => {
+                console.log('Iniciando monitoramento automático...');
+                enableNotifications();
+            }, 500);
+        });
+        
+        // Parar polling quando a página for fechada
+        window.addEventListener('beforeunload', function() {
+            if (socket) {
+                socket.disconnect();
+            }
+        });
+        
+        // Manter a página ativa
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                document.title = '🔔 Senha - Página em segundo plano';
+            } else {
+                document.title = 'Monitoramento de Senha';
+            }
+        });
+    </script>
+</body>
+</html> 
