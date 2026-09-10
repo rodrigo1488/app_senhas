@@ -153,6 +153,13 @@ def _init_database(app: Flask) -> None:
     """
     from sqlalchemy import text
 
+    # Import necessário para registrar os modelos em `db.metadata` antes do
+    # create_all() — sem isso, `create_all()` não sabe quais tabelas criar
+    # (é um no-op silencioso). Isso não dava problema com o appsenhas.sqlite
+    # legado porque as tabelas já existiam no arquivo de antes, mas falha
+    # com um banco novo/vazio (ex.: Postgres recém-criado pelo Docker).
+    import backend.models  # noqa: F401
+
     db.create_all()
 
     is_sqlite = db.engine.dialect.name == "sqlite"
