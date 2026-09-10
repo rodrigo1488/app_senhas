@@ -1,19 +1,15 @@
-"""Login/logout do painel administrativo (Supabase)."""
-import os
+"""Login/logout do painel administrativo.
 
-import supabase
+Autenticação local (tabela `usuarios` no Postgres/SQLite — ver
+`backend/services/usuario_service.py`), sem depender de nenhum serviço
+externo. Um usuário admin padrão é criado automaticamente na primeira
+inicialização do banco (`backend/__init__.py::_seed_admin_padrao`).
+"""
 from flask import Blueprint, flash, make_response, redirect, render_template, request, session, url_for
 
+from backend.services.usuario_service import autenticar
+
 auth_bp = Blueprint("auth", __name__)
-
-_supa_client = None
-
-
-def get_supabase_client():
-    global _supa_client
-    if _supa_client is None:
-        _supa_client = supabase.create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
-    return _supa_client
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
@@ -25,21 +21,17 @@ def login():
         email = request.form["email"]
         senha = request.form["senha"]
 
-        response = get_supabase_client().from_("users").select("*").eq("email", email).single().execute()
+        usuario = autenticar(email, senha)
+        if usuario:
+            session["user_id"] = usuario.id
+            session.permanent = True
+            resp = make_response(redirect(url_for("setores.selecionar_setor")))
+            resp.set_cookie("user_id", str(usuario.id), max_age=60 * 60 * 24 * 365)
+            resp.set_cookie("nome_empresa", usuario.nome_empresa or "", max_age=60 * 60 * 24 * 365)
+            return resp
 
-        if response.data:
-            user = response.data
-            if user["senha"] == senha:
-                session["user_id"] = user["id"]
-                session.permanent = True
-                resp = make_response(redirect(url_for("setores.selecionar_setor")))
-                resp.set_cookie("user_id", str(user["id"]), max_age=60 * 60 * 24 * 365)
-                resp.set_cookie("nome_empresa", str(user.get("nome_empresa", "")), max_age=60 * 60 * 24 * 365)
-                return resp
-            flash("Senha incorreta.", "error")
-            return render_template("login.html"), 401
-        flash("Usuário não encontrado.", "error")
-        return render_template("login.html"), 404
+        flash("Email ou senha incorretos.", "error")
+        return render_template("login.html"), 401
 
     return render_template("login.html")
 

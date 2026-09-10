@@ -58,9 +58,13 @@ o contrato completo entre backend e clientes.
 
 ## Painel administrativo
 
-Acesse `/login` (autenticação via Supabase — variáveis `SUPABASE_URL` /
-`SUPABASE_KEY`) para gerenciar setores, operadores, impressoras,
-configurações da fila e ver o dashboard de atendimentos/avaliações.
+Acesse `/login` para gerenciar setores, operadores, impressoras,
+configurações da fila e ver o dashboard de atendimentos/avaliações. A
+autenticação é local (tabela `usuarios`) — um admin padrão
+(`admin@appsenhas.local` / `admin123`, customizável via `ADMIN_EMAIL`/
+`ADMIN_PASSWORD`) é criado automaticamente na primeira inicialização. Troque
+a senha com `python scripts/criar_admin.py <email> <senha-nova>` — detalhes
+em [`documentacao/DEPLOY_DOCKER.md`](documentacao/DEPLOY_DOCKER.md#usuário-administrador-padrão).
 
 ## Documentação
 

@@ -109,3 +109,20 @@ class Configuracao(db.Model):
     valor = db.Column(db.Text)
     descricao = db.Column(db.Text)
     data_atualizacao = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+
+
+class Usuario(db.Model):
+    """Usuário administrador do painel (`/login`, `/admin/*`).
+
+    Substitui o login via Supabase (tabela `users` externa) por uma tabela
+    local — elimina a dependência de um serviço externo só para autenticar
+    o admin. Ver `backend/services/usuario_service.py` e
+    `backend/blueprints/auth_bp.py`.
+    """
+    __tablename__ = "usuarios"
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.Text, nullable=False, unique=True)
+    senha_hash = db.Column(db.Text, nullable=False)
+    nome_empresa = db.Column(db.Text)
+    criado_em = db.Column(db.DateTime, default=datetime.now)

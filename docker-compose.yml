@@ -28,8 +28,11 @@ services:
       # definida, o backend usa Postgres em vez do appsenhas.sqlite legado.
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-appsenhas}:${POSTGRES_PASSWORD:-appsenhas}@db:5432/${POSTGRES_DB:-appsenhas}
       APP_SECRET_KEY: ${APP_SECRET_KEY:-}
-      SUPABASE_URL: ${SUPABASE_URL:-}
-      SUPABASE_KEY: ${SUPABASE_KEY:-}
+      # Admin padrão criado automaticamente na primeira inicialização (ver
+      # backend/__init__.py::_seed_admin_padrao) — troque a senha depois
+      # com scripts/criar_admin.py.
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@appsenhas.local}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_EMAIL: ${VAPID_EMAIL:-}

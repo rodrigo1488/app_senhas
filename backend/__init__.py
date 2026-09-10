@@ -175,3 +175,36 @@ def _init_database(app: Flask) -> None:
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_atendimento_setor_operador ON atendimento_atual (setor_id, operador_id)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_finalizados_setor_operador ON finalizados (setor_id, operador_id)"))
         conn.commit()
+
+    _seed_admin_padrao(app)
+
+
+def _seed_admin_padrao(app: Flask) -> None:
+    """Garante que exista pelo menos um usuário administrador.
+
+    Se a tabela `usuarios` estiver vazia (instalação nova), cria um admin
+    padrão com as credenciais de `ADMIN_EMAIL`/`ADMIN_PASSWORD` (ou os
+    valores padrão abaixo, se as variáveis não forem definidas). Isso
+    permite acessar o painel `/login` logo após o primeiro
+    `docker compose up`, sem depender de nenhum serviço externo.
+
+    IMPORTANTE: troque a senha padrão após o primeiro login (não há hoje
+    uma tela de "alterar senha" no painel — use
+    `scripts/criar_admin.py <email> <nova_senha>` para isso).
+    """
+    from backend.services.usuario_service import criar_ou_atualizar_admin, existe_algum_admin
+
+    if existe_algum_admin():
+        return
+
+    admin_email = os.getenv("ADMIN_EMAIL", "admin@appsenhas.local")
+    admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
+    criar_ou_atualizar_admin(admin_email, admin_password)
+    app.logger.warning(
+        "Nenhum usuário admin encontrado — criado usuário padrão '%s' / senha "
+        "'%s'. TROQUE a senha após o primeiro login (script "
+        "scripts/criar_admin.py). Defina ADMIN_EMAIL/ADMIN_PASSWORD antes do "
+        "primeiro boot para customizar.",
+        admin_email,
+        admin_password,
+    )

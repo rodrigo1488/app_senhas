@@ -20,9 +20,6 @@ PyJWT==2.10.1
 eventlet==0.39.0
 dnspython==2.7.0
 
-# Supabase
-supabase==2.10.0
-
 # Impressão térmica
 python-escpos==3.1
 
