@@ -1,7 +1,7 @@
 """Painel administrativo: dashboard, CRUD de operadores/impressoras/setores e
 configurações do sistema. Lógica de negócio inalterada em relação ao
 `app.py` legado — apenas reescrita com SQLAlchemy em vez de `sqlite3` puro."""
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from flask import Blueprint, current_app, jsonify, redirect, render_template, request, url_for
 from sqlalchemy import func
@@ -33,17 +33,25 @@ def admin():
     ngrok_url = get_ngrok_url()
 
     hoje = date.today()
+    # Comparação por intervalo de datas em vez de func.date()/func.strftime()
+    # (funções específicas do SQLite, sem equivalente direto no Postgres) —
+    # filtrar por range funciona igual nos dois dialetos.
+    inicio_dia = datetime(hoje.year, hoje.month, hoje.day)
+    fim_dia = datetime(hoje.year, hoje.month, hoje.day) + timedelta(days=1)
+    inicio_mes = datetime(hoje.year, hoje.month, 1)
+    fim_mes = datetime(hoje.year + 1, 1, 1) if hoje.month == 12 else datetime(hoje.year, hoje.month + 1, 1)
+
     atendimentos_dia = (
         db.session.query(Setor.nome, func.count(Senha.id))
         .join(Senha, Senha.setor_id == Setor.id)
-        .filter(Senha.status == "F", func.date(Senha.data_hora) == hoje.isoformat())
+        .filter(Senha.status == "F", Senha.data_hora >= inicio_dia, Senha.data_hora < fim_dia)
         .group_by(Setor.id, Setor.nome)
         .all()
     )
     atendimentos_mes = (
         db.session.query(Setor.nome, func.count(Senha.id))
         .join(Senha, Senha.setor_id == Setor.id)
-        .filter(Senha.status == "F", func.strftime("%Y-%m", Senha.data_hora) == hoje.strftime("%Y-%m"))
+        .filter(Senha.status == "F", Senha.data_hora >= inicio_mes, Senha.data_hora < fim_mes)
         .group_by(Setor.id, Setor.nome)
         .all()
     )
@@ -75,7 +83,7 @@ def admin():
         .join(Senha, Senha.setor_id == Setor.id)
         .join(AtendimentoAtual, AtendimentoAtual.senha_id == Senha.id)
         .join(Operador, AtendimentoAtual.operador_id == Operador.id)
-        .filter(Senha.status == "F", func.strftime("%Y-%m", Senha.data_hora) == hoje.strftime("%Y-%m"))
+        .filter(Senha.status == "F", Senha.data_hora >= inicio_mes, Senha.data_hora < fim_mes)
         .group_by(Setor.id, Operador.id, Operador.nome)
         .order_by(Setor.id, func.count(Senha.id).desc())
         .all()
