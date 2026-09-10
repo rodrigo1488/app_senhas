@@ -531,8 +531,10 @@
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.4.1/socket.io.js"></script>
     <script>
-        // Conectar ao Socket.IO
-        var socket = io();
+        // Conexão única e autenticada com o protocolo de tempo real (ver
+        // documentacao/REALTIME_PROTOCOL.md) — sem `join_setor` manual, o
+        // servidor já entra na room do setor durante o handshake.
+        var socket = io({ auth: { session_token: '{{ session_token }}' } });
 
         // Estados de controle
         let chamadaEmProgresso = false;
@@ -560,62 +562,24 @@
             return null;
         }
         
-        // Entrar na sala do setor quando conectar
         socket.on('connect', function() {
-            console.log('[SOCKET] Conectado ao servidor');
-            
-            // Pegar o setor_id do cookie
-            var setorId = getCookie('setor_id');
-            if (setorId) {
-                socket.emit('join_setor', { setor_id: setorId });
-                console.log('[SOCKET] Entrando na sala do setor:', setorId);
-            }
-        });
-        
-        socket.on('joined_setor', function(data) {
-            console.log('[SOCKET] Entrou na sala do setor:', data.setor_id);
+            console.log('[SOCKET] Conectado (operador)');
         });
 
-        const tabelaBody = document.getElementById('tabela-senhas-body');
-        socket.on('atualizar_lista', (data) => {
-            console.log('Evento atualizar_lista recebido:', data);
-            // Atualiza a senha atual
-            var elAtual = document.querySelector('.senha-atual');
-            if (elAtual) elAtual.textContent = `Senha Atual: ${data.senha_atual}`;
-            
-            // Atualizar o card da senha atual
-            atualizarSenha();
-            
-            var tabelaBody = document.getElementById('tabela-senhas-body');
-            if (tabelaBody) {
-                tabelaBody.innerHTML = '';
-                if (data.senhas && data.senhas.length === 0) {
-                    tabelaBody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#888;font-size:1.2em;">Sem senhas pendentes</td></tr>';
-                } else if (data.senhas) {
-                    data.senhas.forEach(senha => {
-                        const linha = `<tr>
-                            <td>${senha[0]}</td>
-                            <td>${senha[1]}</td>
-                            <td>${senha[2]}</td>
-                        </tr>`;
-                        tabelaBody.innerHTML += linha;
-                    });
-                }
-            }
+        socket.on('auth:erro', function(data) {
+            console.error('[SOCKET] Erro de autenticação:', data.mensagem);
         });
-        
-        socket.on('nova_senha_para_avaliacao', function(data) {
-            console.log('Evento nova_senha_para_avaliacao recebido:', data);
-            atualizarSenha();
-        });
-        
-        socket.on('atualizar_atendimentos', function(data) {
-            console.log('Evento atualizar_atendimentos recebido:', data);
-            atualizarSenha();
+
+        // Um único evento traz a lista de pendentes E os atendimentos em
+        // curso — nada de fetch depois (ver documentacao/REALTIME_PROTOCOL.md).
+        socket.on('fila:atualizada', function(data) {
+            console.log('[SOCKET] fila:atualizada', data);
+            renderTabelaPendentes(data.pendentes || []);
+            renderCardsAtendimento(data.atendimentos || []);
         });
 
         socket.on('erro', (data) => {
-            // Handle error
+            console.error('[SOCKET] erro:', data && data.mensagem);
         });
 
         function setBotoesChamadaDisabled(disabled) {
@@ -855,8 +819,6 @@
     <!-- Botão fixo no canto superior direito -->
     <div class="chamar-btn">
         <button onclick="abrirModalOperador()">Chamar Próxima Senha</button>
-        <!-- Botão de teste para notificação -->
-        <button onclick="testarNotificacao()" style="background: #ff6b6b; margin-left: 10px; display: none;" >🧪 Testar Notificação</button>
     </div>
 
     <!-- Modal de identificação do operador -->
@@ -914,159 +876,113 @@
                 });
             }
         });
-        function atualizarSenha() {
-          if (atualizandoSenha) {
-            console.log('Já está atualizando, ignorando...');
-            return;
-          }
-          
-          atualizandoSenha = true;
-          console.log('Atualizando senha...');
-          
-          fetch('/get_senha_atual_setor')
-            .then(response => response.json())
-            .then(data => {
-              console.log('Dados recebidos:', data);
-              var elSenha = document.getElementById('senha-display');
-              var elOperador = document.getElementById('operador-nome');
-              var elFoto = document.getElementById('operador-foto');
-              var elCard = document.getElementById('senha-atual-card');
-              var elBtnVerPedido = document.getElementById('btn-ver-pedido');
-              
-              console.log('Elementos encontrados:', {
-                senha: !!elSenha,
-                operador: !!elOperador,
-                foto: !!elFoto,
-                card: !!elCard,
-                btnVerPedido: !!elBtnVerPedido
-              });
-              
-              // Verificar se é uma nova senha
-              const senhaAtual = data.senha_atual || 'Nenhuma';
-              const novaSenha = ultimaSenhaConhecida !== null && ultimaSenhaConhecida !== senhaAtual;
-              
-              if (elSenha) elSenha.innerText = senhaAtual;
-              
-              if (data.operador && data.operador !== '') {
-                console.log('Operador encontrado:', data.operador);
-                if (elOperador) elOperador.innerText = data.operador;
-                if (elCard) {
-                  elCard.style.display = 'block';
-                  console.log('Card da senha atual exibido');
-                }
-                
-                // Atualizar foto do operador
+        // Renderiza a lista de próximas senhas a partir do payload de
+        // `fila:atualizada` — nunca por fetch.
+        function renderTabelaPendentes(pendentes) {
+            var tabelaBody = document.getElementById('tabela-senhas-body');
+            if (!tabelaBody) return;
+            if (!pendentes || pendentes.length === 0) {
+                tabelaBody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#888;font-size:1.2em;">Sem senhas pendentes</td></tr>';
+                return;
+            }
+            tabelaBody.innerHTML = pendentes.map(function(s) {
+                return '<tr><td>' + s.id + '</td><td>' + s.senha + '</td><td>' + s.tipo + '</td></tr>';
+            }).join('');
+        }
+
+        // Renderiza os cards fixos de atendimento a partir do mesmo payload.
+        function renderCardsAtendimento(atendimentos) {
+            var cardsDiv = document.getElementById('cards-atendimento-fixed');
+            if (!cardsDiv) return;
+            if (!atendimentos || atendimentos.length === 0) {
+                cardsDiv.innerHTML = '<div style="color:#888;font-size:1.1em;">Nenhum atendimento em andamento</div>';
+                return;
+            }
+            cardsDiv.innerHTML = atendimentos.map(function(a) {
+                var fotoHtml = a.operador_foto
+                    ? '<img src="/uploads/' + a.operador_foto + '" alt="Foto de ' + a.operador_nome + '" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #ddd; margin-bottom: 8px;">'
+                    : '<div style="width: 40px; height: 40px; border-radius: 50%; background: #f0f0f0; display: flex; align-items: center; justify-content: center; border: 2px solid #ddd; margin-bottom: 8px;"><span style="font-size: 20px; color: #999;">\uD83D\uDC64</span></div>';
+                return '<div class="card-atendimento">' + fotoHtml +
+                    '<div style="font-weight:bold;font-size:1.1em;color:#007BFF;margin-bottom:6px;">' + a.operador_nome + '</div>' +
+                    '<div style="font-size:1.5em;color:#FF5733;">' + a.senha + '</div>' +
+                    '<div style="font-size:0.95em;color:#888;">Tipo: ' + a.tipo + '</div>' +
+                    '<button class="btn-chamar-novamente" onclick="chamarSenhaNovamente(\'' + a.senha + '\', \'' + a.operador_id + '\')">\uD83D\uDD14 Chamar Novamente</button>' +
+                    '</div>';
+            }).join('');
+        }
+
+        // Renderiza o card da senha atual a partir do payload de `senha:chamada`
+        // (chamada nova ou "chamar novamente") — substitui o antigo polling de
+        // `/get_senha_atual_setor` a cada 10s.
+        function renderSenhaAtual(data) {
+            window.currentSenhaAtual = data;
+            var elSenha = document.getElementById('senha-display');
+            var elOperador = document.getElementById('operador-nome');
+            var elFoto = document.getElementById('operador-foto');
+            var elCard = document.getElementById('senha-atual-card');
+            var elBtnVerPedido = document.getElementById('btn-ver-pedido');
+
+            const senhaAtual = data.senha || 'Nenhuma';
+            const novaSenha = ultimaSenhaConhecida !== null && ultimaSenhaConhecida !== senhaAtual;
+
+            if (elSenha) elSenha.innerText = senhaAtual;
+
+            if (data.operador_nome) {
+                if (elOperador) elOperador.innerText = data.operador_nome;
+                if (elCard) elCard.style.display = 'block';
                 if (elFoto) {
-                  if (data.foto_operador) {
-                    elFoto.innerHTML = `<img src="/uploads/${data.foto_operador}" alt="Foto de ${data.operador}">`;
-                  } else {
-                    elFoto.innerHTML = '<div class="avatar-placeholder">👤</div>';
-                  }
+                    elFoto.innerHTML = data.operador_foto
+                        ? '<img src="/uploads/' + data.operador_foto + '" alt="Foto de ' + data.operador_nome + '">'
+                        : '<div class="avatar-placeholder">\uD83D\uDC64</div>';
                 }
-                
-                // Controlar visibilidade do botão "Ver Pedido"
                 if (elBtnVerPedido) {
-                  console.log('Verificando se deve mostrar botão Ver Pedido:', {
-                    tem_pedido: data.tem_pedido,
-                    pedido: data.pedido
-                  });
-                  
-                  if (data.tem_pedido && data.pedido) {
-                    elBtnVerPedido.style.display = 'inline-block';
-                    console.log('✅ Botão Ver Pedido exibido');
-                  } else {
-                    elBtnVerPedido.style.display = 'none';
-                    console.log('❌ Botão Ver Pedido oculto');
-                  }
+                    elBtnVerPedido.style.display = (data.tem_pedido && data.pedido) ? 'inline-block' : 'none';
                 }
-              } else {
-                console.log('Nenhum operador ativo');
+            } else {
                 if (elCard) elCard.style.display = 'none';
                 if (elBtnVerPedido) elBtnVerPedido.style.display = 'none';
-              }
-              
-              // Toca o som APENAS quando for uma nova senha
-              if (novaSenha && senhaAtual !== 'Nenhuma' && senhaAtual !== 'Aguardando próxima senha...') {
-                console.log('🎵 Tocando som para nova senha:', senhaAtual);
+            }
+
+            if (novaSenha) {
                 var audio = new Audio('/static/msc/audio.mp3');
                 audio.play();
-                
-                // Registrar para painel de chamadas concorrentes
-                registrarChamadaConcorrente({
-                    senha: senhaAtual,
-                    operador: data.operador || 'Operador',
-                    hora: new Date().toLocaleTimeString()
-                });
-
-                // Se havia uma chamada em progresso, liberar loading agora
-                if (chamadaEmProgresso) {
-                    finalizarChamada(true);
-                }
+                registrarChamadaConcorrente({ senha: senhaAtual, operador: data.operador_nome || 'Operador', hora: new Date().toLocaleTimeString() });
+                if (chamadaEmProgresso) finalizarChamada(true);
                 resolverPendente(true);
-                
-                // Verificar se a nova senha tem pedido
-                verificarPedidoDaSenha(senhaAtual);
-              } else if (novaSenha) {
-                console.log('Nova senha detectada, mas não é uma senha válida:', senhaAtual);
-              } else {
-                console.log('Mesma senha, não tocando som');
-              }
-              
-              // Atualizar a última senha conhecida
-              ultimaSenhaConhecida = senhaAtual;
-            })
-            .catch(error => {
-              console.error('Erro ao obter a senha:', error);
-            })
-            .finally(() => {
-              atualizandoSenha = false;
-            });
-        }
-        
-        // Função para verificar se uma senha específica tem pedido
-        function verificarPedidoDaSenha(senha) {
-          console.log('[VERIFICAR_PEDIDO] Verificando pedido para senha:', senha);
-          fetch('/get_senhas_pendentes')
-            .then(response => response.json())
-            .then(senhas => {
-              console.log('[VERIFICAR_PEDIDO] Senhas recebidas:', senhas);
-              if (senhas && senhas.length > 0) {
-                // Buscar a senha específica que foi chamada
-                const senhaChamada = senhas.find(s => s.senha === senha && s.tem_pedido && s.pedido);
-                console.log('[VERIFICAR_PEDIDO] Buscando senha:', senha);
-                console.log('[VERIFICAR_PEDIDO] Senha encontrada:', senhaChamada);
-                
-                if (senhaChamada) {
-                  console.log('[VERIFICAR_PEDIDO] ✅ Senha chamada tem pedido:', senhaChamada);
-                  // Exibir popup com o pedido
-                  showPedidoPopup(senhaChamada.senha, 'Setor Atual', senhaChamada.pedido);
-                } else {
-                  console.log('[VERIFICAR_PEDIDO] ❌ Senha chamada NÃO tem pedido');
+
+                if (data.tem_pedido && data.pedido) {
+                    showPedidoPopup(senhaAtual, 'Setor Atual', data.pedido);
                 }
-              } else {
-                console.log('[VERIFICAR_PEDIDO] Nenhuma senha pendente encontrada');
-              }
-            })
-            .catch(error => {
-              console.error('[VERIFICAR_PEDIDO] Erro ao verificar pedido da senha:', error);
-            });
-        }
-      
-        // Atualiza a cada 10 segundos (reduzido de 5 para 10)
-        setInterval(function() {
-            if (!atualizandoSenha) {
-                atualizarSenha();
+                if (data.alerta_preferenciais) {
+                    var alerta = document.getElementById('alertaPreferenciais');
+                    var msg = document.getElementById('alertaPreferenciaisMsg');
+                    if (alerta && msg) {
+                        msg.textContent = 'Atenção: há muitas senhas preferenciais aguardando! Priorize o atendimento.';
+                        alerta.style.display = 'block';
+                        clearTimeout(alerta._timeout);
+                        alerta._timeout = setTimeout(function() { alerta.style.display = 'none'; }, 10000);
+                    }
+                }
             }
-        }, 10000);
-        
-        // Atualizar imediatamente quando a página carregar
-        document.addEventListener('DOMContentLoaded', function() {
-            console.log('DOM carregado, atualizando senha...');
-            atualizarSenha();
+
+            ultimaSenhaConhecida = senhaAtual;
+        }
+
+        socket.on('senha:chamada', function(data) {
+            console.log('[SOCKET] senha:chamada', data);
+            renderSenhaAtual(data);
         });
-        
-        // Atualizar também imediatamente (apenas uma vez)
-        setTimeout(atualizarSenha, 1000);
+
+        socket.on('pedido:status', function(data) {
+            console.log('[SOCKET] pedido:status', data);
+        });
+
+        // Hidratação inicial (renderizada pelo servidor, sem fetch) — ver
+        // `estado_atendimento_atual()` em app/services/fila_service.py
+        var senhaAtualInicial = {{ senha_atual_info | tojson }};
+        if (senhaAtualInicial) {
+            renderSenhaAtual(senhaAtualInicial);
+        }
     </script>
 
     <script>
@@ -1083,178 +999,20 @@
     </script>
 
     <script>
-        // Atualização em tempo real dos cards de atendimento
-        socket.on('atualizar_atendimentos', function(data) {
-            fetch('/get_atendimentos')
-                .then(response => response.json())
-                .then(atendimentos => {
-                    const cardsDiv = document.getElementById('cards-atendimento-fixed');
-                    cardsDiv.innerHTML = '';
-                    if (atendimentos.length === 0) {
-                        cardsDiv.innerHTML = '<div style="color:#888;font-size:1.1em;">Nenhum atendimento em andamento</div>';
-                    } else {
-                        atendimentos.forEach(function(a) {
-                            const card = document.createElement('div');
-                            card.className = 'card-atendimento';
-                            
-                            // Criar HTML para a foto do operador
-                            let fotoHtml = '';
-                            if (a.foto_perfil) {
-                                fotoHtml = `<img src="/uploads/${a.foto_perfil}" alt="Foto de ${a.nome}" style="width: 40px; height: 40px; border-radius: 50%; object-fit: cover; border: 2px solid #ddd; margin-bottom: 8px;">`;
-                            } else {
-                                fotoHtml = `<div style="width: 40px; height: 40px; border-radius: 50%; background: #f0f0f0; display: flex; align-items: center; justify-content: center; border: 2px solid #ddd; margin-bottom: 8px;"><span style="font-size: 20px; color: #999;">👤</span></div>`;
-                            }
-                            
-                            card.innerHTML = `
-                                ${fotoHtml}
-                                <div style="font-weight:bold;font-size:1.1em;color:#007BFF;margin-bottom:6px;">${a.nome}</div>
-                                <div style="font-size:1.5em;color:#FF5733;">${a.senha}</div>
-                                <div style="font-size:0.95em;color:#888;">Tipo: ${a.tipo}</div>
-                                <button class="btn-chamar-novamente" onclick="chamarSenhaNovamente('${a.senha}', '${a.operador_id}')">
-                                    🔔 Chamar Novamente
-                                </button>
-                            `;
-                            cardsDiv.appendChild(card);
-                        });
-                    }
-                });
-        });
-        
         // Função para chamar senha novamente
         function chamarSenhaNovamente(senha, operadorId) {
             enfileirarChamada({ tipo: 'repetir', senha, operadorId });
         }
 
-        // Atualização em tempo real da lista de senhas pendentes
-        socket.on('atualizar_lista_senhas', function(data) {
-            fetch('/get_senhas_pendentes')
-                .then(response => response.json())
-                .then(senhas => {
-                    const tabelaBody = document.getElementById('tabela-senhas-body');
-                    if (tabelaBody) {
-                        tabelaBody.innerHTML = '';
-                        if (senhas && senhas.length === 0) {
-                            tabelaBody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:#888;font-size:1.2em;">Sem senhas pendentes</td></tr>';
-                        } else if (senhas) {
-                            senhas.forEach(function(s) {
-                                const linha = `<tr><td>${s.id}</td><td>${s.senha}</td><td>${s.tipo}</td></tr>`;
-                                tabelaBody.innerHTML += linha;
-                            });
-                        }
-                    }
-                });
-        });
-
-        // Alerta de preferenciais acumuladas
-        socket.on('alerta_preferenciais', function(data) {
-            console.log('[SOCKET] alerta_preferenciais recebido:', data);
-            var alerta = document.getElementById('alertaPreferenciais');
-            var msg = document.getElementById('alertaPreferenciaisMsg');
-            if (alerta && msg) {
-                msg.textContent = `Atenção: ${data.qtd} senhas preferenciais aguardando! Priorize o atendimento.`;
-                alerta.style.display = 'block';
-                // Esconde automaticamente após 10 segundos
-                if (alerta._timeout) clearTimeout(alerta._timeout);
-                alerta._timeout = setTimeout(function() {
-                    alerta.style.display = 'none';
-                }, 10000);
-            }
-        });
-        
-        // Event listener para senha chamada com pedido
-        socket.on('senha_chamada_com_pedido', function(data) {
-            console.log('[SOCKET] senha_chamada_com_pedido recebido:', data);
-            console.log('[SOCKET] Dados recebidos:', {
-                senha: data.senha,
-                setor: data.setor,
-                pedido: data.pedido,
-                setor_id: data.setor_id
-            });
-            
-            // Verificar se o popup existe
-            var popup = document.getElementById('pedidoPopup');
-            if (!popup) {
-                console.error('[SOCKET] Popup não encontrado!');
-                return;
-            }
-            
-            console.log('[SOCKET] Popup encontrado, exibindo...');
-            showPedidoPopup(data.senha, data.setor || 'N/A', data.pedido);
-        });
-        
-        // Função para verificar se há pedidos pendentes
-        function verificarPedidosPendentes() {
-            console.log('[PEDIDOS] Verificando pedidos pendentes...');
-            fetch('/get_senhas_pendentes')
-                .then(response => response.json())
-                .then(senhas => {
-                    console.log('[PEDIDOS] Resposta recebida:', senhas);
-                    if (senhas && senhas.length > 0) {
-                        // Verificar se alguma senha tem pedido
-                        const senhaComPedido = senhas.find(s => s.tem_pedido && s.pedido);
-                        if (senhaComPedido) {
-                            console.log('[PEDIDOS] Senha com pedido encontrada:', senhaComPedido);
-                            // Armazenar para uso posterior
-                            window.senhaComPedido = senhaComPedido;
-                        } else {
-                            console.log('[PEDIDOS] Nenhuma senha com pedido encontrada');
-                        }
-                    } else {
-                        console.log('[PEDIDOS] Nenhuma senha pendente encontrada');
-                    }
-                })
-                .catch(error => {
-                    console.error('[PEDIDOS] Erro ao verificar pedidos pendentes:', error);
-                });
-        }
-        
-        // Verificar pedidos pendentes quando a página carregar
-        document.addEventListener('DOMContentLoaded', function() {
-            verificarPedidosPendentes();
-        });
-        
-        // Função para testar notificação
-        function testarNotificacao() {
-            console.log('[TESTE] testarNotificacao chamada');
-            
-            if (socket) {
-                console.log('[TESTE] Enviando notificação de teste...');
-                socket.emit('pedido_confirmado', {
-                    senha: 'N9999',
-                    pedido: 'Pedido de teste para notificação',
-                    mensagem: 'Pedido sendo preparado - TESTE'
-                });
-                console.log('[TESTE] Notificação de teste enviada');
-                
-                // Mostrar mensagem de sucesso
-                alert('Notificação de teste enviada! Verifique a página do cliente.');
-            } else {
-                console.error('[TESTE] Socket não encontrado!');
-                alert('Erro: Socket não encontrado!');
-            }
-        }
-        
-        // Função para ver o pedido da senha atual
+        // Função para ver o pedido da senha atual — usa o estado já recebido
+        // via socket (`window.currentSenhaAtual`), sem fetch.
         function verPedidoAtual() {
-            console.log('[VER_PEDIDO] Função verPedidoAtual chamada');
-            
-            fetch('/get_senha_atual_setor')
-                .then(response => response.json())
-                .then(data => {
-                    console.log('[VER_PEDIDO] Dados da senha atual:', data);
-                    
-                    if (data.tem_pedido && data.pedido) {
-                        console.log('[VER_PEDIDO] Exibindo popup com pedido:', data.pedido);
-                        showPedidoPopup(data.senha_atual, 'Setor Atual', data.pedido);
-                    } else {
-                        console.log('[VER_PEDIDO] Senha atual não tem pedido');
-                        alert('Esta senha não possui pedido registrado.');
-                    }
-                })
-                .catch(error => {
-                    console.error('[VER_PEDIDO] Erro ao buscar dados da senha atual:', error);
-                    alert('Erro ao buscar dados da senha atual.');
-                });
+            var data = window.currentSenhaAtual;
+            if (data && data.tem_pedido && data.pedido) {
+                showPedidoPopup(data.senha, 'Setor Atual', data.pedido);
+            } else {
+                alert('Esta senha não possui pedido registrado.');
+            }
         }
         
         // Funções para o popup do pedido
@@ -1341,18 +1099,12 @@
             
             console.log('[POPUP] Dados do pedido:', { senha, pedido });
             
-            // Enviar notificação para o cliente via Socket.IO
-            if (socket) {
-                console.log('[POPUP] Socket encontrado, enviando notificação...');
-                socket.emit('pedido_confirmado', {
-                    senha: senha,
-                    pedido: pedido,
-                    mensagem: 'Pedido sendo preparado'
-                });
-                console.log('[POPUP] Notificação enviada via Socket.IO');
-            } else {
-                console.error('[POPUP] Socket não encontrado!');
-            }
+            // Enviar notificação para o cliente via Socket.IO (protocolo novo:
+            // `operador:confirmar_pedido` -> servidor emite `pedido:status`)
+            socket.emit('operador:confirmar_pedido', {
+                senha: senha,
+                mensagem: 'Pedido sendo preparado'
+            });
             
             closePedidoPopup();
             console.log('Pedido confirmado pelo operador - iniciando atendimento');

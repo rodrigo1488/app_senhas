@@ -2,6 +2,12 @@
 
 Esta pasta contém toda a documentação do projeto App Senhas, organizada por categorias.
 
+## 🏗️ Arquitetura e Deploy
+
+- `../README.md` - Visão geral do projeto, como rodar (Docker ou local) e estrutura de pastas
+- `DEPLOY_DOCKER.md` - Deploy com Docker + PostgreSQL, migração de dados do SQLite legado, variáveis de ambiente
+- `REALTIME_PROTOCOL.md` - Protocolo de Socket.IO (rooms, eventos, payloads) usado pelo backend, pelas telas web e pelo app Android
+
 ## 📋 Guias de Configuração
 
 ### Guias de Notificações

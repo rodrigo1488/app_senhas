@@ -1,0 +1,44 @@
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-appsenhas}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-appsenhas}
+      POSTGRES_DB: ${POSTGRES_DB:-appsenhas}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-appsenhas} -d ${POSTGRES_DB:-appsenhas}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      # Ver backend/__init__.py::_resolve_database_config — com essa URL
+      # definida, o backend usa Postgres em vez do appsenhas.sqlite legado.
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-appsenhas}:${POSTGRES_PASSWORD:-appsenhas}@db:5432/${POSTGRES_DB:-appsenhas}
+      APP_SECRET_KEY: ${APP_SECRET_KEY:-}
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_KEY: ${SUPABASE_KEY:-}
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_EMAIL: ${VAPID_EMAIL:-}
+    ports:
+      - "5000:5000"
+    volumes:
+      # Fotos de operadores enviadas pelo admin (persistem entre rebuilds).
+      - uploads_data:/app/static/uploads
+
+volumes:
+  postgres_data:
+  uploads_data:

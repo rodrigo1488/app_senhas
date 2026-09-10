@@ -1,0 +1,98 @@
+{% extends "admin/base.html" %}
+{% block title %}{{ 'Editar operador' if operador else 'Novo operador' }}{% endblock %}
+{% block page_title %}{{ 'Editar operador' if operador else 'Novo operador' }}{% endblock %}
+
+{% block content %}
+<div class="form-page">
+    <div class="card">
+        <div class="card__body">
+            <form method="POST" enctype="multipart/form-data" class="form-grid">
+                <div class="form-field">
+                    <label for="nome">Nome</label>
+                    <input type="text" name="nome" id="nome" value="{{ operador.nome if operador else '' }}" required>
+                </div>
+
+                <div class="form-field">
+                    <label for="setor_id">Setor</label>
+                    <select name="setor_id" id="setor_id" required>
+                        <option value="" disabled {{ 'selected' if not operador }}>Selecione o setor</option>
+                        {% for setor in setores %}
+                        <option value="{{ setor.id }}" {{ 'selected' if operador and setor.id == operador.setor_id }}>{{ setor.nome }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-field">
+                    <label>Foto de perfil {{ '' if operador else '(opcional)' }}</label>
+
+                    {% if operador and operador.foto_perfil %}
+                    <div class="current-photo">
+                        <img src="/uploads/{{ operador.foto_perfil }}" alt="Foto atual">
+                        <button type="button" class="btn btn-danger btn-sm" onclick="removerFoto()">🗑️ Remover foto atual</button>
+                        <input type="hidden" name="remover_foto" id="remover_foto" value="0">
+                    </div>
+                    {% endif %}
+
+                    <div class="file-drop">
+                        <input type="file" name="foto_perfil" id="foto_perfil" accept="image/*">
+                        <div class="file-drop__label" id="file-label">📷 Clique para selecionar uma imagem</div>
+                    </div>
+                    <div class="preview-wrap" id="preview-container" style="display:none;">
+                        <img id="preview-image">
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <a href="{{ url_for('admin.admin') }}#operadores" class="btn btn-secondary">Cancelar</a>
+                    <button type="submit" class="btn btn-primary">{{ 'Salvar alterações' if operador else 'Adicionar' }}</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    document.getElementById('foto_perfil').addEventListener('change', function (e) {
+        const file = e.target.files[0];
+        const label = document.getElementById('file-label');
+        const previewContainer = document.getElementById('preview-container');
+        const previewImage = document.getElementById('preview-image');
+
+        if (file) {
+            if (file.size > 5 * 1024 * 1024) {
+                alert('Arquivo muito grande. Tamanho máximo: 5MB');
+                this.value = '';
+                return;
+            }
+            const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+            if (!allowedTypes.includes(file.type)) {
+                alert('Tipo de arquivo não permitido. Use: PNG, JPG, JPEG, GIF, WEBP');
+                this.value = '';
+                return;
+            }
+            label.textContent = '📷 ' + file.name;
+            label.classList.add('has-file');
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                previewImage.src = e.target.result;
+                previewContainer.style.display = 'flex';
+            };
+            reader.readAsDataURL(file);
+        } else {
+            label.textContent = '📷 Clique para selecionar uma imagem';
+            label.classList.remove('has-file');
+            previewContainer.style.display = 'none';
+        }
+    });
+
+    function removerFoto() {
+        if (confirm('Tem certeza que deseja remover a foto atual?')) {
+            document.getElementById('remover_foto').value = '1';
+            var currentPhoto = document.querySelector('.current-photo');
+            if (currentPhoto) currentPhoto.style.display = 'none';
+        }
+    }
+</script>
+{% endblock %}

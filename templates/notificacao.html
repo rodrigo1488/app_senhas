@@ -1152,56 +1152,46 @@
             }
         }
         
-        // Conectar ao Socket.IO
+        // Conectar ao Socket.IO — autenticado pelo próprio token da senha
+        // (ver documentacao/REALTIME_PROTOCOL.md); o servidor já entra na
+        // room `ticket:<token>` durante o handshake e manda a posição atual
+        // de bandeja, então não existe mais `join_token_room` manual.
         function connectSocket() {
-            socket = io();
-            
+            socket = io({ auth: { ticket_token: token } });
+
             socket.on('connect', function() {
                 console.log('Conectado ao servidor Socket.IO');
                 showStatus('✅ Conectado ao servidor', 'success');
-                
-                // Entrar na sala específica do token
-                console.log('[SOCKET] Entrando na sala do token:', token);
-                socket.emit('join_token_room', { token: token });
             });
-            
-            socket.on('joined_token_room', function(data) {
-                console.log('[SOCKET] Entrou na sala do token:', data.token);
+
+            socket.on('auth:erro', function(data) {
+                console.error('[SOCKET] Erro de autenticação:', data && data.mensagem);
+                showStatus('❌ Sessão inválida', 'error');
             });
-            
+
             socket.on('disconnect', function() {
                 console.log('Desconectado do servidor');
                 showStatus('❌ Desconectado do servidor', 'error');
             });
-            
-            socket.on('posicao_fila', function(data) {
-                updateQueuePosition(data);
+
+            // Único evento de estado: posição na fila + status + pedido —
+            // substitui o antigo polling de `/api/verificar_senha/<token>`.
+            socket.on('senha:posicao', function(data) {
+                handleSenhaPosicao(data);
             });
-            
-            socket.on('senha_proxima', function(data) {
-                // Só mostrar alerta se a posição diminuiu (alguém saiu da fila)
-                if (lastWarningAlertPosition === null || data.posicao < lastWarningAlertPosition) {
-                    showWarningAlert(data.posicao);
-                    lastWarningAlertPosition = data.posicao;
-                }
-            });
-            
-            socket.on('senha_chamada', function(data) {
-                // Verificar se já não foi alertado para esta senha
-                if (data.token === token && lastAlertedStatus !== 'C') {
+
+            socket.on('senha:chamada', function(data) {
+                if (data.ticket_token === token && lastAlertedStatus !== 'C') {
                     showCalledAlert();
                     lastAlertedStatus = 'C';
+                    if (data.tem_pedido && data.pedido) {
+                        showPedidoPopup(data.senha, senhaInfo ? senhaInfo.setor : 'N/A', data.pedido);
+                    }
                 }
             });
-            
-            socket.on('senha_chamada_com_pedido', function(data) {
-                if (data.token === token) {
-                    showPedidoPopup(data.senha, data.setor || 'N/A', data.pedido);
-                }
-            });
-            
-            socket.on('pedido_preparando', function(data) {
-                console.log('[SOCKET] pedido_preparando recebido:', data);
+
+            socket.on('pedido:status', function(data) {
+                console.log('[SOCKET] pedido:status', data);
                 showPedidoPreparandoAlert(data);
             });
         }
@@ -1491,106 +1481,78 @@
             }
         }
         
-        // Verificar se a senha foi chamada
-        async function checkSenhaStatus() {
-            try {
-                const response = await fetch(`/api/verificar_senha/${token}`, {
-                    method: 'GET',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    }
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    
-                    // Atualizar informações da senha
-                    if (data.senha && !senhaInfo) {
-                        document.getElementById('senhaNumber').textContent = data.senha;
-                        document.getElementById('senhaSetor').textContent = `Setor: ${data.setor}`;
-                        senhaInfo = data;
-                    }
-                    
-                    // Carregar pedido salvo se existir
-                    if (data.pedido && !document.getElementById('pedidoInput').disabled) {
-                        const textarea = document.getElementById('pedidoInput');
-                        const btn = document.getElementById('salvarPedido');
-                        
-                        // Esconder a seção de pedido
-                        const pedidoSection = document.getElementById('pedidoSection');
-                        if (pedidoSection) {
-                            pedidoSection.style.display = 'none';
-                        }
-                        
-                        // Mostrar o card do pedido salvo
-                        const pedidoSalvoCard = document.getElementById('pedidoSalvoCard');
-                        const pedidoSalvoText = document.getElementById('pedidoSalvoText');
-                        
-                        if (pedidoSalvoCard && pedidoSalvoText) {
-                            pedidoSalvoText.textContent = data.pedido;
-                            pedidoSalvoCard.style.display = 'block';
-                        }
-                        
-                        showPedidoStatus('📝 Pedido carregado do servidor', 'success');
-                    }
-                    
-                    // Verificar se o atendimento foi finalizado (status F)
-                    if (data.status === 'F' || data.finalizado) {
-                        console.log('[CHECK] Status finalizado detectado, mostrando tela de finalizado');
-                        showAtendimentoFinalizado(data);
-                        return; // Não continuar com outras verificações
-                    }
-                    
-                    // Se não está finalizado, esconder tela de carregamento e mostrar interface principal
-                    if (isLoading) {
-                        console.log('[CHECK] Status não finalizado, mostrando interface principal');
-                        hideLoadingScreen();
-                        isLoading = false;
-                    }
-                    
-                    // Verificar se o status mudou para evitar alertas duplicados
-                    if (data.chamada && lastAlertedStatus !== 'C') {
-                        showCalledAlert();
-                        lastAlertedStatus = 'C';
-                        
-                        // Se há pedido, mostrar popup de confirmação
-                        if (data.pedido) {
-                            showPedidoPopup(data.senha, data.setor, data.pedido);
-                        }
-                    } else if (!data.chamada) {
-                        lastAlertedStatus = 'A';
-                    }
-                    
-                    // Verificar se o pedido foi confirmado pelo operador
-                    if (data.pedido_confirmado) {
-                        showPedidoProducaoAlert();
-                    }
+        // Processa o payload de `senha:posicao` — evento único que chega ao
+        // conectar e sempre que a fila muda (ver
+        // documentacao/REALTIME_PROTOCOL.md). Substitui o antigo polling de
+        // `/api/verificar_senha/<token>` a cada 3 segundos.
+        function handleSenhaPosicao(data) {
+            // Atualizar informações da senha (uma única vez)
+            if (data.senha && !senhaInfo) {
+                document.getElementById('senhaNumber').textContent = data.senha;
+                document.getElementById('senhaSetor').textContent = `Setor: ${data.setor_nome}`;
+                senhaInfo = data;
+            }
+
+            // Carregar pedido salvo se existir
+            if (data.pedido && !document.getElementById('pedidoInput').disabled) {
+                const pedidoSection = document.getElementById('pedidoSection');
+                if (pedidoSection) pedidoSection.style.display = 'none';
+
+                const pedidoSalvoCard = document.getElementById('pedidoSalvoCard');
+                const pedidoSalvoText = document.getElementById('pedidoSalvoText');
+                if (pedidoSalvoCard && pedidoSalvoText) {
+                    pedidoSalvoText.textContent = data.pedido;
+                    pedidoSalvoCard.style.display = 'block';
                 }
-            } catch (error) {
-                console.error('Erro ao verificar status:', error);
-                
-                // Em caso de erro, esconder tela de carregamento e mostrar interface de erro
-                if (isLoading) {
-                    hideLoadingScreen();
-                    isLoading = false;
+                showPedidoStatus('📝 Pedido carregado do servidor', 'success');
+            }
+
+            // Atendimento finalizado (status F)
+            if (data.status === 'F') {
+                console.log('[SOCKET] Status finalizado detectado, mostrando tela de finalizado');
+                showAtendimentoFinalizado(data);
+                return;
+            }
+
+            if (isLoading) {
+                hideLoadingScreen();
+                isLoading = false;
+            }
+
+            // Posição na fila + alerta de proximidade
+            updateQueuePosition(data);
+            if (data.posicao > 0 && data.posicao <= 3) {
+                if (lastWarningAlertPosition === null || data.posicao < lastWarningAlertPosition) {
+                    showWarningAlert(data.posicao);
                 }
+                lastWarningAlertPosition = data.posicao;
+            }
+
+            // Chamada (status C) — cobre o caso de reconectar já tendo sido chamado
+            if (data.status === 'C' && lastAlertedStatus !== 'C') {
+                showCalledAlert();
+                lastAlertedStatus = 'C';
+                if (data.pedido) {
+                    showPedidoPopup(data.senha, data.setor_nome, data.pedido);
+                }
+            } else if (data.status !== 'C') {
+                lastAlertedStatus = 'A';
+            }
+
+            if (data.pedido_confirmado) {
+                showPedidoProducaoAlert();
             }
         }
-        
-        // Iniciar polling
+
+        // Iniciar monitoramento (sem polling — o estado chega via socket)
         function startPolling() {
             showPollingStatus(true);
-            pollingInterval = setInterval(checkSenhaStatus, 3000);
             isMonitoring = true;
             saveConfig();
         }
-        
-        // Parar polling
+
+        // Parar monitoramento
         function stopPolling() {
-            if (pollingInterval) {
-                clearInterval(pollingInterval);
-                pollingInterval = null;
-            }
             showPollingStatus(false);
             isMonitoring = false;
             saveConfig();
@@ -1625,12 +1587,10 @@
                 const result = await response.json();
                 
                 if (response.ok) {
-                    updateLoadingStatus('Verificando status da senha...');
-                    
-                    // Verificar status inicial da senha
-                    await checkSenhaStatus();
-                    
                     updateLoadingStatus('Configurando monitoramento...');
+                    // O estado inicial (posição, status, pedido) já chega via
+                    // socket no momento da conexão (evento `senha:posicao`),
+                    // então não é preciso nenhum fetch de verificação aqui.
                     
                     // Esconder o botão de monitoramento
                     btn.style.display = 'none';
@@ -1647,14 +1607,9 @@
                         soundToggle.style.display = 'none';
                     }
                     
-                    // Iniciar polling
+                    // Iniciar monitoramento (a posição já chega via socket)
                     startPolling();
-                    
-                    // Solicitar posição na fila
-                    if (socket) {
-                        socket.emit('solicitar_posicao', { token: token });
-                    }
-                    
+
                     updateLoadingStatus('Monitoramento ativo!');
                     
                     // A tela de carregamento será escondida pela verificação de status

@@ -610,20 +610,9 @@
         // Expor função para listar vozes globalmente
         window.listarVozesDisponiveis = listarVozesDisponiveis;
         
-        function atualizarSenhaAtual() {
-            if (atualizandoSenhaAtual) {
-                console.log('Já está atualizando senha atual, ignorando...');
-                return;
-            }
-            
-            atualizandoSenhaAtual = true;
-            console.log('Atualizando senha atual...');
-            
-            fetch('/get_senha_atual_setor')
-                .then(response => response.json())
-                .then(data => {
-                    console.log('Dados recebidos:', data);
-                    var senhaElement = document.getElementById('senha_atual');
+        function renderSenhaAtual(data) {
+            console.log('Renderizando senha atual:', data);
+            var senhaElement = document.getElementById('senha_atual');
                     
                     // Verificar se é uma nova senha
                     const senhaAtual = data.senha_atual || 'Nenhuma';
@@ -712,51 +701,34 @@
                     
                     // Atualizar a última senha conhecida
                     ultimaSenhaConhecida = senhaAtual;
-                })
-                .catch(error => {
-                    console.error('Erro ao atualizar senha:', error);
-                    var senhaElement = document.getElementById('senha_atual');
-                    if (senhaElement) {
-                        senhaElement.innerText = 'Erro';
-                    }
-                })
-                .finally(() => {
-                    atualizandoSenhaAtual = false;
-                });
         }
-        
-        // Variável para controlar se já está atualizando
-        let atualizandoSenhaAtual = false;
-        
-        // Atualizar imediatamente
-        atualizarSenhaAtual();
-        
-        // Atualizar a cada 10 segundos (reduzido de 5 para 10)
-        setInterval(function() {
-            if (!atualizandoSenhaAtual) {
-                atualizarSenhaAtual();
-            }
-        }, 10000);
-        
-        // Atualização instantânea via Socket.IO
-        const socket = io();
+
+        // Estado inicial renderizado pelo servidor (sem precisar de fetch) —
+        // ver `_senha_atual_do_setor()` em app/blueprints/filas_bp.py
+        renderSenhaAtual({{ estado_inicial | tojson }});
+
+        // Conexão única e autenticada via protocolo de tempo real — sem
+        // polling: cada `senha:chamada` já traz todos os dados prontos para
+        // renderizar (ver documentacao/REALTIME_PROTOCOL.md).
+        const socket = io({ auth: { session_token: '{{ session_token }}' } });
+
         socket.on('connect', function() {
-            console.log('Socket.IO conectado em senha_atual.html');
+            console.log('[SOCKET] Conectado (TV)');
         });
-        
-        socket.on('atualizar_lista', function() {
-            console.log('Evento atualizar_lista recebido');
-            atualizarSenhaAtual();
+
+        socket.on('auth:erro', function(data) {
+            console.error('[SOCKET] Erro de autenticação:', data.mensagem);
         });
-        
-        socket.on('nova_senha_para_avaliacao', function() {
-            console.log('Evento nova_senha_para_avaliacao recebido');
-            atualizarSenhaAtual();
-        });
-        
-        socket.on('atualizar_atendimentos', function() {
-            console.log('Evento atualizar_atendimentos recebido');
-            atualizarSenhaAtual();
+
+        socket.on('senha:chamada', function(data) {
+            console.log('[SOCKET] senha:chamada', data);
+            renderSenhaAtual({
+                senha_atual: data.senha,
+                operador: data.operador_nome,
+                foto_operador: data.operador_foto,
+                tem_pedido: data.tem_pedido,
+                pedido: data.pedido,
+            });
         });
     </script>
 </body>

@@ -4,6 +4,18 @@ Flask-SocketIO==5.5.1
 Flask-Cors==5.0.0
 Werkzeug==3.1.3
 
+# ORM (mapeia o schema existente do appsenhas.sqlite — ver app/models.py)
+Flask-SQLAlchemy==3.1.1
+SQLAlchemy==2.0.36
+
+# Driver PostgreSQL (banco padrão em produção/Docker — ver DATABASE_URL em
+# backend/__init__.py e docker-compose.yml). SQLite continua funcionando
+# como fallback de dev sem Docker.
+psycopg2-binary==2.9.13
+
+# Token de sessão por código de setor (web kiosk + app Android + sockets)
+PyJWT==2.10.1
+
 # Eventlet para SocketIO
 eventlet==0.39.0
 dnspython==2.7.0

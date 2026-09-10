@@ -171,10 +171,14 @@
             });
         }
         
-        // Instância global do socket para evitar duplicidade
-        window._socket = window._socket || io();
+        // Instância global do socket para evitar duplicidade — autenticada
+        // via token de sessão (ver documentacao/REALTIME_PROTOCOL.md)
+        window._socket = window._socket || io({ auth: { session_token: '{{ session_token }}' } });
         window._socket.on('connect', function() {
             console.log('[SOCKETIO] Conectado ao servidor Socket.IO!');
+        });
+        window._socket.on('auth:erro', function(data) {
+            console.error('[SOCKETIO] Erro de autenticação:', data && data.mensagem);
         });
         
         // Fallback para WebView - tentar reconectar socket se desconectar
@@ -348,8 +352,8 @@
                     }
                 }
                 if (timerBar) updateTimerBar();
-                // Se chegar nova senha para avaliação, cancela o timeout e esconde a barra
-                window._socket.on('nova_senha_para_avaliacao', function(data) {
+                // Se chegar nova avaliação pendente, cancela o timeout e esconde a barra
+                window._socket.on('avaliacao:solicitada', function(data) {
                     // Só redireciona se o operador_id do evento for igual ao do cookie
                     function getCookie(name) {
                         let match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
@@ -420,55 +424,16 @@
             if (match) return match[2];
         }
         const operadorIdCookie = getCookie('operador_id');
-        
-        // Função para verificar se há nova senha via polling (fallback para WebView)
-        function checkForNewSenha() {
-            if (isWebView()) {
-                fetch('/check_webview_update')
-                    .then(response => response.json())
-                    .then(data => {
-                        console.log('[WEBVIEW] Verificação de atualização:', data);
-                        
-                        if (data.force_reload) {
-                            console.log('[WEBVIEW] Forçando recarregamento devido a avaliação pendente');
-                            window.location.reload(true);
-                            return;
-                        }
-                        
-                        if (data.senha_atual && data.senha_atual !== '{{ senha_atual if senha_atual else "" }}') {
-                            console.log('[WEBVIEW] Nova senha detectada via polling, recarregando...');
-                            window.location.reload(true);
-                        }
-                    })
-                    .catch(error => {
-                        console.log('[WEBVIEW] Erro no polling:', error);
-                    });
+
+        // Único listener: quando o operador chama a próxima senha (e portanto
+        // fecha o atendimento anterior), o servidor emite `avaliacao:solicitada`
+        // — sem polling, mesmo em WebView (a reconexão automática do socket já
+        // é tratada no handler de `disconnect` acima).
+        window._socket.on('avaliacao:solicitada', function(data) {
+            console.log('[SOCKETIO] avaliacao:solicitada', data);
+            if (String(data.operador_id) === String(operadorIdCookie)) {
+                window.location.href = `/avaliacao?senha_id=${data.senha_id}&setor_id=${data.setor_id}&operador_id=${data.operador_id}`;
             }
-        }
-        
-        // Socket.IO para navegadores normais
-        window._socket.on('nova_senha_operador', function(data) {
-            if (data.operador_id == operadorIdCookie) {
-                window.location.reload();
-            }
-        });
-        
-        // Polling para WebView a cada 3 segundos
-        if (isWebView()) {
-            setInterval(checkForNewSenha, 3000);
-        }
-    </script>
-    {% endif %}
-    {% if saudacao %}
-    <script>
-        function getCookie(name) {
-            let match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
-            if (match) return match[2];
-        }
-        window._socket.on('nova_senha_para_avaliacao', function(data) {
-            console.log('[SOCKETIO] Evento recebido', data);
-            // Redireciona para a tela de avaliação da senha correta
-            window.location.href = `/avaliacao?senha_id=${data.senha_id}&setor_id=${data.setor_id}&operador_id=${data.operador_id}`;
         });
     </script>
     {% endif %}
