@@ -13,16 +13,23 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Dependências de sistema para compilar pacotes que não têm wheel pronta
-# para todas as arquiteturas (cryptography, Pillow, psycopg2-binary em
-# alguns ambientes). Removidas do apt cache no mesmo layer para manter a
-# imagem pequena.
+# Dependências de sistema:
+# - build-essential/libjpeg62-turbo-dev/zlib1g-dev/libpq-dev: compilar
+#   pacotes sem wheel pronta para todas as arquiteturas (cryptography,
+#   Pillow, psycopg2-binary em alguns ambientes).
+# - fonts-dejavu-core: a imagem "python:3.12-slim" não vem com NENHUMA
+#   fonte TrueType instalada. Sem isso, backend/utils.py::gerar_imagem_senha
+#   (usada para imprimir o número da senha) cai no fallback
+#   ImageFont.load_default(), que gera um bitmap minúsculo (~8px) — o
+#   número impresso saía ilegível.
+# Removidas do apt cache no mesmo layer para manter a imagem pequena.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential \
         libjpeg62-turbo-dev \
         zlib1g-dev \
         libpq-dev \
+        fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

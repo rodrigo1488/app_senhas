@@ -151,17 +151,21 @@ def gerar_imagem_senha(senha: str, largura_maxima: int = 384):
             except Exception:
                 continue
         if fonte is None:
-            fonte = ImageFont.load_default()
-            tamanho_fonte = 48
+            # Nenhuma fonte TrueType encontrada no sistema (ex.: imagem Docker
+            # sem fonts-dejavu-core instalado). `load_default()` sem `size`
+            # retorna um bitmap fixo de ~8px — praticamente ilegível impresso.
+            # Passar `size=` (Pillow >= 10.1) mantém o número grande mesmo
+            # nesse fallback.
+            fonte = ImageFont.load_default(size=tamanho_fonte)
 
         bbox = draw.textbbox((0, 0), senha, font=fonte)
         largura_texto = bbox[2] - bbox[0]
         while largura_texto > largura_maxima - 20 and tamanho_fonte > 18:
             tamanho_fonte -= 5
             try:
-                fonte = ImageFont.truetype(fonte_nome_usada, tamanho_fonte) if fonte_nome_usada else ImageFont.load_default()
+                fonte = ImageFont.truetype(fonte_nome_usada, tamanho_fonte) if fonte_nome_usada else ImageFont.load_default(size=tamanho_fonte)
             except Exception:
-                fonte = ImageFont.load_default()
+                fonte = ImageFont.load_default(size=tamanho_fonte)
             bbox = draw.textbbox((0, 0), senha, font=fonte)
             largura_texto = bbox[2] - bbox[0]
 
