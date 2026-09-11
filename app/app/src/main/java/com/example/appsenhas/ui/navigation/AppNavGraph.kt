@@ -49,7 +49,12 @@ fun AppNavGraph() {
                     navController.navigate(Routes.MODO) { popUpTo(Routes.BOOT) { inclusive = true } }
                 },
                 onIrParaPapel = { papel ->
-                    navController.navigate(rotaDoPapel(papel)) { popUpTo(Routes.BOOT) { inclusive = true } }
+                    val destino = if (papel == Papel.OPERADOR) {
+                        Routes.identificarOperador(Routes.FINALIDADE_OPERADOR)
+                    } else {
+                        rotaDoPapel(papel)
+                    }
+                    navController.navigate(destino) { popUpTo(Routes.BOOT) { inclusive = true } }
                 },
             )
         }
@@ -96,7 +101,15 @@ fun AppNavGraph() {
         }
 
         composable(Routes.CLIENTE) { ClienteScreen() }
-        composable(Routes.OPERADOR) { OperadorScreen() }
+        composable(Routes.OPERADOR) {
+            OperadorScreen(
+                onTrocarOperador = {
+                    navController.navigate(Routes.identificarOperador(Routes.FINALIDADE_OPERADOR)) {
+                        popUpTo(Routes.OPERADOR) { inclusive = true }
+                    }
+                }
+            )
+        }
         composable(Routes.AVALIACAO) { AvaliacaoScreen() }
         composable(Routes.TV) { TvScreen() }
     }

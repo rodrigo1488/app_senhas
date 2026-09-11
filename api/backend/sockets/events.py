@@ -27,5 +27,9 @@ def room_ticket(ticket_token: str) -> str:
     return f"ticket:{ticket_token}"
 
 
+def room_operador(setor_id: int, operador_id: int) -> str:
+    return f"operador:{setor_id}:{operador_id}"
+
+
 def room_avaliacao(setor_id: int, operador_id: int) -> str:
     return f"avaliacao:{setor_id}:{operador_id}"

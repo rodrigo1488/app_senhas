@@ -14,13 +14,19 @@ class Setor(db.Model):
     nome = db.Column(db.Text, nullable=False)
     descricao = db.Column(db.Text)
     senha_setor = db.Column(db.Text)  # "código do setor" usado no login do app/kiosk
+    modo_identificacao_operador = db.Column(db.String(10), nullable=False, default="foto")
 
     operadores = db.relationship("Operador", backref="setor", lazy="dynamic")
     impressoras = db.relationship("Impressora", backref="setor", lazy="dynamic")
     senhas = db.relationship("Senha", backref="setor", lazy="dynamic")
 
     def to_dict(self):
-        return {"id": self.id, "nome": self.nome, "descricao": self.descricao}
+        return {
+            "id": self.id,
+            "nome": self.nome,
+            "descricao": self.descricao,
+            "modo_identificacao_operador": self.modo_identificacao_operador or "foto",
+        }
 
 
 class Operador(db.Model):
@@ -30,6 +36,7 @@ class Operador(db.Model):
     nome = db.Column(db.Text, nullable=False)
     foto_perfil = db.Column(db.Text)
     setor_id = db.Column(db.Integer, db.ForeignKey("setores.id"))
+    pin_hash = db.Column(db.Text)
 
     def to_dict(self):
         return {
@@ -37,6 +44,7 @@ class Operador(db.Model):
             "nome": self.nome,
             "foto_perfil": self.foto_perfil,
             "setor_id": self.setor_id,
+            "tem_pin": bool(self.pin_hash),
         }
 
 

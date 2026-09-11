@@ -69,6 +69,16 @@ class SessionRepository(private val context: Context) {
         AuthState.sessionToken = token
     }
 
+    suspend fun saveGenericSession(token: String) {
+        context.sessionDataStore.edit {
+            it[Keys.SESSION_TOKEN] = token
+            it.remove(Keys.PAPEL)
+            it.remove(Keys.OPERADOR_ID)
+            it.remove(Keys.OPERADOR_NOME)
+        }
+        AuthState.sessionToken = token
+    }
+
     suspend fun logout() {
         context.sessionDataStore.edit {
             it.remove(Keys.SESSION_TOKEN)

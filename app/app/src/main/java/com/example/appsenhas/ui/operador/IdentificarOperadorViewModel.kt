@@ -18,6 +18,8 @@ class IdentificarOperadorViewModel : ViewModel() {
     private val sessionRepository = AppGraph.sessionRepository
 
     var operadores by mutableStateOf<List<OperadorDto>>(emptyList())
+    var modoIdentificacao by mutableStateOf("foto")
+        private set
     var isLoading by mutableStateOf(true)
     var isSubmitting by mutableStateOf(false)
     var errorMessage by mutableStateOf<String?>(null)
@@ -30,7 +32,9 @@ class IdentificarOperadorViewModel : ViewModel() {
         isLoading = true
         viewModelScope.launch {
             try {
-                operadores = NetworkModule.apiService().listarOperadores().operadores
+                val response = NetworkModule.apiService().listarOperadores()
+                operadores = response.operadores
+                modoIdentificacao = response.modo_identificacao_operador
             } catch (e: Exception) {
                 errorMessage = e.toUserMessage("Não foi possível carregar os operadores.")
             } finally {
@@ -51,6 +55,35 @@ class IdentificarOperadorViewModel : ViewModel() {
                 onSuccess()
             } catch (e: Exception) {
                 errorMessage = e.toUserMessage("Não foi possível continuar.")
+            } finally {
+                isSubmitting = false
+            }
+        }
+    }
+
+    fun identificarPorPin(pin: String, onSuccess: () -> Unit) {
+        if (pin.length !in 4..6) {
+            errorMessage = "Digite um PIN de 4 a 6 números."
+            return
+        }
+        errorMessage = null
+        isSubmitting = true
+        viewModelScope.launch {
+            try {
+                val response = NetworkModule.apiService().selecionarPapel(
+                    SelecionarPapelRequest(role = Papel.OPERADOR.valor, pin = pin)
+                )
+                val operador = response.operador
+                    ?: throw IllegalStateException("Operador não retornado pelo servidor")
+                sessionRepository.savePapel(
+                    response.session_token,
+                    Papel.OPERADOR,
+                    operador.id,
+                    operador.nome,
+                )
+                onSuccess()
+            } catch (e: Exception) {
+                errorMessage = e.toUserMessage("PIN inválido.")
             } finally {
                 isSubmitting = false
             }

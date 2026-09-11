@@ -89,6 +89,7 @@ object SocketManager {
                     ticketToken = obj.optStringOrNull("ticket_token"),
                     senha = obj.optString("senha"),
                     tipo = obj.optStringOrNull("tipo"),
+                    operadorId = obj.optIntOrNull("operador_id"),
                     operadorNome = obj.optStringOrNull("operador_nome"),
                     operadorFoto = obj.optStringOrNull("operador_foto"),
                     temPedido = obj.optBoolean("tem_pedido", false),
@@ -237,6 +238,9 @@ private fun JSONArray?.toAtendimentoList(): List<AtendimentoDto> {
             senha = obj.optString("senha"),
             tipo = obj.optString("tipo"),
             senha_id = obj.optIntOrNull("senha_id"),
+            tem_pedido = obj.optBoolean("tem_pedido", false),
+            pedido = obj.optStringOrNull("pedido"),
+            pedido_confirmado = obj.optBoolean("pedido_confirmado", false),
         )
     }
 }

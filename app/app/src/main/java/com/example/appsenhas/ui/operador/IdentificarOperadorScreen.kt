@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -17,6 +18,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -28,6 +31,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -68,6 +75,13 @@ fun IdentificarOperadorScreen(
                 viewModel.isLoading -> {
                     CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = IndigoApp)
                 }
+                papel == Papel.OPERADOR && viewModel.modoIdentificacao == "pin" -> {
+                    PinIdentification(
+                        enabled = !viewModel.isSubmitting,
+                        onConfirm = { pin -> viewModel.identificarPorPin(pin, onSelecionado) },
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                }
                 viewModel.operadores.isEmpty() -> {
                     Text(
                         text = "Nenhum operador cadastrado para este setor.",
@@ -99,6 +113,62 @@ fun IdentificarOperadorScreen(
                     Text(text = message, color = MaterialTheme.colorScheme.error, textAlign = TextAlign.Center)
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PinIdentification(
+    enabled: Boolean,
+    onConfirm: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var pin by remember { mutableStateOf("") }
+    Column(
+        modifier = modifier.padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text("Digite seu PIN", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(
+            text = if (pin.isEmpty()) "○ ○ ○ ○" else "● ".repeat(pin.length).trim(),
+            style = MaterialTheme.typography.headlineMedium,
+            color = IndigoApp,
+            modifier = Modifier.padding(vertical = 20.dp),
+        )
+        listOf(
+            listOf("1", "2", "3"),
+            listOf("4", "5", "6"),
+            listOf("7", "8", "9"),
+            listOf("Limpar", "0", "⌫"),
+        ).forEach { linha ->
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(vertical = 5.dp)) {
+                linha.forEach { tecla ->
+                    Button(
+                        onClick = {
+                            pin = when (tecla) {
+                                "Limpar" -> ""
+                                "⌫" -> pin.dropLast(1)
+                                else -> if (pin.length < 6) pin + tecla else pin
+                            }
+                        },
+                        enabled = enabled,
+                        colors = ButtonDefaults.buttonColors(containerColor = IndigoApp),
+                        modifier = Modifier.size(width = 88.dp, height = 54.dp),
+                    ) {
+                        Text(tecla, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+        Button(
+            onClick = {
+                onConfirm(pin)
+                pin = ""
+            },
+            enabled = enabled && pin.length >= 4,
+            modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
+        ) {
+            Text("Entrar como operador")
         }
     }
 }

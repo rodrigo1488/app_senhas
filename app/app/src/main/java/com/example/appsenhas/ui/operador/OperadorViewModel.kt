@@ -31,6 +31,8 @@ class OperadorViewModel : ViewModel() {
     var senhaChamadaAtual by mutableStateOf<String?>(null)
     var pedidoAtual by mutableStateOf<String?>(null)
     var temPedidoAtual by mutableStateOf(false)
+    var pedidoDialogVisible by mutableStateOf(false)
+        private set
 
     var isLoading by mutableStateOf(false)
     var errorMessage by mutableStateOf<String?>(null)
@@ -61,10 +63,11 @@ class OperadorViewModel : ViewModel() {
                 atendimentos = event.atendimentos
             }
             is SocketEvent.SenhaChamada -> {
-                if (event.operadorNome != null && event.operadorNome == meuOperadorNome) {
+                if (event.operadorId != null && event.operadorId == meuOperadorId) {
                     senhaChamadaAtual = event.senha
                     temPedidoAtual = event.temPedido
                     pedidoAtual = event.pedido
+                    pedidoDialogVisible = event.temPedido
                 }
             }
             else -> Unit
@@ -77,6 +80,13 @@ class OperadorViewModel : ViewModel() {
                 val fila = NetworkModule.apiService().estadoFila()
                 pendentes = fila.pendentes
                 atendimentos = fila.atendimentos
+                val atual = NetworkModule.apiService().atendimentoAtual()
+                if (atual.senha != null) {
+                    senhaChamadaAtual = atual.senha
+                    temPedidoAtual = atual.tem_pedido
+                    pedidoAtual = atual.pedido
+                    pedidoDialogVisible = atual.tem_pedido && !atual.pedido_confirmado
+                }
             } catch (e: Exception) {
                 errorMessage = e.toUserMessage("Não foi possível carregar a fila.")
             }
@@ -84,13 +94,16 @@ class OperadorViewModel : ViewModel() {
     }
 
     fun chamarProxima() {
-        val operadorId = meuOperadorId ?: return
+        if (meuOperadorId == null) return
         errorMessage = null
         isLoading = true
         viewModelScope.launch {
             try {
-                NetworkModule.apiService().chamarProxima(ChamarProximaRequest(operadorId))
-                // Resultado chega via fila:atualizada / senha:chamada (socket) — ver protocolo.
+                val response = NetworkModule.apiService().chamarProxima(ChamarProximaRequest())
+                senhaChamadaAtual = response.senha.senha
+                temPedidoAtual = response.senha.tem_pedido
+                pedidoAtual = response.senha.pedido
+                pedidoDialogVisible = response.senha.tem_pedido
             } catch (e: Exception) {
                 errorMessage = e.toUserMessage("Não foi possível chamar a próxima senha.")
             } finally {
@@ -114,8 +127,22 @@ class OperadorViewModel : ViewModel() {
         viewModelScope.launch {
             try {
                 NetworkModule.apiService().confirmarPedido(ConfirmarPedidoRequest(senha))
+                pedidoDialogVisible = false
             } catch (e: Exception) {
                 errorMessage = e.toUserMessage("Não foi possível confirmar o pedido.")
+            }
+        }
+    }
+
+    fun trocarOperador(onSuccess: () -> Unit) {
+        viewModelScope.launch {
+            try {
+                val response = NetworkModule.apiService().liberarOperador()
+                sessionRepository.saveGenericSession(response.session_token)
+                SocketManager.disconnect()
+                onSuccess()
+            } catch (e: Exception) {
+                errorMessage = e.toUserMessage("Não foi possível trocar o operador.")
             }
         }
     }

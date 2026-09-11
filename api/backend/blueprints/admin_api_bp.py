@@ -14,6 +14,7 @@ from sqlalchemy import func
 from backend.auth import api_login_required
 from backend.extensions import db
 from backend.models import AtendimentoAtual, Finalizado, Impressora, Operador, Senha, Setor, Usuario
+from backend.services.operador_pin_service import OperadorPinError, definir_pin
 from backend.services.usuario_service import autenticar
 from backend.utils import (
     allowed_file,
@@ -26,6 +27,23 @@ from backend.utils import (
 )
 
 admin_api_bp = Blueprint("admin_api", __name__, url_prefix="/api/v1/admin")
+
+
+def _modo_identificacao(valor) -> str:
+    modo = (valor or "foto").strip().lower()
+    if modo not in {"foto", "pin"}:
+        raise ValueError("Modo de identificação deve ser foto ou pin")
+    return modo
+
+
+def _validar_setor_pronto_para_pin(setor: Setor) -> None:
+    sem_pin = setor.operadores.filter(
+        (Operador.pin_hash.is_(None)) | (Operador.pin_hash == "")
+    ).count()
+    if sem_pin:
+        raise ValueError(
+            f"Cadastre o PIN de todos os operadores do setor antes de ativar este modo ({sem_pin} pendente(s))"
+        )
 
 
 def _avaliacao_numerica():
@@ -224,6 +242,7 @@ def list_setores():
                 "nome": s.nome,
                 "descricao": s.descricao or "",
                 "senha_setor": s.senha_setor or "",
+                "modo_identificacao_operador": s.modo_identificacao_operador or "foto",
             }
             for s in setores
         ]
@@ -237,10 +256,15 @@ def create_setor():
     nome = (data.get("nome") or "").strip()
     if not nome:
         return jsonify({"error": "Nome é obrigatório"}), 400
+    try:
+        modo = _modo_identificacao(data.get("modo_identificacao_operador"))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     setor = Setor(
         nome=nome,
         descricao=(data.get("descricao") or "").strip(),
         senha_setor=(data.get("senha_setor") or "").strip(),
+        modo_identificacao_operador=modo,
     )
     db.session.add(setor)
     db.session.commit()
@@ -261,6 +285,14 @@ def update_setor(setor_id: int):
         setor.descricao = (data.get("descricao") or "").strip()
     if "senha_setor" in data:
         setor.senha_setor = (data.get("senha_setor") or "").strip()
+    if "modo_identificacao_operador" in data:
+        try:
+            modo = _modo_identificacao(data.get("modo_identificacao_operador"))
+            if modo == "pin":
+                _validar_setor_pronto_para_pin(setor)
+            setor.modo_identificacao_operador = modo
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
     db.session.commit()
     return jsonify({"id": setor.id, "nome": setor.nome})
 
@@ -294,6 +326,7 @@ def list_operadores():
                 "setor_id": op.setor_id,
                 "setor_nome": setor_nome,
                 "foto_perfil": op.foto_perfil,
+                "tem_pin": bool(op.pin_hash),
             }
             for op, setor_nome in rows
         ]
@@ -307,6 +340,9 @@ def create_operador():
     setor_id = request.form.get("setor_id")
     if not nome or not setor_id:
         return jsonify({"error": "Nome e setor são obrigatórios"}), 400
+    setor = Setor.query.get(int(setor_id))
+    if not setor:
+        return jsonify({"error": "Setor não encontrado"}), 404
 
     foto_perfil = None
     file = request.files.get("foto_perfil")
@@ -321,8 +357,17 @@ def create_operador():
         foto_perfil = process_image(file)
 
     op = Operador(nome=nome, setor_id=int(setor_id), foto_perfil=foto_perfil)
-    db.session.add(op)
-    db.session.commit()
+    pin = (request.form.get("pin") or "").strip()
+    try:
+        if pin:
+            definir_pin(op, pin, int(setor_id))
+        elif setor.modo_identificacao_operador == "pin":
+            return jsonify({"error": "PIN é obrigatório para operadores deste setor"}), 400
+        db.session.add(op)
+        db.session.commit()
+    except OperadorPinError as exc:
+        db.session.rollback()
+        return jsonify({"error": str(exc)}), 400
     return jsonify({"id": op.id, "nome": op.nome}), 201
 
 
@@ -334,9 +379,25 @@ def update_operador(operador_id: int):
     setor_id = request.form.get("setor_id")
     if not nome or not setor_id:
         return jsonify({"error": "Nome e setor são obrigatórios"}), 400
+    novo_setor = Setor.query.get(int(setor_id))
+    if not novo_setor:
+        return jsonify({"error": "Setor não encontrado"}), 404
 
+    setor_anterior_id = op.setor_id
     op.nome = nome
     op.setor_id = int(setor_id)
+
+    pin = (request.form.get("pin") or "").strip()
+    try:
+        if pin:
+            definir_pin(op, pin, int(setor_id))
+        elif setor_anterior_id != int(setor_id) and op.pin_hash:
+            return jsonify({"error": "Informe um novo PIN ao mover o operador para este setor"}), 400
+        elif novo_setor.modo_identificacao_operador == "pin" and not op.pin_hash:
+            return jsonify({"error": "PIN é obrigatório para operadores deste setor"}), 400
+    except OperadorPinError as exc:
+        db.session.rollback()
+        return jsonify({"error": str(exc)}), 400
 
     if request.form.get("remover_foto") == "1":
         delete_old_image(op.foto_perfil)

@@ -17,6 +17,8 @@ export default function EditOperadorPage() {
   const [setorId, setSetorId] = useState("");
   const [foto, setFoto] = useState<File | null>(null);
   const [removerFoto, setRemoverFoto] = useState(false);
+  const [pin, setPin] = useState("");
+  const [confirmarPin, setConfirmarPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -43,10 +45,13 @@ export default function EditOperadorPage() {
     setLoading(true);
     setError(null);
     try {
+      if (pin && !/^\d{4,6}$/.test(pin)) throw new Error("O PIN deve conter de 4 a 6 números");
+      if (pin !== confirmarPin) throw new Error("A confirmação do PIN não confere");
       const form = new FormData();
       form.set("nome", nome);
       form.set("setor_id", setorId);
       if (removerFoto) form.set("remover_foto", "1");
+      if (pin) form.set("pin", pin);
       if (foto) form.set("foto_perfil", foto);
       await apiFetch(`/api/v1/admin/operadores/${operador.id}`, { method: "PUT", body: form });
       router.push("/admin/operadores");
@@ -101,6 +106,36 @@ export default function EditOperadorPage() {
             <div className="space-y-2">
               <Label>Nova foto</Label>
               <Input type="file" accept="image/*" onChange={(e) => setFoto(e.target.files?.[0] || null)} />
+            </div>
+            <div className="rounded-lg border p-4 space-y-3">
+              <div>
+                <p className="font-medium">PIN de acesso</p>
+                <p className="text-xs text-muted-foreground">
+                  {operador.tem_pin ? "PIN configurado. Preencha para redefinir." : "Nenhum PIN configurado."}
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label>Novo PIN numérico</Label>
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="new-password"
+                  value={pin}
+                  maxLength={6}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Confirmar novo PIN</Label>
+                <Input
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="new-password"
+                  value={confirmarPin}
+                  maxLength={6}
+                  onChange={(e) => setConfirmarPin(e.target.value.replace(/\D/g, ""))}
+                />
+              </div>
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
             <div className="flex gap-2">

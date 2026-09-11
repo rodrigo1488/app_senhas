@@ -40,6 +40,9 @@ interface ApiService {
     @POST("api/v1/sessao/papel")
     suspend fun selecionarPapel(@Body body: SelecionarPapelRequest): SelecionarPapelResponse
 
+    @POST("api/v1/sessao/liberar_operador")
+    suspend fun liberarOperador(): SelecionarPapelResponse
+
     @GET("api/v1/setor/operadores")
     suspend fun listarOperadores(): OperadoresResponse
 

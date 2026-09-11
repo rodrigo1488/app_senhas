@@ -13,6 +13,7 @@ export default function SetoresPage() {
   const [nome, setNome] = useState("");
   const [descricao, setDescricao] = useState("");
   const [senhaSetor, setSenhaSetor] = useState("");
+  const [modoIdentificacao, setModoIdentificacao] = useState<"foto" | "pin">("foto");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -29,6 +30,7 @@ export default function SetoresPage() {
     setNome(setor.nome);
     setDescricao(setor.descricao || "");
     setSenhaSetor(setor.senha_setor || "");
+    setModoIdentificacao(setor.modo_identificacao_operador || "foto");
   }
 
   function resetForm() {
@@ -36,6 +38,7 @@ export default function SetoresPage() {
     setNome("");
     setDescricao("");
     setSenhaSetor("");
+    setModoIdentificacao("foto");
   }
 
   async function onSubmit(e: FormEvent) {
@@ -43,7 +46,12 @@ export default function SetoresPage() {
     setLoading(true);
     setError(null);
     try {
-      const body = JSON.stringify({ nome, descricao, senha_setor: senhaSetor });
+      const body = JSON.stringify({
+        nome,
+        descricao,
+        senha_setor: senhaSetor,
+        modo_identificacao_operador: modoIdentificacao,
+      });
       if (editing) {
         await apiFetch(`/api/v1/admin/setores/${editing.id}`, { method: "PUT", body });
       } else {
@@ -85,6 +93,17 @@ export default function SetoresPage() {
               <Label>Código / senha do setor</Label>
               <Input value={senhaSetor} onChange={(e) => setSenhaSetor(e.target.value)} />
             </div>
+            <div className="space-y-2">
+              <Label>Identificação dos operadores</Label>
+              <select
+                className="flex h-10 w-full rounded-lg border border-input bg-card px-3 text-sm"
+                value={modoIdentificacao}
+                onChange={(e) => setModoIdentificacao(e.target.value as "foto" | "pin")}
+              >
+                <option value="foto">Clique na foto</option>
+                <option value="pin">PIN numérico</option>
+              </select>
+            </div>
             <div className="space-y-2 md:col-span-2">
               <Label>Descrição</Label>
               <Input value={descricao} onChange={(e) => setDescricao(e.target.value)} />
@@ -115,6 +134,9 @@ export default function SetoresPage() {
                 <p className="font-medium">{s.nome}</p>
                 <p className="text-xs text-muted-foreground">
                   Código: {s.senha_setor || "—"} · {s.descricao || "Sem descrição"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Operadores: {s.modo_identificacao_operador === "pin" ? "PIN numérico" : "Clique na foto"}
                 </p>
               </div>
               <div className="flex gap-2">

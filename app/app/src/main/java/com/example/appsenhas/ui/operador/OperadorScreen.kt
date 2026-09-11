@@ -18,7 +18,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PhoneCallback
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Receipt
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -44,9 +45,7 @@ import coil.compose.AsyncImage
 import com.example.appsenhas.data.remote.NetworkModule
 import com.example.appsenhas.data.remote.dto.SenhaDto
 import com.example.appsenhas.ui.theme.FundoOperadorClaro
-import com.example.appsenhas.ui.theme.GradienteConfirmar
 import com.example.appsenhas.ui.theme.GradienteHeroOperador
-import com.example.appsenhas.ui.theme.GradienteVerPedido
 import com.example.appsenhas.ui.theme.IndigoApp
 import com.example.appsenhas.ui.theme.VermelhoPreferencial
 
@@ -55,11 +54,32 @@ import com.example.appsenhas.ui.theme.VermelhoPreferencial
  * e lista de senhas pendentes abaixo. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun OperadorScreen(viewModel: OperadorViewModel = viewModel()) {
+fun OperadorScreen(
+    onTrocarOperador: () -> Unit = {},
+    viewModel: OperadorViewModel = viewModel(),
+) {
+    if (viewModel.pedidoDialogVisible) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("Pedido da senha ${viewModel.senhaChamadaAtual ?: ""}") },
+            text = { Text(viewModel.pedidoAtual ?: "Pedido não informado") },
+            confirmButton = {
+                Button(onClick = { viewModel.confirmarPedido() }) {
+                    Text("Confirmar pedido")
+                }
+            },
+        )
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(viewModel.meuOperadorNome ?: "Operador", fontWeight = FontWeight.Bold) },
+                actions = {
+                    TextButton(onClick = { viewModel.trocarOperador(onTrocarOperador) }) {
+                        Text("Trocar operador", color = Color.White)
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = IndigoApp, titleContentColor = Color.White),
             )
         },
@@ -162,32 +182,6 @@ private fun SenhaAtualHero(viewModel: OperadorViewModel) {
                             fontSize = if (senhaAtual != null) 40.sp else 16.sp,
                             fontWeight = FontWeight.Bold,
                         )
-                    }
-                }
-
-                if (viewModel.temPedidoAtual) {
-                    Button(
-                        onClick = { viewModel.confirmarPedido() },
-                        shape = RoundedCornerShape(50),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-                        modifier = Modifier.padding(top = 16.dp),
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .background(GradienteVerPedido, RoundedCornerShape(50))
-                                .padding(horizontal = 20.dp, vertical = 10.dp),
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Filled.Receipt, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
-                                Text(
-                                    "  Ver Pedido: ${viewModel.pedidoAtual ?: ""}",
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                            }
-                        }
                     }
                 }
 

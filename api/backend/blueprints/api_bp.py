@@ -11,10 +11,14 @@ Convenções:
   `GET /fila` a cada N segundos) — os únicos GETs são para hidratar a tela
   na abertura (login, lista de operadores, estado inicial da fila).
 """
+from collections import defaultdict
+from threading import Lock
+from time import monotonic
+
 from flask import Blueprint, jsonify, request
 
 from backend.auth import api_token_required, create_session_token
-from backend.models import Impressora, Operador, Senha, Setor
+from backend.models import AtendimentoAtual, Impressora, Operador, Senha, Setor
 from backend.services.avaliacao_service import AvaliacaoError, buscar_avaliacao_pendente, registrar_avaliacao
 from backend.services.fila_service import (
     FilaError,
@@ -27,7 +31,8 @@ from backend.services.fila_service import (
     salvar_pedido,
     serializar_fila,
 )
-from backend.services.impressao_service import imprimir_senha_com_ip
+from backend.services.impressao_service import imprimir_senha_com_ip, imprimir_senha_em_background
+from backend.services.operador_pin_service import identificar_operador_por_pin
 from backend.sockets.emitters import (
     broadcast_posicao_fila,
     emit_avaliacao_solicitada,
@@ -38,6 +43,32 @@ from backend.sockets.emitters import (
 )
 
 api_bp = Blueprint("api_v1", __name__, url_prefix="/api/v1")
+_PIN_MAX_ATTEMPTS = 5
+_PIN_WINDOW_SECONDS = 300
+_pin_attempts: dict[tuple[int, str], list[float]] = defaultdict(list)
+_pin_attempts_lock = Lock()
+
+
+def _pin_attempt_key(setor_id: int) -> tuple[int, str]:
+    return setor_id, request.remote_addr or "unknown"
+
+
+def _pin_is_blocked(key: tuple[int, str]) -> bool:
+    now = monotonic()
+    with _pin_attempts_lock:
+        recent = [value for value in _pin_attempts[key] if now - value < _PIN_WINDOW_SECONDS]
+        _pin_attempts[key] = recent
+        return len(recent) >= _PIN_MAX_ATTEMPTS
+
+
+def _register_pin_failure(key: tuple[int, str]) -> None:
+    with _pin_attempts_lock:
+        _pin_attempts[key].append(monotonic())
+
+
+def _clear_pin_failures(key: tuple[int, str]) -> None:
+    with _pin_attempts_lock:
+        _pin_attempts.pop(key, None)
 
 
 @api_bp.route("/health")
@@ -74,9 +105,45 @@ def selecionar_papel(session_payload):
     if role not in {"cliente", "operador", "avaliacao", "tv"}:
         return jsonify({"error": "role deve ser cliente, operador, avaliacao ou tv"}), 400
 
+    setor_id = session_payload["setor_id"]
     operador_id = data.get("operador_id")
+    operador = None
+    if role == "operador":
+        setor = Setor.query.get(setor_id)
+        modo = (setor.modo_identificacao_operador if setor else "foto") or "foto"
+        if modo == "pin":
+            attempt_key = _pin_attempt_key(setor_id)
+            if _pin_is_blocked(attempt_key):
+                return jsonify({"error": "Muitas tentativas. Aguarde 5 minutos"}), 429
+            operador = identificar_operador_por_pin(setor_id, data.get("pin") or "")
+            if not operador:
+                _register_pin_failure(attempt_key)
+                return jsonify({"error": "PIN inválido"}), 401
+            _clear_pin_failures(attempt_key)
+        else:
+            operador = Operador.query.filter_by(id=operador_id, setor_id=setor_id).first()
+            if not operador:
+                return jsonify({"error": "Operador inválido para este setor"}), 400
+        operador_id = operador.id
+    elif role == "avaliacao" and operador_id:
+        operador = Operador.query.filter_by(id=operador_id, setor_id=setor_id).first()
+        if not operador:
+            return jsonify({"error": "Operador inválido para este setor"}), 400
+    else:
+        operador_id = None
+
     session_token = create_session_token(session_payload["setor_id"], role=role, operador_id=operador_id)
-    return jsonify({"session_token": session_token})
+    return jsonify({
+        "session_token": session_token,
+        "operador": operador.to_dict() if operador else None,
+    })
+
+
+@api_bp.route("/sessao/liberar_operador", methods=["POST"])
+@api_token_required
+def liberar_operador(session_payload):
+    session_token = create_session_token(session_payload["setor_id"], role="generic")
+    return jsonify({"session_token": session_token, "operador": None})
 
 
 # --- Setor / operadores -------------------------------------------------------
@@ -84,8 +151,13 @@ def selecionar_papel(session_payload):
 @api_bp.route("/setor/operadores", methods=["GET"])
 @api_token_required
 def setor_operadores(session_payload):
+    setor = Setor.query.get(session_payload["setor_id"])
     operadores = listar_operadores(session_payload["setor_id"])
-    return jsonify({"operadores": [o.to_dict() for o in operadores]})
+    modo = (setor.modo_identificacao_operador if setor else "foto") or "foto"
+    return jsonify({
+        "modo_identificacao_operador": modo,
+        "operadores": [o.to_dict() for o in operadores],
+    })
 
 
 @api_bp.route("/setor/fila", methods=["GET"])
@@ -99,7 +171,12 @@ def setor_fila(session_payload):
 @api_bp.route("/setor/atendimento_atual", methods=["GET"])
 @api_token_required
 def setor_atendimento_atual(session_payload):
-    estado = estado_atendimento_atual(session_payload["setor_id"])
+    if session_payload.get("role") != "operador" or not session_payload.get("operador_id"):
+        return jsonify({"error": "Sessão de operador obrigatória"}), 403
+    estado = estado_atendimento_atual(
+        session_payload["setor_id"],
+        session_payload["operador_id"],
+    )
     return jsonify(estado or {})
 
 
@@ -120,7 +197,7 @@ def criar_senha_route(session_payload):
     setor = Setor.query.get(setor_id)
     impressora = Impressora.query.filter_by(setor_id=setor_id).first()
     if impressora:
-        imprimir_senha_com_ip(
+        imprimir_senha_em_background(
             senha.senha, impressora.ip,
             nome_setor=setor.nome if setor else "Setor",
             descricao_setor=setor.descricao if setor else "",
@@ -166,7 +243,11 @@ def posicao_route(session_payload, token):
 @api_token_required
 def chamar_proxima_route(session_payload):
     data = request.get_json(silent=True) or {}
-    operador_id = data.get("operador_id") or session_payload.get("operador_id")
+    if session_payload.get("role") != "operador" or not session_payload.get("operador_id"):
+        return jsonify({"error": "Sessão de operador obrigatória"}), 403
+    operador_id = session_payload["operador_id"]
+    if data.get("operador_id") not in {None, operador_id}:
+        return jsonify({"error": "Não é permitido chamar por outro operador"}), 403
     setor_id = session_payload["setor_id"]
     if not operador_id:
         return jsonify({"error": "operador_id é obrigatório"}), 400
@@ -177,7 +258,13 @@ def chamar_proxima_route(session_payload):
         return jsonify({"error": str(exc)}), 400
 
     emit_fila_atualizada(setor_id)
-    emit_senha_chamada(resultado.senha, resultado.operador.nome, resultado.operador.foto_perfil, resultado.alerta_preferenciais)
+    emit_senha_chamada(
+        resultado.senha,
+        resultado.operador.nome,
+        resultado.operador.foto_perfil,
+        resultado.alerta_preferenciais,
+        resultado.operador.id,
+    )
     broadcast_posicao_fila(setor_id)
 
     if resultado.senha_anterior_finalizada:
@@ -208,30 +295,61 @@ def chamar_proxima_route(session_payload):
 @api_bp.route("/operador/chamar_novamente", methods=["POST"])
 @api_token_required
 def chamar_novamente_route(session_payload):
+    if session_payload.get("role") != "operador" or not session_payload.get("operador_id"):
+        return jsonify({"error": "Sessão de operador obrigatória"}), 403
     data = request.get_json(silent=True) or {}
     senha_id = data.get("senha_id")
     if not senha_id:
         return jsonify({"error": "senha_id é obrigatório"}), 400
+    atendimento = AtendimentoAtual.query.filter_by(
+        setor_id=session_payload["setor_id"],
+        operador_id=session_payload["operador_id"],
+        senha_id=int(senha_id),
+    ).first()
+    if not atendimento:
+        return jsonify({"error": "Senha não pertence ao atendimento deste operador"}), 403
     try:
         senha = chamar_novamente(int(senha_id))
     except FilaError as exc:
         return jsonify({"error": str(exc)}), 404
 
     operador = Operador.query.get(session_payload.get("operador_id")) if session_payload.get("operador_id") else None
-    emit_senha_chamada(senha, operador.nome if operador else "", operador.foto_perfil if operador else None)
+    emit_senha_chamada(
+        senha,
+        operador.nome if operador else "",
+        operador.foto_perfil if operador else None,
+        operador_id=operador.id if operador else None,
+    )
     return jsonify({"success": True})
 
 
 @api_bp.route("/operador/confirmar_pedido", methods=["POST"])
 @api_token_required
 def confirmar_pedido_route(session_payload):
+    if session_payload.get("role") != "operador" or not session_payload.get("operador_id"):
+        return jsonify({"error": "Sessão de operador obrigatória"}), 403
     data = request.get_json(silent=True) or {}
     senha_codigo = data.get("senha")
     mensagem = data.get("mensagem", "Pedido sendo preparado")
     if not senha_codigo:
         return jsonify({"error": "senha é obrigatório"}), 400
+    senha_atual = (
+        Senha.query.join(AtendimentoAtual, AtendimentoAtual.senha_id == Senha.id)
+        .filter(
+            AtendimentoAtual.setor_id == session_payload["setor_id"],
+            AtendimentoAtual.operador_id == session_payload["operador_id"],
+            Senha.senha == senha_codigo,
+        )
+        .first()
+    )
+    if not senha_atual:
+        return jsonify({"error": "Senha não pertence ao atendimento deste operador"}), 403
     try:
-        senha = confirmar_pedido(senha_codigo)
+        senha = confirmar_pedido(
+            senha_codigo,
+            session_payload["setor_id"],
+            session_payload["operador_id"],
+        )
     except FilaError as exc:
         return jsonify({"error": str(exc)}), 404
     if senha.token_unico:

@@ -13,7 +13,7 @@ from flask_socketio import emit, join_room
 
 from backend.auth import decode_session_token
 from backend.extensions import socketio
-from backend.models import Impressora, Operador, Senha, Setor
+from backend.models import AtendimentoAtual, Impressora, Operador, Senha, Setor
 from backend.services.avaliacao_service import AvaliacaoError, registrar_avaliacao
 from backend.services.fila_service import (
     FilaError,
@@ -34,7 +34,7 @@ from backend.sockets.emitters import (
     emit_senha_criada,
     emit_senha_posicao,
 )
-from backend.sockets.events import EV_AUTH_ERRO, room_setor, room_ticket
+from backend.sockets.events import EV_AUTH_ERRO, room_operador, room_setor, room_ticket
 
 
 def _extract_token(auth) -> str | None:
@@ -82,6 +82,9 @@ def handle_connect(auth=None):
     setor_id = payload.get("setor_id")
     if setor_id:
         join_room(room_setor(setor_id))
+
+    if payload.get("role") == "operador" and payload.get("operador_id"):
+        join_room(room_operador(setor_id, payload["operador_id"]))
 
     if payload.get("role") == "avaliacao" and payload.get("operador_id"):
         from backend.sockets.events import room_avaliacao
@@ -154,8 +157,14 @@ def handle_cliente_salvar_pedido(data):
 
 @socketio.on("operador:chamar_proxima")
 def handle_operador_chamar_proxima(data):
+    if session.get("role") != "operador" or not session.get("operador_id"):
+        emit("erro", {"mensagem": "Sessão de operador obrigatória"})
+        return
     setor_id = session.get("setor_id")
-    operador_id = (data or {}).get("operador_id") or session.get("operador_id")
+    operador_id = session.get("operador_id")
+    if (data or {}).get("operador_id") not in {None, operador_id}:
+        emit("erro", {"mensagem": "Não é permitido chamar por outro operador"})
+        return
     if not setor_id or not operador_id:
         emit("erro", {"mensagem": "setor_id/operador_id não identificados"})
         return
@@ -166,7 +175,13 @@ def handle_operador_chamar_proxima(data):
         return
 
     emit_fila_atualizada(setor_id)
-    emit_senha_chamada(resultado.senha, resultado.operador.nome, resultado.operador.foto_perfil, resultado.alerta_preferenciais)
+    emit_senha_chamada(
+        resultado.senha,
+        resultado.operador.nome,
+        resultado.operador.foto_perfil,
+        resultado.alerta_preferenciais,
+        resultado.operador.id,
+    )
     broadcast_posicao_fila(setor_id)
 
     if resultado.senha_anterior_finalizada and resultado.senha_anterior_finalizada.token_unico:
@@ -185,29 +200,64 @@ def handle_operador_chamar_proxima(data):
 
 @socketio.on("operador:chamar_novamente")
 def handle_operador_chamar_novamente(data):
+    if session.get("role") != "operador" or not session.get("operador_id"):
+        emit("erro", {"mensagem": "Sessão de operador obrigatória"})
+        return
     senha_id = (data or {}).get("senha_id")
     if not senha_id:
         emit("erro", {"mensagem": "senha_id é obrigatório"})
+        return
+    atendimento = AtendimentoAtual.query.filter_by(
+        setor_id=session.get("setor_id"),
+        operador_id=session.get("operador_id"),
+        senha_id=senha_id,
+    ).first()
+    if not atendimento:
+        emit("erro", {"mensagem": "Senha não pertence ao atendimento deste operador"})
         return
     try:
         senha = chamar_novamente(senha_id)
     except FilaError as exc:
         emit("erro", {"mensagem": str(exc)})
         return
-    operador_nome, operador_foto = "", None
-    emit_senha_chamada(senha, operador_nome, operador_foto)
+    operador = Operador.query.get(session.get("operador_id"))
+    emit_senha_chamada(
+        senha,
+        operador.nome if operador else "",
+        operador.foto_perfil if operador else None,
+        operador_id=operador.id if operador else None,
+    )
 
 
 @socketio.on("operador:confirmar_pedido")
 def handle_operador_confirmar_pedido(data):
+    if session.get("role") != "operador" or not session.get("operador_id"):
+        emit("erro", {"mensagem": "Sessão de operador obrigatória"})
+        return
     data = data or {}
     senha_codigo = data.get("senha")
     mensagem = data.get("mensagem", "Pedido sendo preparado")
     if not senha_codigo:
         emit("erro", {"mensagem": "senha é obrigatório"})
         return
+    senha_atual = (
+        Senha.query.join(AtendimentoAtual, AtendimentoAtual.senha_id == Senha.id)
+        .filter(
+            AtendimentoAtual.setor_id == session.get("setor_id"),
+            AtendimentoAtual.operador_id == session.get("operador_id"),
+            Senha.senha == senha_codigo,
+        )
+        .first()
+    )
+    if not senha_atual:
+        emit("erro", {"mensagem": "Senha não pertence ao atendimento deste operador"})
+        return
     try:
-        senha = confirmar_pedido(senha_codigo)
+        senha = confirmar_pedido(
+            senha_codigo,
+            session.get("setor_id"),
+            session.get("operador_id"),
+        )
     except FilaError as exc:
         emit("erro", {"mensagem": str(exc)})
         return

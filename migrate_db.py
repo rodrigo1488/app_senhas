@@ -97,7 +97,8 @@ def migrate_database():
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     nome TEXT NOT NULL,
                     descricao TEXT,
-                    senha_setor TEXT
+                    senha_setor TEXT,
+                    modo_identificacao_operador TEXT NOT NULL DEFAULT 'foto'
                 )
             """)
             conn.commit()
@@ -114,6 +115,17 @@ def migrate_database():
                 print("✅ Coluna 'senha_setor' adicionada com sucesso!")
             else:
                 print("✅ Coluna 'senha_setor' já existe na tabela setores.")
+
+            if 'modo_identificacao_operador' not in columns:
+                print("Adicionando modo de identificação dos operadores...")
+                cursor.execute(
+                    "ALTER TABLE setores ADD COLUMN "
+                    "modo_identificacao_operador TEXT NOT NULL DEFAULT 'foto'"
+                )
+                conn.commit()
+                print("✅ Modo de identificação adicionado com sucesso!")
+            else:
+                print("✅ Modo de identificação já existe na tabela setores.")
         
         # Verificar se a tabela operadores existe
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='operadores'")
@@ -125,6 +137,7 @@ def migrate_database():
                     nome TEXT NOT NULL,
                     foto_perfil TEXT,
                     setor_id INTEGER,
+                    pin_hash TEXT,
                     FOREIGN KEY (setor_id) REFERENCES setores (id)
                 )
             """)
@@ -132,6 +145,15 @@ def migrate_database():
             print("✅ Tabela 'operadores' criada com sucesso!")
         else:
             print("✅ Tabela 'operadores' já existe.")
+            cursor.execute("PRAGMA table_info(operadores)")
+            columns = [column[1] for column in cursor.fetchall()]
+            if 'pin_hash' not in columns:
+                print("Adicionando hash do PIN à tabela operadores...")
+                cursor.execute("ALTER TABLE operadores ADD COLUMN pin_hash TEXT")
+                conn.commit()
+                print("✅ Hash do PIN adicionado com sucesso!")
+            else:
+                print("✅ Hash do PIN já existe na tabela operadores.")
         
         # Verificar se a tabela atendimento_atual existe
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='atendimento_atual'")

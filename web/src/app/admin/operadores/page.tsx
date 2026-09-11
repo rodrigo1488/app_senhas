@@ -14,6 +14,8 @@ export default function OperadoresPage() {
   const [nome, setNome] = useState("");
   const [setorId, setSetorId] = useState("");
   const [foto, setFoto] = useState<File | null>(null);
+  const [pin, setPin] = useState("");
+  const [confirmarPin, setConfirmarPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -37,13 +39,18 @@ export default function OperadoresPage() {
     setLoading(true);
     setError(null);
     try {
+      if (pin && !/^\d{4,6}$/.test(pin)) throw new Error("O PIN deve conter de 4 a 6 números");
+      if (pin !== confirmarPin) throw new Error("A confirmação do PIN não confere");
       const form = new FormData();
       form.set("nome", nome);
       form.set("setor_id", setorId);
+      if (pin) form.set("pin", pin);
       if (foto) form.set("foto_perfil", foto);
       await apiFetch("/api/v1/admin/operadores", { method: "POST", body: form });
       setNome("");
       setFoto(null);
+      setPin("");
+      setConfirmarPin("");
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao criar");
@@ -94,6 +101,28 @@ export default function OperadoresPage() {
               <Label>Foto (opcional)</Label>
               <Input type="file" accept="image/*" onChange={(e) => setFoto(e.target.files?.[0] || null)} />
             </div>
+            <div className="space-y-2">
+              <Label>PIN numérico (4 a 6 dígitos)</Label>
+              <Input
+                type="password"
+                inputMode="numeric"
+                autoComplete="new-password"
+                value={pin}
+                maxLength={6}
+                onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Confirmar PIN</Label>
+              <Input
+                type="password"
+                inputMode="numeric"
+                autoComplete="new-password"
+                value={confirmarPin}
+                maxLength={6}
+                onChange={(e) => setConfirmarPin(e.target.value.replace(/\D/g, ""))}
+              />
+            </div>
             {error && <p className="text-sm text-destructive md:col-span-2">{error}</p>}
             <Button type="submit" disabled={loading} className="md:col-span-2 md:w-fit">
               {loading ? "Salvando..." : "Adicionar"}
@@ -120,7 +149,9 @@ export default function OperadoresPage() {
                 )}
                 <div>
                   <p className="font-medium">{op.nome}</p>
-                  <p className="text-xs text-muted-foreground">{op.setor_nome || "Sem setor"}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {op.setor_nome || "Sem setor"} · {op.tem_pin ? "PIN configurado" : "Sem PIN"}
+                  </p>
                 </div>
               </div>
               <div className="flex gap-2">

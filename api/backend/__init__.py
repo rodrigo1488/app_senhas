@@ -193,6 +193,7 @@ def _init_database(app: Flask) -> None:
     import backend.models  # noqa: F401
 
     db.create_all()
+    _migrate_operator_identification_columns()
 
     is_sqlite = db.engine.dialect.name == "sqlite"
 
@@ -209,6 +210,29 @@ def _init_database(app: Flask) -> None:
         conn.commit()
 
     _seed_admin_padrao(app)
+
+
+def _migrate_operator_identification_columns() -> None:
+    """Adiciona, de forma idempotente, campos novos em SQLite e PostgreSQL."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    setores_columns = {column["name"] for column in inspector.get_columns("setores")}
+    operadores_columns = {column["name"] for column in inspector.get_columns("operadores")}
+    if_not_exists = "IF NOT EXISTS " if db.engine.dialect.name == "postgresql" else ""
+
+    with db.engine.begin() as conn:
+        if "modo_identificacao_operador" not in setores_columns:
+            conn.execute(
+                text(
+                    f"ALTER TABLE setores ADD COLUMN {if_not_exists}"
+                    "modo_identificacao_operador VARCHAR(10) NOT NULL DEFAULT 'foto'"
+                )
+            )
+        if "pin_hash" not in operadores_columns:
+            conn.execute(
+                text(f"ALTER TABLE operadores ADD COLUMN {if_not_exists}pin_hash TEXT")
+            )
 
 
 def _seed_admin_padrao(app: Flask) -> None:

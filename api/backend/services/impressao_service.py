@@ -8,6 +8,19 @@ from flask import current_app
 from backend.utils import gerar_imagem_senha, gerar_qr_code_notificacao, obter_nome_empresa
 
 
+def imprimir_senha_em_background(*args, **kwargs) -> None:
+    """Despacha a impressão sem bloquear a resposta do totem."""
+    app = current_app._get_current_object()
+
+    def executar():
+        with app.app_context():
+            imprimir_senha_com_ip(*args, **kwargs)
+
+    from backend.extensions import socketio
+
+    socketio.start_background_task(executar)
+
+
 def imprimir_senha_com_ip(
     senha: str,
     impressora_ip: str,

@@ -201,12 +201,19 @@ def salvar_pedido(token_unico: str, pedido: str) -> Senha:
     return senha
 
 
-def confirmar_pedido(senha_codigo: str) -> Senha:
-    senha = (
-        Senha.query.filter_by(senha=senha_codigo, status="C")
-        .order_by(Senha.id.desc())
-        .first()
-    )
+def confirmar_pedido(
+    senha_codigo: str,
+    setor_id: int | None = None,
+    operador_id: int | None = None,
+) -> Senha:
+    query = Senha.query.filter_by(senha=senha_codigo, status="C")
+    if setor_id is not None:
+        query = query.filter(Senha.setor_id == setor_id)
+    if operador_id is not None:
+        query = query.join(AtendimentoAtual, AtendimentoAtual.senha_id == Senha.id).filter(
+            AtendimentoAtual.operador_id == operador_id
+        )
+    senha = query.order_by(Senha.id.desc()).first()
     if not senha:
         raise FilaError("Senha não encontrada ou não está em atendimento")
     senha.pedido_confirmado = True
@@ -242,18 +249,20 @@ def posicao_na_fila(token_unico: str) -> dict:
     }
 
 
-def estado_atendimento_atual(setor_id: int) -> Optional[dict]:
+def estado_atendimento_atual(setor_id: int, operador_id: int | None = None) -> Optional[dict]:
     """Estado da senha em atendimento no momento, no formato do payload de
     `senha:chamada` — usado para hidratar a tela sem precisar de fetch quando
     ela é aberta/recarregada (ver `operador_bp.py` e `filas_bp.py`)."""
-    row = (
+    query = (
         db.session.query(AtendimentoAtual, Operador, Senha)
         .join(Operador, AtendimentoAtual.operador_id == Operador.id)
         .join(Senha, AtendimentoAtual.senha_id == Senha.id)
         .filter(AtendimentoAtual.setor_id == setor_id, Senha.status == "C")
         .order_by(Senha.id.desc())
-        .first()
     )
+    if operador_id is not None:
+        query = query.filter(AtendimentoAtual.operador_id == operador_id)
+    row = query.first()
     if not row:
         return None
     _, operador, senha = row
@@ -263,10 +272,12 @@ def estado_atendimento_atual(setor_id: int) -> Optional[dict]:
         "senha_id": senha.id,
         "senha": senha.senha,
         "tipo": senha.tipo,
+        "operador_id": operador.id,
         "operador_nome": operador.nome,
         "operador_foto": operador.foto_perfil,
         "tem_pedido": bool(senha.tem_pedido),
         "pedido": senha.pedido,
+        "pedido_confirmado": bool(senha.pedido_confirmado),
         "alerta_preferenciais": False,
     }
 

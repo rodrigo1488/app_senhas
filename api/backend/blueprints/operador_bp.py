@@ -93,7 +93,13 @@ def chamar_proxima_route():
         return make_response(jsonify({"success": False, "error": str(exc)}), 400)
 
     emit_fila_atualizada(int(setor_id))
-    emit_senha_chamada(resultado.senha, resultado.operador.nome, resultado.operador.foto_perfil, resultado.alerta_preferenciais)
+    emit_senha_chamada(
+        resultado.senha,
+        resultado.operador.nome,
+        resultado.operador.foto_perfil,
+        resultado.alerta_preferenciais,
+        resultado.operador.id,
+    )
     broadcast_posicao_fila(int(setor_id))
 
     if resultado.senha_anterior_finalizada and resultado.senha_anterior_finalizada.token_unico:
@@ -142,7 +148,12 @@ def chamar_senha_novamente():
         imprimir_senha_com_ip(senha.senha, impressora_ip)
 
     operador = Operador.query.get(operador_id)
-    emit_senha_chamada(senha, operador.nome if operador else "", operador.foto_perfil if operador else None)
+    emit_senha_chamada(
+        senha,
+        operador.nome if operador else "",
+        operador.foto_perfil if operador else None,
+        operador_id=operador.id if operador else None,
+    )
 
     return jsonify({"success": True, "message": f"Senha {senha.senha} chamada novamente"})
 

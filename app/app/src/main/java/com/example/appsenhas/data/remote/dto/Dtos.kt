@@ -14,6 +14,7 @@ data class SetorDto(
     val id: Int,
     val nome: String,
     val descricao: String? = null,
+    val modo_identificacao_operador: String = "foto",
 )
 
 @Serializable
@@ -22,6 +23,7 @@ data class OperadorDto(
     val nome: String,
     val foto_perfil: String? = null,
     val setor_id: Int? = null,
+    val tem_pin: Boolean = false,
 )
 
 @Serializable
@@ -45,6 +47,9 @@ data class AtendimentoDto(
     val senha: String,
     val tipo: String,
     val senha_id: Int? = null,
+    val tem_pedido: Boolean = false,
+    val pedido: String? = null,
+    val pedido_confirmado: Boolean = false,
 )
 
 @Serializable
@@ -57,6 +62,7 @@ data class FilaDto(
 @Serializable
 data class AtendimentoAtualDto(
     val setor_id: Int? = null,
+    val operador_id: Int? = null,
     val ticket_token: String? = null,
     val senha_id: Int? = null,
     val senha: String? = null,
@@ -65,6 +71,7 @@ data class AtendimentoAtualDto(
     val operador_foto: String? = null,
     val tem_pedido: Boolean = false,
     val pedido: String? = null,
+    val pedido_confirmado: Boolean = false,
     val alerta_preferenciais: Boolean = false,
 )
 
@@ -110,13 +117,23 @@ data class SetorLoginRequest(val codigo_setor: String)
 data class SetorLoginResponse(val session_token: String, val setor: SetorDto)
 
 @Serializable
-data class SelecionarPapelRequest(val role: String, val operador_id: Int? = null)
+data class SelecionarPapelRequest(
+    val role: String,
+    val operador_id: Int? = null,
+    val pin: String? = null,
+)
 
 @Serializable
-data class SelecionarPapelResponse(val session_token: String)
+data class SelecionarPapelResponse(
+    val session_token: String,
+    val operador: OperadorDto? = null,
+)
 
 @Serializable
-data class OperadoresResponse(val operadores: List<OperadorDto> = emptyList())
+data class OperadoresResponse(
+    val operadores: List<OperadorDto> = emptyList(),
+    val modo_identificacao_operador: String = "foto",
+)
 
 @Serializable
 data class CriarSenhaRequest(val tipo: String)

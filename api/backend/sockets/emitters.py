@@ -17,6 +17,7 @@ from backend.sockets.events import (
     EV_SENHA_CRIADA,
     EV_SENHA_POSICAO,
     room_avaliacao,
+    room_operador,
     room_setor,
     room_ticket,
 )
@@ -34,23 +35,46 @@ def emit_senha_criada(senha: Senha, to_sid: str | None = None) -> None:
         socketio.emit(EV_SENHA_CRIADA, payload, room=room_ticket(senha.token_unico))
 
 
-def emit_senha_chamada(senha: Senha, operador_nome: str, operador_foto: str | None, alerta_preferenciais: bool = False) -> None:
+def emit_senha_chamada(
+    senha: Senha,
+    operador_nome: str,
+    operador_foto: str | None,
+    alerta_preferenciais: bool = False,
+    operador_id: int | None = None,
+) -> None:
     payload = {
         "setor_id": senha.setor_id,
         "ticket_token": senha.token_unico,
         "senha_id": senha.id,
         "senha": senha.senha,
         "tipo": senha.tipo,
+        "operador_id": operador_id,
         "operador_nome": operador_nome,
         "operador_foto": operador_foto,
-        "tem_pedido": bool(senha.tem_pedido),
-        "pedido": senha.pedido,
         "alerta_preferenciais": alerta_preferenciais,
     }
     if senha.setor_id:
         socketio.emit(EV_SENHA_CHAMADA, payload, room=room_setor(senha.setor_id))
+        if operador_id:
+            socketio.emit(
+                EV_SENHA_CHAMADA,
+                {
+                    **payload,
+                    "tem_pedido": bool(senha.tem_pedido),
+                    "pedido": senha.pedido,
+                },
+                room=room_operador(senha.setor_id, operador_id),
+            )
     if senha.token_unico:
-        socketio.emit(EV_SENHA_CHAMADA, payload, room=room_ticket(senha.token_unico))
+        socketio.emit(
+            EV_SENHA_CHAMADA,
+            {
+                **payload,
+                "tem_pedido": bool(senha.tem_pedido),
+                "pedido": senha.pedido,
+            },
+            room=room_ticket(senha.token_unico),
+        )
 
 
 def emit_senha_posicao(posicao_info: dict) -> None:

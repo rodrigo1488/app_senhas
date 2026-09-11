@@ -19,6 +19,7 @@ sealed class SocketEvent {
         val ticketToken: String?,
         val senha: String,
         val tipo: String?,
+        val operadorId: Int?,
         val operadorNome: String?,
         val operadorFoto: String?,
         val temPedido: Boolean,

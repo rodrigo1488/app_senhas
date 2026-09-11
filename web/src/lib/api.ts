@@ -40,6 +40,7 @@ export type Setor = {
   nome: string;
   descricao: string;
   senha_setor: string;
+  modo_identificacao_operador: "foto" | "pin";
 };
 
 export type Operador = {
@@ -48,6 +49,7 @@ export type Operador = {
   setor_id: number | null;
   setor_nome: string | null;
   foto_perfil: string | null;
+  tem_pin: boolean;
 };
 
 export type Impressora = {
