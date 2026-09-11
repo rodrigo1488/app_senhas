@@ -80,3 +80,8 @@ API_INTERNAL_URL=http://127.0.0.1:5000 npm run dev
   memória entre workers sem Redis).
 - Kiosk HTML (`/senhas`, `/senha_atual`, etc.) continua na API Flask.
 - Rotas Jinja `/admin` e `/login` redirecionam para o Next (`ADMIN_WEB_URL`).
+- QR do cliente: `{ADMIN_WEB_URL}/acompanhar/<token>` (ver README_NOTIFICACOES).
+- No boot, a API adiciona colunas `senhas.chamada_em` / `senhas.finalizado_em`
+  se ainda não existirem (necessário para métricas de espera do dashboard).
+- Abandono operacional: senhas `A` há mais de 30 min (configurável). Ver
+  seção Analytics no [README](../README.md).

@@ -9,6 +9,7 @@ depois).
 from backend.extensions import socketio
 from backend.models import Senha
 from backend.services.fila_service import serializar_fila
+from backend.services.push_service import push_chamada, push_pedido, push_posicao
 from backend.sockets.events import (
     EV_AVALIACAO_SOLICITADA,
     EV_FILA_ATUALIZADA,
@@ -75,10 +76,25 @@ def emit_senha_chamada(
             },
             room=room_ticket(senha.token_unico),
         )
+        push_chamada(senha, operador_nome)
 
 
 def emit_senha_posicao(posicao_info: dict) -> None:
     socketio.emit(EV_SENHA_POSICAO, posicao_info, room=room_ticket(posicao_info["token_unico"]))
+    token = posicao_info.get("token_unico")
+    if not token:
+        return
+    senha = Senha.query.filter_by(token_unico=token).first()
+    if not senha:
+        return
+    try:
+        push_posicao(
+            senha,
+            int(posicao_info.get("posicao", 99)),
+            str(posicao_info.get("status") or senha.status or ""),
+        )
+    except Exception:
+        pass
 
 
 def broadcast_posicao_fila(setor_id: int) -> None:
@@ -99,6 +115,10 @@ def emit_pedido_status(ticket_token: str, pedido: str, status: str, mensagem: st
         {"ticket_token": ticket_token, "pedido": pedido, "status": status, "mensagem": mensagem},
         room=room_ticket(ticket_token),
     )
+    if status == "preparando":
+        senha = Senha.query.filter_by(token_unico=ticket_token).first()
+        if senha:
+            push_pedido(senha, mensagem)
 
 
 def emit_avaliacao_solicitada(setor_id: int, operador_id: int, operador_nome: str, operador_foto: str | None, senha_id: int, senha_codigo: str) -> None:

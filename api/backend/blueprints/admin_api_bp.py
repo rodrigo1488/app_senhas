@@ -115,12 +115,44 @@ def me():
     )
 
 
-# --- Dashboard --------------------------------------------------------------
+# --- Dashboard / Analytics --------------------------------------------------
+
+
+@admin_api_bp.route("/analytics", methods=["GET"])
+@api_login_required
+def analytics():
+    from backend.services.analytics_service import montar_analytics
+
+    setor_raw = request.args.get("setor_id")
+    op_raw = request.args.get("operador_id")
+    abandono_raw = request.args.get("abandono_minutos")
+    try:
+        setor_id = int(setor_raw) if setor_raw else None
+    except ValueError:
+        return jsonify({"error": "setor_id inválido"}), 400
+    try:
+        operador_id = int(op_raw) if op_raw else None
+    except ValueError:
+        return jsonify({"error": "operador_id inválido"}), 400
+    try:
+        abandono_minutos = int(abandono_raw) if abandono_raw else None
+    except ValueError:
+        return jsonify({"error": "abandono_minutos inválido"}), 400
+
+    payload = montar_analytics(
+        from_s=request.args.get("from"),
+        to_s=request.args.get("to"),
+        setor_id=setor_id,
+        operador_id=operador_id,
+        abandono_minutos=abandono_minutos,
+    )
+    return jsonify(payload)
 
 
 @admin_api_bp.route("/dashboard", methods=["GET"])
 @api_login_required
 def dashboard():
+    """Legado — preferir GET /api/v1/admin/analytics."""
     hoje = date.today()
     inicio_dia = datetime(hoje.year, hoje.month, hoje.day)
     fim_dia = inicio_dia + timedelta(days=1)

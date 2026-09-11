@@ -14,6 +14,30 @@ const nextConfig: NextConfig = {
         source: "/uploads/:path*",
         destination: `${apiInternal}/uploads/:path*`,
       },
+      {
+        source: "/api/registrar_push/:token",
+        destination: `${apiInternal}/api/registrar_push/:token`,
+      },
+      {
+        source: "/api/salvar_pedido/:token",
+        destination: `${apiInternal}/api/salvar_pedido/:token`,
+      },
+      {
+        source: "/api/verificar_senha/:token",
+        destination: `${apiInternal}/api/verificar_senha/:token`,
+      },
+      {
+        source: "/api/avaliar/:token",
+        destination: `${apiInternal}/api/avaliar/:token`,
+      },
+      {
+        source: "/api/vapid-public-key",
+        destination: `${apiInternal}/api/vapid-public-key`,
+      },
+      {
+        source: "/socket.io/:path*",
+        destination: `${apiInternal}/socket.io/:path*`,
+      },
     ];
   },
 };

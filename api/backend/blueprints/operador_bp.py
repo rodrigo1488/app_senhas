@@ -17,7 +17,6 @@ from backend.services.fila_service import (
     listar_operadores,
     serializar_fila,
 )
-from backend.services.impressao_service import imprimir_senha_com_ip
 from backend.sockets.emitters import (
     broadcast_posicao_fila,
     emit_avaliacao_solicitada,
@@ -115,10 +114,6 @@ def chamar_proxima_route():
             resultado.senha_anterior_finalizada.id, resultado.senha_anterior_finalizada.senha,
         )
 
-    impressora_ip = request.cookies.get("end_impressora_local")
-    if impressora_ip:
-        imprimir_senha_com_ip(resultado.senha.senha, impressora_ip)
-
     resp = make_response(jsonify({
         "success": True,
         "senha": resultado.senha.senha,
@@ -142,10 +137,6 @@ def chamar_senha_novamente():
         senha = chamar_novamente_por_codigo(senha_codigo)
     except FilaError as exc:
         return jsonify({"error": str(exc)}), 404
-
-    impressora_ip = request.cookies.get("end_impressora_local")
-    if impressora_ip:
-        imprimir_senha_com_ip(senha.senha, impressora_ip)
 
     operador = Operador.query.get(operador_id)
     emit_senha_chamada(

@@ -15,6 +15,7 @@ import random
 import threading
 from collections import defaultdict
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Optional
 
 from backend.extensions import db
@@ -115,12 +116,14 @@ def chamar_proxima(setor_id: int, operador_id: int) -> ChamadaResultado:
             .order_by(AtendimentoAtual.id.desc())
             .first()
         )
+        agora = datetime.now()
         if ultimo_atendimento:
             senha_anterior = Senha.query.get(ultimo_atendimento.senha_id)
             db.session.add(Finalizado(senha_id=ultimo_atendimento.senha_id, operador_id=operador_id, setor_id=setor_id, avaliacao=""))
             db.session.delete(ultimo_atendimento)
             if senha_anterior:
                 senha_anterior.status = "F"
+                senha_anterior.finalizado_em = agora
                 senha_anterior_finalizada = senha_anterior
 
         todas = (
@@ -168,7 +171,8 @@ def chamar_proxima(setor_id: int, operador_id: int) -> ChamadaResultado:
             raise FilaError("Sem senhas pendentes")
 
         proxima.status = "C"
-        db.session.add(AtendimentoAtual(senha_id=proxima.id, setor_id=setor_id, operador_id=operador_id))
+        proxima.chamada_em = agora
+        db.session.add(AtendimentoAtual(senha_id=proxima.id, setor_id=setor_id, operador_id=operador_id, data_hora=agora))
 
         from backend.utils import set_configuracao
         set_configuracao(normais_chamadas_key, str(normais_chamadas))
@@ -237,6 +241,12 @@ def posicao_na_fila(token_unico: str) -> dict:
             Senha.setor_id == senha.setor_id, Senha.status == "A", Senha.id < senha.id
         ).count()
 
+    avaliacao_pendente = False
+    if senha.status == "F":
+        from backend.services.avaliacao_service import avaliacao_pendente_por_senha
+
+        avaliacao_pendente = avaliacao_pendente_por_senha(senha.id)
+
     return {
         "token_unico": token_unico,
         "posicao": posicao,
@@ -246,6 +256,7 @@ def posicao_na_fila(token_unico: str) -> dict:
         "tem_pedido": bool(senha.tem_pedido),
         "pedido": senha.pedido,
         "pedido_confirmado": bool(senha.pedido_confirmado),
+        "avaliacao_pendente": avaliacao_pendente,
     }
 
 
@@ -287,6 +298,7 @@ def verificar_senha(token_unico: str) -> dict:
     if not senha:
         raise FilaError("Token não encontrado")
     setor = Setor.query.get(senha.setor_id) if senha.setor_id else None
+    posicao_info = posicao_na_fila(token_unico)
     return {
         "senha": senha.senha,
         "status": senha.status,
@@ -296,4 +308,7 @@ def verificar_senha(token_unico: str) -> dict:
         "tem_pedido": bool(senha.tem_pedido),
         "pedido_confirmado": bool(senha.pedido_confirmado),
         "setor": setor.nome if setor else "N/A",
+        # Campos alinhados a `senha:posicao` para hidratar a tela Next sem socket.
+        **posicao_info,
+        "setor_nome": posicao_info.get("setor_nome") or (setor.nome if setor else "Geral"),
     }

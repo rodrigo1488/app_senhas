@@ -64,8 +64,34 @@ cookies de sessão do admin funcionam no mesmo host do painel.
 Sessão Flask (cookie `session` + `user_id`) — sem JWT no painel. Endpoints JSON
 em `/api/v1/admin/*` (ver `api/backend/blueprints/admin_api_bp.py`).
 
+## Analytics do dashboard
+
+O painel em `/admin` consome `GET /api/v1/admin/analytics?from=&to=&setor_id=&operador_id=`.
+
+**Espera** = `chamada_em − data_hora` (retirada → chamada). Esses timestamps passam a
+ser gravados em `senhas` a partir da migração automática (`ALTER` no boot). Senhas
+antigas sem `chamada_em` não entram nos percentis (média/mediana/P90/P95).
+
+**Abandono / não chamadas** (sem status formal “não compareceu”):
+
+- KPI “não chamadas”: emitidas no período ainda com `status = A` e sem chamada
+- Abandono operacional: `status = A` com `data_hora` há mais de **N minutos**
+  (padrão **30**; query `abandono_minutos` ou config `abandono_minutos`)
+
+Meta de alerta de espera: config `meta_espera_minutos` (padrão 10).
+
+## Cliente do QR (acompanhamento)
+
+Após escanear o QR da senha, o cliente abre `{ADMIN_WEB_URL}/acompanhar/<token>`
+(Next). A rota Flask `/notificacao/<token>` redireciona para lá.
+
+- Socket.IO + Web Push em todas as etapas (perto / chamada / pedido / fim)
+- Avaliação 1–5 no navegador após finalização
+- Detalhes: [documentacao/README_NOTIFICACOES.md](documentacao/README_NOTIFICACOES.md)
+
 ## Documentação
 
 - [documentacao/DEPLOY_DOCKER.md](documentacao/DEPLOY_DOCKER.md)
 - [documentacao/REALTIME_PROTOCOL.md](documentacao/REALTIME_PROTOCOL.md)
 - [documentacao/README.md](documentacao/README.md)
+- [documentacao/README_NOTIFICACOES.md](documentacao/README_NOTIFICACOES.md)

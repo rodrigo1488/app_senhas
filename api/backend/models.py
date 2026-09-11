@@ -72,7 +72,12 @@ class Senha(db.Model):
     pedido = db.Column(db.Text)
     tem_pedido = db.Column(db.Boolean, default=False)
     pedido_confirmado = db.Column(db.Boolean, default=False)
-    data_hora = db.Column(db.DateTime, default=datetime.now)
+    data_hora = db.Column(db.DateTime, default=datetime.now)  # retirada
+    # Persistidos no ciclo de vida para analytics (espera = chamada_em - data_hora;
+    # atendimento = finalizado_em - chamada_em). AtendimentoAtual é apagado ao
+    # finalizar, então sem estes campos não há histórico de espera.
+    chamada_em = db.Column(db.DateTime)
+    finalizado_em = db.Column(db.DateTime)
 
     def to_dict(self):
         return {
@@ -85,6 +90,9 @@ class Senha(db.Model):
             "tem_pedido": bool(self.tem_pedido),
             "pedido": self.pedido,
             "pedido_confirmado": bool(self.pedido_confirmado),
+            "data_hora": self.data_hora.isoformat() if self.data_hora else None,
+            "chamada_em": self.chamada_em.isoformat() if self.chamada_em else None,
+            "finalizado_em": self.finalizado_em.isoformat() if self.finalizado_em else None,
         }
 
 

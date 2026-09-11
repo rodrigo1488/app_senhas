@@ -31,7 +31,7 @@ from backend.services.fila_service import (
     salvar_pedido,
     serializar_fila,
 )
-from backend.services.impressao_service import imprimir_senha_com_ip, imprimir_senha_em_background
+from backend.services.impressao_service import imprimir_senha_em_background
 from backend.services.operador_pin_service import identificar_operador_por_pin
 from backend.sockets.emitters import (
     broadcast_posicao_fila,
@@ -280,10 +280,6 @@ def chamar_proxima_route(session_payload):
             setor_id, int(operador_id), resultado.operador.nome, resultado.operador.foto_perfil,
             finalizada.id, finalizada.senha,
         )
-
-    impressora = Impressora.query.filter_by(setor_id=setor_id).first()
-    if impressora:
-        imprimir_senha_com_ip(resultado.senha.senha, impressora.ip)
 
     return jsonify({
         "senha": resultado.senha.to_dict(),

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ModeToggle } from "@/components/mode-toggle";
 import { apiFetch } from "@/lib/api";
 
 export default function LoginPage() {
@@ -36,8 +37,15 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-svh items-center justify-center bg-gradient-to-br from-indigo-600 via-indigo-500 to-violet-500 p-6">
-      <Card className="w-full max-w-md shadow-2xl">
+    <div className="relative flex min-h-svh items-center justify-center bg-background p-6">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_oklch(0.75_0.15_55_/_0.25),_transparent_55%),radial-gradient(ellipse_at_bottom_right,_oklch(0.65_0.2_41_/_0.18),_transparent_50%)] dark:bg-[radial-gradient(ellipse_at_top,_oklch(0.45_0.12_55_/_0.35),_transparent_55%),radial-gradient(ellipse_at_bottom_right,_oklch(0.4_0.14_41_/_0.25),_transparent_50%)]"
+      />
+      <div className="absolute right-4 top-4 z-10">
+        <ModeToggle />
+      </div>
+      <Card className="relative w-full max-w-md shadow-xl">
         <CardHeader className="items-center text-center">
           <div className="mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground">
             <Ticket className="h-7 w-7" />

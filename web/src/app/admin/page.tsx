@@ -1,142 +1,142 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { apiFetch, type DashboardData } from "@/lib/api";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { apiFetch, type AnalyticsData } from "@/lib/api";
+import { KpiCard } from "@/components/dashboard/kpi-card";
+import {
+  DashboardFilters,
+  type DashboardFiltersState,
+} from "@/components/dashboard/filters";
+import { DashboardAlerts } from "@/components/dashboard/alerts";
+import {
+  ComparativoSetorChart,
+  DemandaPorHoraChart,
+  DistribuicaoNotasChart,
+  EsperaSatisfacaoChart,
+} from "@/components/dashboard/charts";
+import { HeatmapSetorHora } from "@/components/dashboard/heatmap";
+import { AtendentesTable } from "@/components/dashboard/atendentes-table";
+
+function todayISO() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function fmtMin(n: number | null | undefined) {
+  if (n == null) return "—";
+  return `${n} min`;
+}
+
+function fmtNum(n: number | null | undefined, suffix = "") {
+  if (n == null) return "—";
+  return `${n}${suffix}`;
+}
 
 export default function AdminDashboardPage() {
-  const [data, setData] = useState<DashboardData | null>(null);
+  const [filters, setFilters] = useState<DashboardFiltersState>({
+    from: todayISO(),
+    to: todayISO(),
+    setor_id: "",
+    operador_id: "",
+  });
+  const [applied, setApplied] = useState(filters);
+  const [data, setData] = useState<AnalyticsData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const query = useMemo(() => {
+    const p = new URLSearchParams();
+    if (applied.from) p.set("from", applied.from);
+    if (applied.to) p.set("to", applied.to);
+    if (applied.setor_id) p.set("setor_id", applied.setor_id);
+    if (applied.operador_id) p.set("operador_id", applied.operador_id);
+    return p.toString();
+  }, [applied]);
+
+  const load = useCallback(() => {
+    setLoading(true);
+    setError(null);
+    apiFetch<AnalyticsData>(`/api/v1/admin/analytics?${query}`)
+      .then(setData)
+      .catch((e) => setError(e instanceof Error ? e.message : "Erro ao carregar"))
+      .finally(() => setLoading(false));
+  }, [query]);
 
   useEffect(() => {
-    apiFetch<DashboardData>("/api/v1/admin/dashboard")
-      .then(setData)
-      .catch((e) => setError(e instanceof Error ? e.message : "Erro ao carregar"));
-  }, []);
+    load();
+  }, [load]);
 
-  if (error) return <p className="text-destructive">{error}</p>;
-  if (!data) return <p className="text-muted-foreground">Carregando dashboard...</p>;
-
-  const totalDia = data.atendimentos_dia.reduce((s, r) => s + r.total, 0);
-  const totalMes = data.atendimentos_mes.reduce((s, r) => s + r.total, 0);
+  const setores = data?.filtros.setores ?? [];
+  const operadores = data?.filtros.operadores ?? [];
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-muted-foreground">Visão geral dos atendimentos e avaliações</p>
+        <p className="text-muted-foreground">
+          Métricas de fila, espera e satisfação por período
+        </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <Card>
-          <CardHeader>
-            <CardDescription>Atendimentos hoje</CardDescription>
-            <CardTitle className="text-3xl">{totalDia}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardDescription>Atendimentos no mês</CardDescription>
-            <CardTitle className="text-3xl">{totalMes}</CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardDescription>Melhor operador</CardDescription>
-            <CardTitle className="text-xl">
-              {data.melhor_operador
-                ? `${data.melhor_operador.operador} (${data.melhor_operador.media?.toFixed(1) ?? "-"})`
-                : "—"}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardDescription>Pior operador</CardDescription>
-            <CardTitle className="text-xl">
-              {data.pior_operador
-                ? `${data.pior_operador.operador} (${data.pior_operador.media?.toFixed(1) ?? "-"})`
-                : "—"}
-            </CardTitle>
-          </CardHeader>
-        </Card>
-      </div>
+      <DashboardFilters
+        value={filters}
+        onChange={setFilters}
+        onApply={() => setApplied(filters)}
+        setores={setores}
+        operadores={operadores}
+      />
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle>Por setor (hoje)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <TableRows rows={data.atendimentos_dia.map((r) => [r.setor, String(r.total)])} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <CardTitle>Por setor (mês)</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <TableRows rows={data.atendimentos_mes.map((r) => [r.setor, String(r.total)])} />
-          </CardContent>
-        </Card>
-      </div>
+      {error ? <p className="text-destructive">{error}</p> : null}
+      {loading && !data ? (
+        <p className="text-muted-foreground">Carregando analytics...</p>
+      ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Médias de avaliação</CardTitle>
-          <CardDescription>Operadores ordenados pela média</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <TableRows
-            headers={["Operador", "Setor", "Média"]}
-            rows={data.medias_operadores.map((r) => [
-              r.operador,
-              r.setor || "—",
-              r.media != null ? r.media.toFixed(2) : "—",
-            ])}
-          />
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
+      {data ? (
+        <>
+          <DashboardAlerts alertas={data.alertas} />
 
-function TableRows({
-  headers,
-  rows,
-}: {
-  headers?: string[];
-  rows: string[][];
-}) {
-  if (!rows.length) {
-    return <p className="text-sm text-muted-foreground">Sem dados no período.</p>;
-  }
-  return (
-    <div className="overflow-x-auto rounded-lg border">
-      <table className="w-full text-sm">
-        {headers && (
-          <thead className="bg-muted/60">
-            <tr>
-              {headers.map((h) => (
-                <th key={h} className="px-3 py-2 text-left font-medium">
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-        )}
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i} className="border-t">
-              {row.map((cell, j) => (
-                <td key={j} className="px-3 py-2">
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+            <KpiCard title="Senhas emitidas" value={String(data.kpis.emitidas)} />
+            <KpiCard title="Senhas chamadas" value={String(data.kpis.chamadas)} />
+            <KpiCard
+              title="Espera média"
+              value={fmtMin(data.kpis.espera.media)}
+              hint={`Mediana ${fmtMin(data.kpis.espera.mediana)} · P90 ${fmtMin(data.kpis.espera.p90)}`}
+            />
+            <KpiCard
+              title="Maior espera"
+              value={fmtMin(data.kpis.espera.max)}
+              hint={`P95 ${fmtMin(data.kpis.espera.p95)}`}
+            />
+            <KpiCard title="Atendimentos" value={String(data.kpis.atendimentos)} />
+            <KpiCard title="Nota média" value={fmtNum(data.kpis.nota_media)} />
+            <KpiCard
+              title="% avaliações"
+              value={fmtNum(data.kpis.pct_avaliacoes, "%")}
+            />
+            <KpiCard
+              title="Não chamadas / abandono"
+              value={`${data.kpis.nao_chamadas} / ${data.kpis.abandono}`}
+              hint={`Abandono: status A há +${data.kpis.abandono_minutos} min${
+                data.kpis.taxa_abandono != null ? ` (${data.kpis.taxa_abandono}%)` : ""
+              }`}
+            />
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-3">
+            <DemandaPorHoraChart data={data.por_hora} />
+            <ComparativoSetorChart data={data.por_setor} />
+          </div>
+
+          <HeatmapSetorHora heatmap={data.heatmap} />
+
+          <AtendentesTable rows={data.atendentes} />
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <DistribuicaoNotasChart data={data.distribuicao_notas} />
+            <EsperaSatisfacaoChart data={data.espera_x_satisfacao} />
+          </div>
+        </>
+      ) : null}
     </div>
   );
 }

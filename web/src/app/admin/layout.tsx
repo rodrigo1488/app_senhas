@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Separator } from "@/components/ui/separator";
+import { ModeToggle } from "@/components/mode-toggle";
 
 async function fetchMe() {
   const cookieStore = await cookies();
@@ -32,9 +33,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         <header className="sticky top-0 z-10 flex h-14 items-center gap-3 border-b bg-card/80 px-4 backdrop-blur">
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-6" />
-          <div className="flex flex-1 items-center justify-between">
+          <div className="flex flex-1 items-center justify-between gap-3">
             <p className="text-sm font-medium text-muted-foreground">Administração</p>
-            <p className="text-sm text-muted-foreground">{me?.email}</p>
+            <div className="flex items-center gap-1">
+              <p className="hidden text-sm text-muted-foreground sm:block">{me?.email}</p>
+              <ModeToggle />
+            </div>
           </div>
         </header>
         <div className="flex-1 p-6">{children}</div>

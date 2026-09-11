@@ -62,8 +62,13 @@ def handle_connect(auth=None):
             return False
         session["ticket_token"] = ticket_token
         join_room(room_ticket(ticket_token))
+        # Emit direto para este socket (room broadcast no connect pode não
+        # entregar ao cliente que acabou de entrar). Sem push — evita spam
+        # a cada reload da página.
         try:
-            emit_senha_posicao(posicao_na_fila(ticket_token))
+            from backend.sockets.events import EV_SENHA_POSICAO
+
+            emit(EV_SENHA_POSICAO, posicao_na_fila(ticket_token))
         except FilaError:
             pass
         return True

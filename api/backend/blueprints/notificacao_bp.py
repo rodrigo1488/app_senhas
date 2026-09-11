@@ -1,17 +1,18 @@
 """Página pública de acompanhamento de senha (QR Code) + Web Push.
 
-Autenticação de socket aqui é feita por `ticket_token` (o próprio
-`token_unico` da senha), não por login de setor — ver
-`documentacao/REALTIME_PROTOCOL.md`, seção 1.
+A UI do cliente vive no Next (`/acompanhar/<token>`). Este blueprint mantém
+as APIs públicas e redireciona a rota legada `/notificacao/<token>`.
 """
 import json
 
-from flask import Blueprint, jsonify, render_template, request
+from flask import Blueprint, jsonify, redirect, request
 
 from backend.extensions import db
 from backend.models import Senha
-from backend.services.fila_service import FilaError, posicao_na_fila, salvar_pedido, verificar_senha
-from backend.sockets.emitters import emit_senha_posicao
+from backend.services.avaliacao_service import AvaliacaoError, registrar_avaliacao_por_token
+from backend.services.fila_service import FilaError, salvar_pedido, verificar_senha
+from backend.services.push_service import enviar_web_push, get_vapid_public_key
+from backend.utils import get_notification_url
 
 notificacao_bp = Blueprint("notificacao", __name__)
 
@@ -20,7 +21,15 @@ notificacao_bp = Blueprint("notificacao", __name__)
 def notificacao(token):
     if not Senha.query.filter_by(token_unico=token).first():
         return "Senha não encontrada", 404
-    return render_template("notificacao.html", token=token)
+    return redirect(get_notification_url(token), code=302)
+
+
+@notificacao_bp.route("/api/vapid-public-key", methods=["GET"])
+def api_vapid_public_key():
+    key = get_vapid_public_key()
+    if not key:
+        return jsonify({"error": "VAPID não configurado"}), 503
+    return jsonify({"publicKey": key})
 
 
 @notificacao_bp.route("/api/registrar_token/<token>", methods=["POST"])
@@ -71,37 +80,36 @@ def api_registrar_push(token):
     return jsonify({"success": True})
 
 
+@notificacao_bp.route("/api/avaliar/<token>", methods=["POST"])
+def api_avaliar(token):
+    data = request.get_json(silent=True) or {}
+    try:
+        nota = int(data.get("nota"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Nota inválida"}), 400
+    try:
+        result = registrar_avaliacao_por_token(token, nota)
+    except AvaliacaoError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(result)
+
+
 @notificacao_bp.route("/api/notificar/<int:senha_id>", methods=["POST"])
 def api_notificar(senha_id):
-    """Envia notificação Web Push para uma senha específica (fallback para
-    quando o cliente não está com a página aberta / socket conectado)."""
-    from flask import current_app
-
+    """Envia notificação Web Push manual (fallback / teste)."""
     senha = Senha.query.get(senha_id)
     if not senha:
         return jsonify({"error": "Senha não encontrada"}), 404
     if not senha.push_subscription:
         return jsonify({"error": "Nenhuma subscription encontrada para esta senha"}), 404
 
-    try:
-        from pywebpush import webpush
-
-        notification_data = {
-            "title": f"Sua senha {senha.senha} foi chamada!",
-            "body": "Dirija-se ao atendimento.",
-            "icon": "/static/icon-192x192.png",
-            "tag": "senha-chamada",
-            "requireInteraction": True,
-        }
-        webpush(
-            subscription_info=json.loads(senha.push_subscription),
-            data=json.dumps(notification_data),
-            vapid_private_key=current_app.config["VAPID_PRIVATE_KEY"],
-            vapid_claims={"sub": current_app.config["VAPID_EMAIL"], "aud": "https://fcm.googleapis.com"},
-        )
-    except ImportError:
-        current_app.logger.warning("pywebpush não instalado.")
-    except Exception as exc:  # pragma: no cover
-        current_app.logger.error(f"Erro ao enviar notificação push: {exc}")
-
+    ok = enviar_web_push(
+        senha,
+        title=f"Sua senha {senha.senha} foi chamada!",
+        body="Dirija-se ao atendimento.",
+        tag="senha-chamada",
+        require_interaction=True,
+    )
+    if not ok:
+        return jsonify({"error": "Falha ao enviar notificação"}), 500
     return jsonify({"success": True, "message": f"Notificação enviada para senha {senha.senha}"})

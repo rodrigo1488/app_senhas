@@ -40,3 +40,40 @@ def registrar_avaliacao(senha_id: int, setor_id: int, operador_id: int, nota) ->
     if senha:
         senha.status = "F"
     db.session.commit()
+
+
+def registrar_avaliacao_por_token(token_unico: str, nota: int) -> dict:
+    """Avaliação pública do cliente do QR (sem sessão de operador)."""
+    if nota < 1 or nota > 5:
+        raise AvaliacaoError("Nota deve ser entre 1 e 5")
+
+    senha = Senha.query.filter_by(token_unico=token_unico).first()
+    if not senha:
+        raise AvaliacaoError("Senha não encontrada")
+
+    finalizado = (
+        Finalizado.query.filter_by(senha_id=senha.id)
+        .order_by(Finalizado.id.desc())
+        .first()
+    )
+    if not finalizado:
+        raise AvaliacaoError("Atendimento ainda não finalizado")
+
+    if finalizado.avaliacao not in (None, ""):
+        return {"ok": True, "ja_avaliado": True, "nota": finalizado.avaliacao}
+
+    finalizado.avaliacao = str(nota)
+    senha.status = "F"
+    db.session.commit()
+    return {"ok": True, "ja_avaliado": False, "nota": str(nota)}
+
+
+def avaliacao_pendente_por_senha(senha_id: int) -> bool:
+    finalizado = (
+        Finalizado.query.filter_by(senha_id=senha_id)
+        .order_by(Finalizado.id.desc())
+        .first()
+    )
+    if not finalizado:
+        return False
+    return finalizado.avaliacao in (None, "")

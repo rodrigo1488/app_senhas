@@ -203,8 +203,13 @@ def _init_database(app: Flask) -> None:
             # (WAL/foreign keys) já são o comportamento padrão do servidor.
             conn.execute(text("PRAGMA journal_mode=WAL"))
             conn.execute(text("PRAGMA foreign_keys=ON"))
+        # Colunas novas de analytics — create_all() não ALTER em tabelas
+        # já existentes; adiciona de forma idempotente nos dois dialetos.
+        _ensure_column(conn, "senhas", "chamada_em", "TIMESTAMP" if not is_sqlite else "DATETIME", is_sqlite)
+        _ensure_column(conn, "senhas", "finalizado_em", "TIMESTAMP" if not is_sqlite else "DATETIME", is_sqlite)
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_senhas_setor_status ON senhas (setor_id, status)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_senhas_token_unico ON senhas (token_unico)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_senhas_data_hora ON senhas (data_hora)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_atendimento_setor_operador ON atendimento_atual (setor_id, operador_id)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_finalizados_setor_operador ON finalizados (setor_id, operador_id)"))
         conn.commit()
@@ -233,6 +238,23 @@ def _migrate_operator_identification_columns() -> None:
             conn.execute(
                 text(f"ALTER TABLE operadores ADD COLUMN {if_not_exists}pin_hash TEXT")
             )
+
+
+def _ensure_column(conn, table: str, column: str, col_type: str, is_sqlite: bool) -> None:
+    """ADD COLUMN idempotente (SQLite não tem IF NOT EXISTS em todas as versões)."""
+    from sqlalchemy import text
+
+    if is_sqlite:
+        rows = conn.execute(text(f"PRAGMA table_info({table})")).fetchall()
+        existing = {r[1] for r in rows}
+        if column not in existing:
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}"))
+    else:
+        conn.execute(
+            text(
+                f"ALTER TABLE {table} ADD COLUMN IF NOT EXISTS {column} {col_type}"
+            )
+        )
 
 
 def _seed_admin_padrao(app: Flask) -> None:

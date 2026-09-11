@@ -98,12 +98,24 @@ def obter_nome_empresa() -> str:
     return get_configuracao("nome_empresa", current_app.config["NOME_EMPRESA_PADRAO"])
 
 
-def get_notification_url(token: str) -> str:
-    ngrok_url = get_ngrok_url()
-    if ngrok_url:
-        return f"{ngrok_url.rstrip('/')}/notificacao/{token}"
+def get_cliente_web_base() -> str:
+    """Host do painel Next (página pública /acompanhar).
+
+    Usa `ADMIN_WEB_URL` (ex.: http://localhost:3000 ou um túnel apontando
+    para o Next). Não reutiliza o ngrok da API Flask — esse túnel costuma
+    apontar para a porta 5000, onde `/acompanhar` não existe.
+    """
+    import os
+
+    admin = (os.getenv("ADMIN_WEB_URL") or "").rstrip("/")
+    if admin:
+        return admin
     ip_local = obter_ip_rede_local()
-    return f"http://{ip_local}:5000/notificacao/{token}"
+    return f"http://{ip_local}:3000"
+
+
+def get_notification_url(token: str) -> str:
+    return f"{get_cliente_web_base()}/acompanhar/{token}"
 
 
 def gerar_qr_code_bytes(data: str) -> bytes:

@@ -75,3 +75,89 @@ export type DashboardData = {
   ngrok_url: string;
   nome_empresa: string;
 };
+
+export type EsperaStats = {
+  media: number | null;
+  mediana: number | null;
+  p90: number | null;
+  p95: number | null;
+  max: number | null;
+  amostras: number;
+};
+
+export type AnalyticsData = {
+  periodo: {
+    from: string;
+    to: string;
+    setor_id: number | null;
+    operador_id: number | null;
+  };
+  meta_espera_minutos: number;
+  kpis: {
+    emitidas: number;
+    chamadas: number;
+    finalizadas: number;
+    atendimentos: number;
+    espera: EsperaStats;
+    nota_media: number | null;
+    pct_avaliacoes: number | null;
+    nao_chamadas: number;
+    abandono: number;
+    abandono_minutos: number;
+    taxa_abandono: number | null;
+  };
+  por_setor: {
+    setor_id: number;
+    setor: string;
+    emitidas: number;
+    chamadas: number;
+    finalizadas: number;
+    atendimentos: number;
+    nao_chamadas: number;
+    espera: EsperaStats;
+    nota_media: number | null;
+  }[];
+  por_hora: {
+    hora: number;
+    label: string;
+    retiradas: number;
+    chamadas: number;
+    espera_media: number | null;
+    nota_media: number | null;
+  }[];
+  heatmap: {
+    setores: { id: number; nome: string }[];
+    celulas: {
+      setor_id: number;
+      setor: string;
+      hora: number;
+      volume: number;
+      espera_media: number | null;
+      carga: number;
+    }[];
+  };
+  atendentes: {
+    operador_id: number;
+    operador: string;
+    setor_id: number | null;
+    setor: string | null;
+    atendimentos: number;
+    espera: EsperaStats;
+    tempo_atendimento_medio: number | null;
+    nota_media: number | null;
+  }[];
+  distribuicao_notas: { nota: string; total: number; pct: number }[];
+  espera_x_satisfacao: { faixa: string; nota_media: number | null; amostras: number }[];
+  alertas: {
+    tipo: string;
+    severidade: string;
+    mensagem: string;
+    valor?: number;
+    valor_anterior?: number;
+    setor_id?: number;
+  }[];
+  filtros: {
+    setores: { id: number; nome: string }[];
+    operadores: { id: number; nome: string; setor_id: number | null }[];
+  };
+};

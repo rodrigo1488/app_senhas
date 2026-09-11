@@ -1,327 +1,75 @@
-# Sistema de Notificações Push - App de Senhas
+# Notificações do cliente (QR) — AppSenhas
 
-## 📋 Visão Geral
+## Visão geral
 
-Este sistema implementa notificações push para o app de senhas, permitindo que os usuários recebam notificações quando sua senha for chamada, mesmo com o navegador fechado.
+Após retirar a senha, o QR Code abre a tela pública no **Next.js**:
 
-## 🚀 Funcionalidades
+`{ADMIN_WEB_URL}/acompanhar/{token}`
 
-### ✅ Implementadas
+Exemplo local: `http://localhost:3000/acompanhar/<token_unico>`.
 
-1. **Geração de Token Único**: Cada senha recebe um UUID único
-2. **QR Code de Notificação**: Impresso junto com a senha
-3. **Página de Registro**: Interface para ativar notificações
-4. **Service Worker**: Gerencia notificações em background
-5. **Web Push API**: Envio de notificações push
-6. **SSL Autoassinado**: Suporte HTTPS local
-7. **Chaves VAPID**: Autenticação para Web Push
+A rota legada Flask `GET /notificacao/<token>` redireciona para essa URL.
 
-## 🛠️ Instalação e Configuração
+## O que a tela faz
 
-### 1. Instalar Dependências
+1. Conecta via Socket.IO com `auth: { ticket_token }`
+2. Mostra posição / chamada / pedido / finalização
+3. Registra **Web Push** (Service Worker em `web/public/sw.js`)
+4. Após finalização, pede **avaliação 1–5** no navegador
 
-```bash
-pip install -r requirements.txt
-```
+## Push por etapa
 
-### 2. Executar Script de Configuração
+O backend envia Web Push (se houver subscription) em:
 
-```bash
-python setup_notifications.py
-```
+| Etapa | Tag |
+|-------|-----|
+| Posição ≤ 3 | `senha-perto` |
+| Chamada | `senha-chamada` |
+| Pedido preparando | `pedido-status` |
+| Finalizado | `senha-finalizada` |
 
-Este script irá:
-- Gerar certificado SSL autoassinado
-- Gerar chaves VAPID
-- Atualizar configuração do app
-- Criar estrutura de ícones
+Implementação: `api/backend/services/push_service.py` + emitters.
 
-### 3. Testar Conectividade de Rede
+## APIs públicas
 
-```bash
-python test_network.py
-```
+| Método | Rota | Uso |
+|--------|------|-----|
+| GET | `/api/vapid-public-key` | Chave pública VAPID |
+| POST | `/api/registrar_push/<token>` | Salva subscription |
+| POST | `/api/salvar_pedido/<token>` | Pedido opcional |
+| POST | `/api/avaliar/<token>` | `{ "nota": 1..5 }` |
+| GET | `/api/verificar_senha/<token>` | Fallback/legado |
 
-Este script irá:
-- Verificar IP da rede local
-- Testar conectividade
-- Verificar certificados SSL
-- Mostrar URLs de acesso
+No Next, essas rotas (e `/socket.io`) são reescritas para a API Flask.
 
-### 4. Configurar Chaves VAPID
+## Configuração VAPID
 
-Após executar o script, configure as chaves no arquivo `app.py`:
-
-```python
-# Configurações VAPID para Web Push Notifications
-VAPID_PRIVATE_KEY = "SUA_CHAVE_PRIVADA_AQUI"
-VAPID_PUBLIC_KEY = "SUA_CHAVE_PUBLICA_AQUI"
-VAPID_EMAIL = "seu-email@exemplo.com"
-```
-
-### 5. Adicionar Ícones
-
-Adicione os seguintes ícones na pasta `static/`:
-- `icon-192x192.png` (192x192 pixels)
-- `badge-72x72.png` (72x72 pixels)
-
-### 6. Executar o App
-
-#### Opção 1: HTTP (Sem notificações push)
-```bash
-python app.py
-```
-Acesse: `http://<seu-ip-local>:5000`
-
-#### Opção 2: HTTPS (Com notificações push)
-```bash
-python run_with_ssl.py
-```
-Acesse: `https://<seu-ip-local>:5000`
-
-⚠️ **Importante**: Aceite o certificado SSL no navegador quando solicitado.
-
-## 🌐 Conectividade de Rede
-
-### Acesso Local vs Rede
-
-- **Localhost**: `https://localhost:5000` (apenas no próprio computador)
-- **Rede Local**: `https://<seu-ip>:5000` (dispositivos na mesma rede)
-
-### Testando Conectividade
-
-Execute o script de teste para verificar a configuração:
+No `.env` (ver `.env.example`):
 
 ```bash
-python test_network.py
+VAPID_PUBLIC_KEY=...
+VAPID_PRIVATE_KEY=...
+VAPID_EMAIL=seu-email@exemplo.com
+ADMIN_WEB_URL=http://localhost:3000
 ```
 
-### Solução de Problemas de Rede
+Push no navegador exige **HTTPS** (ou `localhost`). Em rede local sem TLS, o Socket.IO continua funcionando; o push pode falhar até haver HTTPS/ngrok.
 
-1. **Firewall**: Verifique se a porta 5000 está liberada
-2. **Rede**: Certifique-se de que os dispositivos estão na mesma rede
-3. **SSL**: Para notificações push, HTTPS é obrigatório
-4. **Certificados**: Execute `python setup_notifications.py` se necessário
+## QR Code
 
-## 🔄 Fluxo de Funcionamento
+`get_notification_url(token)` em `api/backend/utils.py` gera:
 
-### 1. Geração de Senha
-```
-Usuário retira senha → Token único gerado → QR Code impresso
-```
+`{ADMIN_WEB_URL}/acompanhar/{token}`
 
-### 2. Registro de Notificação
-```
-Usuário escaneia QR Code → Página de registro → Permissão concedida → Subscription salva
-```
+(ou IP local `:3000` se `ADMIN_WEB_URL` não estiver definido).
 
-### 3. Notificação
-```
-Senha chamada → Sistema busca subscription → Notificação enviada → Usuário recebe
-```
+## Avaliação
 
-## 📁 Estrutura de Arquivos
+- **Celular (QR):** `POST /api/avaliar/<token>` na tela Next
+- **Kiosk tablet:** fluxo `/avaliacao` permanece para o operador
 
-```
-app_senhas/
-├── app.py                          # Aplicação principal
-├── setup_notifications.py          # Script de configuração
-├── requirements.txt                # Dependências
-├── cert.pem                        # Certificado SSL
-├── key.pem                         # Chave SSL
-├── vapid_keys.txt                  # Chaves VAPID
-├── static/
-│   ├── sw.js                       # Service Worker
-│   ├── icon-192x192.png           # Ícone principal
-│   └── badge-72x72.png            # Ícone badge
-└── templates/
-    └── notificacao.html            # Página de registro
-```
+## Arquivos principais
 
-## 🔧 Configurações
-
-### Banco de Dados
-
-A tabela `senhas` foi atualizada com novos campos:
-
-```sql
-CREATE TABLE senhas (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    senha TEXT NOT NULL,
-    tipo TEXT NOT NULL,
-    setor_id INTEGER,
-    status TEXT DEFAULT 'A',
-    token_unico TEXT UNIQUE,           -- Novo
-    notificado INTEGER DEFAULT 0,      -- Novo
-    push_subscription TEXT,            -- Novo
-    FOREIGN KEY (setor_id) REFERENCES SETORES (id)
-);
-```
-
-### Variáveis de Ambiente
-
-```python
-# Configurações VAPID
-VAPID_PRIVATE_KEY = "sua_chave_privada"
-VAPID_PUBLIC_KEY = "sua_chave_publica"
-VAPID_EMAIL = "seu-email@exemplo.com"
-
-# Configuração SSL
-ssl_context = ('cert.pem', 'key.pem')
-```
-
-## 🌐 Rotas da API
-
-### Frontend
-
-- `GET /notificacao/<token>` - Página de registro de notificação
-- `POST /api/registrar_push/<token>` - Registra subscription
-- `POST /api/notificar/<senha_id>` - Envia notificação
-
-### Exemplo de Uso
-
-```javascript
-// Registrar subscription
-fetch('/api/registrar_push/TOKEN_AQUI', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ subscription: subscription })
-});
-
-// Enviar notificação (automático)
-fetch('/api/notificar/123', { method: 'POST' });
-```
-
-## 🔔 Service Worker
-
-O Service Worker (`static/sw.js`) gerencia:
-
-- Recebimento de notificações push
-- Exibição de notificações
-- Interação com notificações
-- Cache de recursos
-
-## 📱 Compatibilidade
-
-### Navegadores Suportados
-
-- ✅ Chrome 42+
-- ✅ Firefox 44+
-- ✅ Safari 16+
-- ✅ Edge 17+
-
-### Dispositivos
-
-- ✅ Desktop
-- ✅ Mobile (Android/iOS)
-- ✅ WebView (com limitações)
-
-## 🚨 Troubleshooting
-
-### Problemas Comuns
-
-#### 1. Certificado SSL não aceito
-```
-Solução: Clique em "Avançado" → "Prosseguir para localhost"
-```
-
-#### 2. Notificações não funcionam
-```
-Verificar:
-- Permissão concedida no navegador
-- Chaves VAPID configuradas
-- Service Worker registrado
-```
-
-#### 3. QR Code não aparece na impressão
-```
-Verificar:
-- Biblioteca qrcode instalada
-- Token único gerado
-- Impressora térmica funcionando
-```
-
-#### 4. Erro de CORS
-```
-Verificar:
-- HTTPS configurado
-- Certificado válido
-- Headers corretos
-```
-
-### Logs de Debug
-
-```bash
-# Verificar logs do app
-python app.py
-
-# Verificar logs do navegador
-F12 → Console
-```
-
-## 🔒 Segurança
-
-### Certificados SSL
-- Autoassinado para desenvolvimento
-- Válido por 365 dias
-- Apenas para uso local
-
-### Chaves VAPID
-- Geradas automaticamente
-- Únicas por instalação
-- Não compartilhar chave privada
-
-### Permissões
-- Requer permissão explícita do usuário
-- Funciona apenas em HTTPS
-- Service Worker isolado
-
-## 📈 Performance
-
-### Otimizações Implementadas
-
-- Service Worker em cache
-- Notificações com tag única
-- Polling inteligente para WebView
-- Fallback para navegadores antigos
-
-### Métricas
-
-- Tempo de registro: ~2-3 segundos
-- Latência de notificação: ~1-2 segundos
-- Tamanho do QR Code: ~1KB
-- Service Worker: ~5KB
-
-## 🔄 Atualizações
-
-### Versão 1.0
-- ✅ Sistema básico de notificações
-- ✅ QR Code na impressão
-- ✅ Service Worker
-- ✅ SSL autoassinado
-
-### Próximas Versões
-- 🔄 Notificações personalizadas
-- 🔄 Múltiplos idiomas
-- 🔄 Analytics de notificações
-- 🔄 Integração com apps nativos
-
-## 📞 Suporte
-
-Para problemas ou dúvidas:
-
-1. Verifique os logs do console
-2. Teste em diferentes navegadores
-3. Verifique configurações SSL/VAPID
-4. Consulte a documentação do Web Push API
-
-## 📚 Referências
-
-- [Web Push Protocol](https://tools.ietf.org/html/rfc8030)
-- [Service Worker API](https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API)
-- [pywebpush Documentation](https://github.com/web-push-libs/pywebpush)
-- [QR Code Generation](https://pypi.org/project/qrcode/)
-
----
-
-**Desenvolvido com ❤️ para melhorar a experiência do usuário** 
+- UI: `web/src/app/acompanhar/[token]/page.tsx`, `web/src/components/cliente/`
+- SW: `web/public/sw.js`
+- Backend: `api/backend/blueprints/notificacao_bp.py`, `api/backend/services/push_service.py`

@@ -28,6 +28,7 @@ services:
       ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@appsenhas.local}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://web:3000}
+      ADMIN_WEB_URL: ${ADMIN_WEB_URL:-http://localhost:3000}
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_EMAIL: ${VAPID_EMAIL:-}
