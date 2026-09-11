@@ -10,10 +10,10 @@ class AuthInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val original = chain.request()
         val token = AuthState.sessionToken
-        val request = if (token.isNullOrBlank()) {
+        val request = if (token.isNullOrBlank() || original.header("Authorization") != null) {
             original
         } else {
-            original.newBuilder().addHeader("Authorization", "Bearer $token").build()
+            original.newBuilder().header("Authorization", "Bearer $token").build()
         }
         return chain.proceed(request)
     }

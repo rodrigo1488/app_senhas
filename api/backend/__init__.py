@@ -194,6 +194,7 @@ def _init_database(app: Flask) -> None:
 
     db.create_all()
     _migrate_operator_identification_columns()
+    _migrate_propagandas_columns()
 
     is_sqlite = db.engine.dialect.name == "sqlite"
 
@@ -237,6 +238,25 @@ def _migrate_operator_identification_columns() -> None:
         if "pin_hash" not in operadores_columns:
             conn.execute(
                 text(f"ALTER TABLE operadores ADD COLUMN {if_not_exists}pin_hash TEXT")
+            )
+
+
+def _migrate_propagandas_columns() -> None:
+    """Garante coluna de toggle por setor (tabela propagandas vem do create_all)."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    setores_columns = {column["name"] for column in inspector.get_columns("setores")}
+    if_not_exists = "IF NOT EXISTS " if db.engine.dialect.name == "postgresql" else ""
+    bool_default = "FALSE" if db.engine.dialect.name == "postgresql" else "0"
+
+    with db.engine.begin() as conn:
+        if "propagandas_ativas" not in setores_columns:
+            conn.execute(
+                text(
+                    f"ALTER TABLE setores ADD COLUMN {if_not_exists}"
+                    f"propagandas_ativas BOOLEAN NOT NULL DEFAULT {bool_default}"
+                )
             )
 
 

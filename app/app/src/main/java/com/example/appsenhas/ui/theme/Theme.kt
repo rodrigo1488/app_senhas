@@ -1,8 +1,6 @@
 package com.example.appsenhas.ui.theme
 
-import android.app.Activity
 import android.os.Build
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.dynamicDarkColorScheme
@@ -17,20 +15,32 @@ import androidx.compose.ui.platform.LocalContext
 // (cada tela então sobrepõe suas próprias cores vindas dos templates web
 // legados — ver AppSenhasColors.kt — por cima deste tema base).
 private val DarkColorScheme = darkColorScheme(
-    primary = IndigoAppClaro,
-    secondary = VerdeSenhaNormal,
+    primary = AppPrimary,
+    onPrimary = AppPrimaryForeground,
+    secondary = AppSecondary,
     tertiary = DouradoEstrela,
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = IndigoApp,
-    secondary = VerdeSenhaNormal,
+    primary = AppPrimary,
+    onPrimary = AppPrimaryForeground,
+    secondary = AppSecondary,
+    onSecondary = AppForeground,
+    background = AppBackground,
+    onBackground = AppForeground,
+    surface = AppCard,
+    onSurface = AppForeground,
+    surfaceVariant = AppSecondary,
+    onSurfaceVariant = AppMutedForeground,
+    error = AppDestructive,
+    outline = AppBorder,
+    outlineVariant = AppBorder,
     tertiary = DouradoEstrela,
 )
 
 @Composable
 fun APPSENHASTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
+    darkTheme: Boolean = false,
     // Dynamic color (Material You) desligado por padrão: queremos a MESMA
     // identidade visual em qualquer aparelho, igual ao kiosk web, em vez de
     // cores que variam com o papel de parede do usuário.

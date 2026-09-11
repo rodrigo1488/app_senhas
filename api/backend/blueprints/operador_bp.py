@@ -92,13 +92,14 @@ def chamar_proxima_route():
         return make_response(jsonify({"success": False, "error": str(exc)}), 400)
 
     emit_fila_atualizada(int(setor_id))
-    emit_senha_chamada(
-        resultado.senha,
-        resultado.operador.nome,
-        resultado.operador.foto_perfil,
-        resultado.alerta_preferenciais,
-        resultado.operador.id,
-    )
+    if resultado.senha:
+        emit_senha_chamada(
+            resultado.senha,
+            resultado.operador.nome,
+            resultado.operador.foto_perfil,
+            resultado.alerta_preferenciais,
+            resultado.operador.id,
+        )
     broadcast_posicao_fila(int(setor_id))
 
     if resultado.senha_anterior_finalizada and resultado.senha_anterior_finalizada.token_unico:
@@ -116,7 +117,15 @@ def chamar_proxima_route():
 
     resp = make_response(jsonify({
         "success": True,
-        "senha": resultado.senha.senha,
+        "senha": resultado.senha.senha if resultado.senha else None,
+        "chamada_realizada": resultado.chamada_realizada,
+        "mensagem": (
+            f"Senha {resultado.senha.senha} chamada com sucesso."
+            if resultado.senha
+            else "Atendimento finalizado. Não há senhas pendentes."
+            if resultado.senha_anterior_finalizada
+            else "Não há senhas pendentes."
+        ),
         "tipo": resultado.tipo_chamado,
         "alerta_preferenciais": resultado.alerta_preferenciais,
     }))

@@ -13,6 +13,7 @@ Existem dois mecanismos, propositalmente separados:
    código legado por um token assinado, com todos os dados necessários.
 """
 import time
+import uuid
 from functools import wraps
 
 import jwt
@@ -71,13 +72,19 @@ def api_login_required(view):
 # Token de sessão por código de setor (JWT) — web kiosk + app Android + sockets
 # ---------------------------------------------------------------------------
 
-def create_session_token(setor_id: int, role: str, operador_id: int | None = None) -> str:
+def create_session_token(
+    setor_id: int,
+    role: str,
+    operador_id: int | None = None,
+    *,
+    purpose: str | None = None,
+    ttl_seconds: int | None = None,
+    jti: str | None = None,
+) -> str:
     """Gera um token de sessão para um setor/papel específico.
 
-    `role` é um dos: "cliente", "operador", "avaliacao", "tv". O papel é
-    apenas informativo (o backend não restringe ações por papel hoje), mas
-    viaja no token para telemetria/depuração e para o app saber o que
-    reconectar automaticamente.
+    `role` é um dos: "cliente", "operador", "avaliacao", "tv". O backend usa
+    papel, operador e propósito para restringir endpoints e rooms.
     """
     now = int(time.time())
     payload = {
@@ -85,9 +92,52 @@ def create_session_token(setor_id: int, role: str, operador_id: int | None = Non
         "role": role,
         "operador_id": operador_id,
         "iat": now,
-        "exp": now + current_app.config["SESSION_TOKEN_TTL_SECONDS"],
+        "exp": now + (ttl_seconds or current_app.config["SESSION_TOKEN_TTL_SECONDS"]),
     }
+    if purpose:
+        payload["purpose"] = purpose
+    if jti:
+        payload["jti"] = jti
     return jwt.encode(payload, current_app.config["SECRET_KEY"], algorithm=current_app.config["JWT_ALGORITHM"])
+
+
+def create_operator_action_token(setor_id: int, operador_id: int) -> str:
+    """Emite uma credencial curta e de uso único para uma chamada."""
+    from backend.extensions import db
+    from backend.models import Configuracao
+
+    jti = uuid.uuid4().hex
+    db.session.add(
+        Configuracao(
+            chave=f"operator_action_jti:{jti}",
+            valor="issued",
+            descricao="Token temporário de identificação do operador",
+        )
+    )
+    db.session.commit()
+    return create_session_token(
+        setor_id,
+        role="operador",
+        operador_id=operador_id,
+        purpose="chamar_proxima",
+        ttl_seconds=120,
+        jti=jti,
+    )
+
+
+def consume_operator_action_token(payload: dict) -> bool:
+    """Consome atomicamente o token; replays deixam de autorizar chamadas."""
+    from backend.extensions import db
+    from backend.models import Configuracao
+
+    if payload.get("purpose") != "chamar_proxima" or not payload.get("jti"):
+        return False
+    deleted = Configuracao.query.filter_by(
+        chave=f"operator_action_jti:{payload['jti']}",
+        valor="issued",
+    ).delete(synchronize_session=False)
+    db.session.commit()
+    return deleted == 1
 
 
 def decode_session_token(token: str) -> dict | None:

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -20,15 +21,18 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -37,139 +41,266 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.appsenhas.data.remote.NetworkModule
 import com.example.appsenhas.data.remote.dto.SenhaDto
-import com.example.appsenhas.ui.theme.CianoNeonTv
-import com.example.appsenhas.ui.theme.GradienteTvFundo
-import com.example.appsenhas.ui.theme.VerdeNeonTv
-import com.example.appsenhas.ui.theme.VermelhoPreferencial
 
-/** Réplica visual de `templates/senha_atual.html`: painel escuro tipo TV
- * com brilho neon verde na senha chamada e card do operador com foto. */
+private val PreferencialPanel = Color(0xFF1A1A1A)
+private val PreferencialOnPanel = Color(0xFFF5F5F5)
+private val NormalPanel = Color(0xFFE85D04)
+private val NormalOnPanel = Color(0xFFFFFFFF)
+
 @Composable
 fun TvScreen(viewModel: TvViewModel = viewModel()) {
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(GradienteTvFundo),
-    ) {
-        Column(modifier = Modifier.fillMaxSize().padding(28.dp)) {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally,
-            ) {
-                Card(
-                    shape = RoundedCornerShape(28.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF121212).copy(alpha = 0.85f)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 12.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .border(1.dp, VerdeNeonTv.copy(alpha = 0.25f), RoundedCornerShape(28.dp)),
-                ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(36.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(
-                            text = "SENHA ATUAL",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = VerdeNeonTv,
-                            fontWeight = FontWeight.Light,
-                            letterSpacing = 4.sp,
-                        )
-                        Text(
-                            text = viewModel.ultimaChamadaSenha ?: "Aguardando próxima senha...",
-                            fontSize = if ((viewModel.ultimaChamadaSenha?.length ?: 0) > 0) 90.sp else 34.sp,
-                            fontWeight = FontWeight.Bold,
-                            fontFamily = FontFamily.Monospace,
-                            color = Color.White,
-                            textAlign = TextAlign.Center,
-                            letterSpacing = 4.sp,
-                            style = MaterialTheme.typography.displayLarge.copy(
-                                shadow = Shadow(color = VerdeNeonTv.copy(alpha = 0.8f), offset = Offset(0f, 0f), blurRadius = 40f),
-                            ),
-                            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp),
-                        )
+    val context = LocalContext.current
+    val soundPlayer = remember(context.applicationContext) { TvCallSoundPlayer(context) }
 
-                        if (viewModel.ultimaChamadaOperador != null) {
-                            OperadorCardTv(
-                                nome = viewModel.ultimaChamadaOperador!!,
-                                foto = viewModel.ultimaChamadaOperadorFoto,
-                            )
-                        }
-                    }
-                }
-            }
+    LaunchedEffect(viewModel, soundPlayer) {
+        viewModel.callSoundEvents.collect { soundPlayer.play() }
+    }
+    DisposableEffect(soundPlayer) {
+        onDispose { soundPlayer.release() }
+    }
 
-            Text(
-                text = "Aguardando (${viewModel.pendentes.size})",
-                style = MaterialTheme.typography.titleMedium,
-                color = Color.White.copy(alpha = 0.7f),
-                modifier = Modifier.padding(top = 28.dp, bottom = 8.dp),
+    Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
+        if (viewModel.showPropagandaLayout) {
+            PropagandaTvLayout(
+                imageUrl = mediaUrl(viewModel.imagens.getOrNull(viewModel.imagemIndex)?.arquivo),
+                preferencialSenha = viewModel.ultimaPreferencialSenha,
+                normalSenha = viewModel.ultimaNormalSenha,
             )
-            LazyColumn(modifier = Modifier.weight(1f)) {
-                items(viewModel.pendentes) { senha -> LinhaSenhaTv(senha) }
-            }
-
-            viewModel.errorMessage?.let {
-                Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 8.dp))
+        } else {
+            Row(
+                modifier = Modifier.fillMaxSize().padding(32.dp),
+                horizontalArrangement = Arrangement.spacedBy(24.dp),
+            ) {
+                CurrentCallCard(
+                    senha = viewModel.ultimaChamadaSenha,
+                    operadorNome = viewModel.ultimaChamadaOperador,
+                    operadorFoto = viewModel.ultimaChamadaOperadorFoto,
+                    modifier = Modifier.weight(1.65f).fillMaxSize(),
+                )
+                QueueCard(
+                    pendentes = viewModel.pendentes,
+                    errorMessage = viewModel.errorMessage,
+                    modifier = Modifier.weight(1f).fillMaxSize(),
+                )
             }
         }
     }
 }
 
 @Composable
-private fun OperadorCardTv(nome: String, foto: String?) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .padding(top = 24.dp)
-            .clip(RoundedCornerShape(50))
-            .background(VerdeNeonTv.copy(alpha = 0.1f))
-            .border(1.dp, VerdeNeonTv.copy(alpha = 0.3f), RoundedCornerShape(50))
-            .padding(horizontal = 20.dp, vertical = 10.dp),
-    ) {
+private fun PropagandaTvLayout(
+    imageUrl: String?,
+    preferencialSenha: String?,
+    normalSenha: String?,
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
         Box(
             modifier = Modifier
-                .size(48.dp)
-                .clip(CircleShape)
-                .background(VerdeNeonTv.copy(alpha = 0.15f))
-                .border(2.dp, VerdeNeonTv.copy(alpha = 0.5f), CircleShape),
+                .fillMaxWidth()
+                .weight(0.78f)
+                .background(Color.Black),
             contentAlignment = Alignment.Center,
         ) {
-            if (foto != null) {
+            if (imageUrl != null) {
                 AsyncImage(
-                    model = "${NetworkModule.currentHttpBaseUrl()}uploads/$foto",
-                    contentDescription = nome,
-                    modifier = Modifier.size(48.dp).clip(CircleShape),
+                    model = imageUrl,
+                    contentDescription = "Propaganda",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
                 )
-            } else {
-                Icon(Icons.Filled.Person, contentDescription = null, tint = VerdeNeonTv)
             }
         }
-        Column(modifier = Modifier.padding(start = 12.dp)) {
-            Text(text = nome, color = VerdeNeonTv, fontWeight = FontWeight.Bold)
-            Text(text = "Atendendo agora", color = CianoNeonTv, style = MaterialTheme.typography.labelSmall)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(0.22f),
+        ) {
+            TipoSenhaPanel(
+                titulo = "PREFERENCIAL",
+                senha = preferencialSenha,
+                background = PreferencialPanel,
+                foreground = PreferencialOnPanel,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+            TipoSenhaPanel(
+                titulo = "NORMAL",
+                senha = normalSenha,
+                background = NormalPanel,
+                foreground = NormalOnPanel,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
         }
     }
 }
 
 @Composable
-private fun LinhaSenhaTv(senha: SenhaDto) {
-    val preferencial = senha.tipo == "preferencial"
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+private fun TipoSenhaPanel(
+    titulo: String,
+    senha: String?,
+    background: Color,
+    foreground: Color,
+    modifier: Modifier,
+) {
+    Column(
+        modifier = modifier.background(background).padding(horizontal = 24.dp, vertical = 16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
     ) {
         Text(
-            senha.senha,
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            fontFamily = FontFamily.Monospace,
-            color = Color.White,
+            text = titulo,
+            color = foreground.copy(alpha = 0.85f),
+            fontSize = 22.sp,
+            fontWeight = FontWeight.SemiBold,
+            letterSpacing = 2.sp,
         )
         Text(
-            text = if (preferencial) "Preferencial" else "Normal",
-            style = MaterialTheme.typography.bodyLarge,
-            color = if (preferencial) VermelhoPreferencial else VerdeNeonTv,
+            text = senha ?: "—",
+            color = foreground,
+            fontSize = if (senha == null) 48.sp else 72.sp,
+            fontWeight = FontWeight.Black,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(top = 4.dp),
         )
     }
+}
+
+@Composable
+private fun CurrentCallCard(
+    senha: String?,
+    operadorNome: String?,
+    operadorFoto: String?,
+    modifier: Modifier,
+) {
+    Card(
+        modifier = modifier.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(24.dp)),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(36.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Text(
+                text = "SENHA ATUAL",
+                color = MaterialTheme.colorScheme.primary,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 3.sp,
+            )
+            Text(
+                text = senha ?: "Aguardando",
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = if (senha == null) 52.sp else 104.sp,
+                lineHeight = if (senha == null) 60.sp else 112.sp,
+                fontWeight = FontWeight.Black,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(vertical = 22.dp),
+            )
+            if (operadorNome != null) {
+                OperatorCard(nome = operadorNome, foto = operadorFoto)
+            } else {
+                Text(
+                    text = "A próxima chamada aparecerá aqui",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 22.sp,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun OperatorCard(nome: String, foto: String?) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(18.dp))
+            .background(MaterialTheme.colorScheme.secondary)
+            .padding(horizontal = 20.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.size(64.dp).clip(CircleShape)
+                .background(MaterialTheme.colorScheme.surface)
+                .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            val photoUrl = mediaUrl(foto)
+            if (photoUrl != null) {
+                AsyncImage(
+                    model = photoUrl,
+                    contentDescription = "Foto de $nome",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Icon(
+                    Icons.Filled.Person,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(36.dp),
+                )
+            }
+        }
+        Column(modifier = Modifier.padding(start = 16.dp)) {
+            Text("DIRIJA-SE A", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+            Text(nome, color = MaterialTheme.colorScheme.onSurface, fontSize = 27.sp, fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun QueueCard(pendentes: List<SenhaDto>, errorMessage: String?, modifier: Modifier) {
+    Card(
+        modifier = modifier.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(24.dp)),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+            Text("FILA DE ESPERA", color = MaterialTheme.colorScheme.onSurface, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            Text(
+                "${pendentes.size} ${if (pendentes.size == 1) "senha aguardando" else "senhas aguardando"}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 18.sp,
+                modifier = Modifier.padding(top = 4.dp, bottom = 18.dp),
+            )
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(pendentes, key = { it.id }) { senha -> QueueRow(senha) }
+            }
+            errorMessage?.let {
+                Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 12.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun QueueRow(senha: SenhaDto) {
+    val preferential = senha.tipo == "preferencial"
+    Row(
+        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.secondary)
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(senha.senha, color = MaterialTheme.colorScheme.onSurface, fontSize = 27.sp, fontWeight = FontWeight.Bold)
+        Text(
+            text = if (preferential) "PREFERENCIAL" else "NORMAL",
+            color = if (preferential) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+        )
+    }
+}
+
+private fun mediaUrl(path: String?): String? {
+    val value = path?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    if (value.startsWith("http://") || value.startsWith("https://")) return value
+    val normalized = value.trimStart('/').removePrefix("uploads/")
+    return "${NetworkModule.currentHttpBaseUrl().trimEnd('/')}/uploads/$normalized"
 }

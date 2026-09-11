@@ -15,6 +15,7 @@ class Setor(db.Model):
     descricao = db.Column(db.Text)
     senha_setor = db.Column(db.Text)  # "código do setor" usado no login do app/kiosk
     modo_identificacao_operador = db.Column(db.String(10), nullable=False, default="foto")
+    propagandas_ativas = db.Column(db.Boolean, nullable=False, default=False)
 
     operadores = db.relationship("Operador", backref="setor", lazy="dynamic")
     impressoras = db.relationship("Impressora", backref="setor", lazy="dynamic")
@@ -26,6 +27,7 @@ class Setor(db.Model):
             "nome": self.nome,
             "descricao": self.descricao,
             "modo_identificacao_operador": self.modo_identificacao_operador or "foto",
+            "propagandas_ativas": bool(self.propagandas_ativas),
         }
 
 
@@ -142,3 +144,24 @@ class Usuario(db.Model):
     senha_hash = db.Column(db.Text, nullable=False)
     nome_empresa = db.Column(db.Text)
     criado_em = db.Column(db.DateTime, default=datetime.now)
+
+
+class Propaganda(db.Model):
+    """Imagens globais exibidas na TV quando o setor ativa `propagandas_ativas`."""
+
+    __tablename__ = "propagandas"
+
+    id = db.Column(db.Integer, primary_key=True)
+    arquivo = db.Column(db.Text, nullable=False)
+    ordem = db.Column(db.Integer, nullable=False, default=0)
+    ativo = db.Column(db.Boolean, nullable=False, default=True)
+    criado_em = db.Column(db.DateTime, default=datetime.now)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "arquivo": self.arquivo,
+            "ordem": self.ordem,
+            "ativo": bool(self.ativo),
+            "criado_em": self.criado_em.isoformat() if self.criado_em else None,
+        }

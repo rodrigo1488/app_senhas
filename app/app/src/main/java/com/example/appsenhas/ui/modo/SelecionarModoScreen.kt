@@ -100,7 +100,7 @@ fun SelecionarModoScreen(
                     icon = Icons.Filled.SupportAgent,
                     gradiente = GradienteOperador,
                     enabled = !viewModel.isLoading,
-                    onClick = onSelecionarOperador,
+                    onClick = { viewModel.selecionarPapelSimples(Papel.OPERADOR, onSelecionarOperador) },
                 )
                 ModoGradienteButton(
                     label = "PAINEL (TV)",

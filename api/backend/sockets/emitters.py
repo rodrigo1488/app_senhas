@@ -19,6 +19,7 @@ from backend.sockets.events import (
     EV_SENHA_POSICAO,
     room_avaliacao,
     room_operador,
+    room_operadores,
     room_setor,
     room_ticket,
 )
@@ -26,6 +27,11 @@ from backend.sockets.events import (
 
 def emit_fila_atualizada(setor_id: int) -> None:
     socketio.emit(EV_FILA_ATUALIZADA, serializar_fila(setor_id), room=room_setor(setor_id))
+    socketio.emit(
+        EV_FILA_ATUALIZADA,
+        serializar_fila(setor_id, incluir_pedidos=True),
+        room=room_operadores(setor_id),
+    )
 
 
 def emit_senha_criada(senha: Senha, to_sid: str | None = None) -> None:
@@ -45,7 +51,6 @@ def emit_senha_chamada(
 ) -> None:
     payload = {
         "setor_id": senha.setor_id,
-        "ticket_token": senha.token_unico,
         "senha_id": senha.id,
         "senha": senha.senha,
         "tipo": senha.tipo,
@@ -61,8 +66,10 @@ def emit_senha_chamada(
                 EV_SENHA_CHAMADA,
                 {
                     **payload,
+                    "ticket_token": senha.token_unico,
                     "tem_pedido": bool(senha.tem_pedido),
                     "pedido": senha.pedido,
+                    "pedido_confirmado": bool(senha.pedido_confirmado),
                 },
                 room=room_operador(senha.setor_id, operador_id),
             )
@@ -71,8 +78,10 @@ def emit_senha_chamada(
             EV_SENHA_CHAMADA,
             {
                 **payload,
+                "ticket_token": senha.token_unico,
                 "tem_pedido": bool(senha.tem_pedido),
                 "pedido": senha.pedido,
+                "pedido_confirmado": bool(senha.pedido_confirmado),
             },
             room=room_ticket(senha.token_unico),
         )

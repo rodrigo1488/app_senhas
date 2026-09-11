@@ -3,8 +3,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from backend.models import Operador
 
-PIN_MIN_LENGTH = 4
-PIN_MAX_LENGTH = 6
+PIN_LENGTH = 4
 
 
 class OperadorPinError(ValueError):
@@ -13,8 +12,8 @@ class OperadorPinError(ValueError):
 
 def validar_formato_pin(pin: str) -> str:
     pin = (pin or "").strip()
-    if not pin.isdigit() or not PIN_MIN_LENGTH <= len(pin) <= PIN_MAX_LENGTH:
-        raise OperadorPinError("O PIN deve conter de 4 a 6 números")
+    if not pin.isdigit() or len(pin) != PIN_LENGTH:
+        raise OperadorPinError("O PIN deve conter exatamente 4 números")
     return pin
 
 

@@ -18,8 +18,10 @@ import com.example.appsenhas.data.remote.dto.SenhaDto
 import com.example.appsenhas.data.remote.dto.SetorLoginRequest
 import com.example.appsenhas.data.remote.dto.SetorLoginResponse
 import com.example.appsenhas.data.remote.dto.SuccessDto
+import com.example.appsenhas.data.remote.dto.TvConfigDto
 import retrofit2.http.Body
 import retrofit2.http.GET
+import retrofit2.http.Header
 import retrofit2.http.POST
 import retrofit2.http.Path
 import retrofit2.http.Query
@@ -49,6 +51,9 @@ interface ApiService {
     @GET("api/v1/setor/fila")
     suspend fun estadoFila(): FilaDto
 
+    @GET("api/v1/setor/tv_config")
+    suspend fun tvConfig(): TvConfigDto
+
     @GET("api/v1/setor/atendimento_atual")
     suspend fun atendimentoAtual(): AtendimentoAtualDto
 
@@ -65,10 +70,16 @@ interface ApiService {
     suspend fun chamarProxima(@Body body: ChamarProximaRequest): ChamarProximaResponseDto
 
     @POST("api/v1/operador/chamar_novamente")
-    suspend fun chamarNovamente(@Body body: ChamarNovamenteRequest): SuccessDto
+    suspend fun chamarNovamente(
+        @Body body: ChamarNovamenteRequest,
+        @Header("Authorization") authorization: String? = null,
+    ): SuccessDto
 
     @POST("api/v1/operador/confirmar_pedido")
-    suspend fun confirmarPedido(@Body body: ConfirmarPedidoRequest): SuccessDto
+    suspend fun confirmarPedido(
+        @Body body: ConfirmarPedidoRequest,
+        @Header("Authorization") authorization: String? = null,
+    ): SuccessDto
 
     @GET("api/v1/avaliacao/pendente")
     suspend fun avaliacaoPendente(@Query("operador_id") operadorId: Int? = null): AvaliacaoPendenteDto

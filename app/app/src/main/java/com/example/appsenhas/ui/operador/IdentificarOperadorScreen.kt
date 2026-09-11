@@ -145,11 +145,9 @@ private fun PinIdentification(
                 linha.forEach { tecla ->
                     Button(
                         onClick = {
-                            pin = when (tecla) {
-                                "Limpar" -> ""
-                                "⌫" -> pin.dropLast(1)
-                                else -> if (pin.length < 6) pin + tecla else pin
-                            }
+                            val result = processPinKey(pin, tecla, OperadorViewModel.PIN_LENGTH)
+                            pin = result.displayedPin
+                            result.submittedPin?.let(onConfirm)
                         },
                         enabled = enabled,
                         colors = ButtonDefaults.buttonColors(containerColor = IndigoApp),
@@ -159,16 +157,6 @@ private fun PinIdentification(
                     }
                 }
             }
-        }
-        Button(
-            onClick = {
-                onConfirm(pin)
-                pin = ""
-            },
-            enabled = enabled && pin.length >= 4,
-            modifier = Modifier.fillMaxWidth().padding(top = 14.dp),
-        ) {
-            Text("Entrar como operador")
         }
     }
 }

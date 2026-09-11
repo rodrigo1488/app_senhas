@@ -11,7 +11,11 @@ import com.example.appsenhas.data.remote.dto.AtendimentoDto
 import com.example.appsenhas.data.remote.dto.ChamarNovamenteRequest
 import com.example.appsenhas.data.remote.dto.ChamarProximaRequest
 import com.example.appsenhas.data.remote.dto.ConfirmarPedidoRequest
+import com.example.appsenhas.data.remote.dto.OperadorDto
+import com.example.appsenhas.data.remote.dto.Papel
+import com.example.appsenhas.data.remote.dto.SelecionarPapelRequest
 import com.example.appsenhas.data.remote.dto.SenhaDto
+import com.example.appsenhas.data.session.AuthState
 import com.example.appsenhas.data.remote.toUserMessage
 import com.example.appsenhas.realtime.SocketEvent
 import com.example.appsenhas.realtime.SocketManager
@@ -20,39 +24,61 @@ import kotlinx.coroutines.launch
 class OperadorViewModel : ViewModel() {
     private val sessionRepository = AppGraph.sessionRepository
 
-    var meuOperadorId: Int? = null
+    var operadores by mutableStateOf<List<OperadorDto>>(emptyList())
         private set
-    var meuOperadorNome: String? = null
+    var modoIdentificacao by mutableStateOf("foto")
         private set
 
     var pendentes by mutableStateOf<List<SenhaDto>>(emptyList())
     var atendimentos by mutableStateOf<List<AtendimentoDto>>(emptyList())
 
-    var senhaChamadaAtual by mutableStateOf<String?>(null)
-    var pedidoAtual by mutableStateOf<String?>(null)
-    var temPedidoAtual by mutableStateOf(false)
+    var atendimentoAtual by mutableStateOf<AtendimentoDto?>(null)
+        private set
+    var senhaPedidoSelecionada by mutableStateOf<SenhaDto?>(null)
+        private set
+    var identificacaoVisible by mutableStateOf(false)
+        private set
     var pedidoDialogVisible by mutableStateOf(false)
         private set
 
-    var isLoading by mutableStateOf(false)
+    var isLoading by mutableStateOf(true)
     var errorMessage by mutableStateOf<String?>(null)
-
-    val meuAtendimento: AtendimentoDto?
-        get() = atendimentos.firstOrNull { it.operador_id == meuOperadorId }
+    var successMessage by mutableStateOf<String?>(null)
+        private set
+    private var tokenDoAtendimento: String? = null
 
     init {
-        viewModelScope.launch {
-            meuOperadorId = sessionRepository.getOperadorId()
-            meuOperadorNome = sessionRepository.getOperadorNome()
-
-            val token = sessionRepository.getSessionToken()
-            if (token != null) {
-                SocketManager.connectWithSessionToken(NetworkModule.currentHttpBaseUrl(), token)
-            }
-            hidratarFila()
-        }
+        prepararTela()
         viewModelScope.launch {
             SocketManager.events.collect { event -> handleEvent(event) }
+        }
+    }
+
+    private fun prepararTela() {
+        viewModelScope.launch {
+            try {
+                if (sessionRepository.getOperadorId() != null) {
+                    val livre = NetworkModule.apiService().liberarOperador()
+                    sessionRepository.savePapel(livre.session_token, Papel.OPERADOR)
+                }
+                val operadoresResponse = NetworkModule.apiService().listarOperadores()
+                operadores = operadoresResponse.operadores
+                modoIdentificacao = operadoresResponse.modo_identificacao_operador
+                val fila = NetworkModule.apiService().estadoFila()
+                pendentes = fila.pendentes
+                atendimentos = fila.atendimentos
+                conectarSocketDaTela()
+            } catch (e: Exception) {
+                errorMessage = e.toUserMessage("Não foi possível carregar a fila.")
+            } finally {
+                isLoading = false
+            }
+        }
+    }
+
+    private suspend fun conectarSocketDaTela() {
+        sessionRepository.getSessionToken()?.let { token ->
+            SocketManager.connectWithSessionToken(NetworkModule.currentHttpBaseUrl(), token)
         }
     }
 
@@ -62,50 +88,97 @@ class OperadorViewModel : ViewModel() {
                 pendentes = event.pendentes
                 atendimentos = event.atendimentos
             }
-            is SocketEvent.SenhaChamada -> {
-                if (event.operadorId != null && event.operadorId == meuOperadorId) {
-                    senhaChamadaAtual = event.senha
-                    temPedidoAtual = event.temPedido
-                    pedidoAtual = event.pedido
-                    pedidoDialogVisible = event.temPedido
-                }
-            }
             else -> Unit
         }
     }
 
-    private fun hidratarFila() {
-        viewModelScope.launch {
-            try {
-                val fila = NetworkModule.apiService().estadoFila()
-                pendentes = fila.pendentes
-                atendimentos = fila.atendimentos
-                val atual = NetworkModule.apiService().atendimentoAtual()
-                if (atual.senha != null) {
-                    senhaChamadaAtual = atual.senha
-                    temPedidoAtual = atual.tem_pedido
-                    pedidoAtual = atual.pedido
-                    pedidoDialogVisible = atual.tem_pedido && !atual.pedido_confirmado
-                }
-            } catch (e: Exception) {
-                errorMessage = e.toUserMessage("Não foi possível carregar a fila.")
-            }
-        }
+    fun abrirIdentificacao() {
+        errorMessage = null
+        successMessage = null
+        identificacaoVisible = true
     }
 
-    fun chamarProxima() {
-        if (meuOperadorId == null) return
+    fun fecharIdentificacao() {
+        if (!isLoading) identificacaoVisible = false
+    }
+
+    fun identificarPorFoto(operador: OperadorDto) {
+        identificarEChamar(SelecionarPapelRequest(role = Papel.OPERADOR.valor, operador_id = operador.id))
+    }
+
+    fun identificarPorPin(pin: String) {
+        if (pin.length != PIN_LENGTH) {
+            errorMessage = "Digite um PIN de 4 números."
+            return
+        }
+        identificarEChamar(SelecionarPapelRequest(role = Papel.OPERADOR.valor, pin = pin))
+    }
+
+    private fun identificarEChamar(identificacao: SelecionarPapelRequest) {
         errorMessage = null
+        successMessage = null
         isLoading = true
         viewModelScope.launch {
+            var tokenVinculado: String? = null
+            val tokenLivre = sessionRepository.getSessionToken()
             try {
+                val sessao = NetworkModule.apiService().selecionarPapel(identificacao)
+                val operador = sessao.operador
+                    ?: throw IllegalStateException("Operador não retornado pelo servidor")
+                tokenVinculado = sessao.session_token
+                AuthState.sessionToken = tokenVinculado
                 val response = NetworkModule.apiService().chamarProxima(ChamarProximaRequest())
-                senhaChamadaAtual = response.senha.senha
-                temPedidoAtual = response.senha.tem_pedido
-                pedidoAtual = response.senha.pedido
-                pedidoDialogVisible = response.senha.tem_pedido
+                val tokenAtivo = response.session_token ?: tokenVinculado
+                AuthState.sessionToken = tokenAtivo
+                identificacaoVisible = false
+                successMessage = response.mensagem
+
+                val senhaChamada = response.senha
+                if (response.chamada_realizada) {
+                    checkNotNull(senhaChamada) {
+                        "Resposta inválida: chamada realizada sem dados da senha"
+                    }
+                    tokenDoAtendimento = tokenVinculado
+                    val novoAtendimento = AtendimentoDto(
+                        operador_id = operador.id,
+                        operador_nome = operador.nome,
+                        operador_foto = operador.foto_perfil,
+                        senha = senhaChamada.senha,
+                        tipo = senhaChamada.tipo,
+                        senha_id = senhaChamada.id,
+                        tem_pedido = senhaChamada.tem_pedido,
+                        pedido = senhaChamada.pedido,
+                        pedido_confirmado = senhaChamada.pedido_confirmado,
+                    )
+                    atendimentoAtual = novoAtendimento
+                    atendimentos = listOf(novoAtendimento) +
+                        atendimentos.filterNot { it.operador_id == operador.id }
+                    pendentes = pendentes.filterNot { it.id == senhaChamada.id }
+                } else {
+                    check(senhaChamada == null) {
+                        "Resposta inválida: senha retornada sem chamada realizada"
+                    }
+                    tokenDoAtendimento = null
+                    atendimentoAtual = atendimentoAtual?.takeUnless {
+                        it.operador_id == operador.id
+                    }
+                    atendimentos = atendimentos.filterNot { it.operador_id == operador.id }
+                }
+
+                sessionRepository.savePapel(tokenAtivo, Papel.OPERADOR)
+                conectarSocketDaTela()
             } catch (e: Exception) {
                 errorMessage = e.toUserMessage("Não foi possível chamar a próxima senha.")
+                if (tokenVinculado != null) {
+                    try {
+                        val livre = NetworkModule.apiService().liberarOperador()
+                        sessionRepository.savePapel(livre.session_token, Papel.OPERADOR)
+                        conectarSocketDaTela()
+                    } catch (_: Exception) {
+                        AuthState.sessionToken = tokenLivre
+                        conectarSocketDaTela()
+                    }
+                }
             } finally {
                 isLoading = false
             }
@@ -113,36 +186,71 @@ class OperadorViewModel : ViewModel() {
     }
 
     fun chamarNovamente(senhaId: Int) {
+        val token = tokenDoAtendimento ?: return
         viewModelScope.launch {
             try {
-                NetworkModule.apiService().chamarNovamente(ChamarNovamenteRequest(senhaId))
+                NetworkModule.apiService().chamarNovamente(
+                    ChamarNovamenteRequest(senhaId),
+                    "Bearer $token",
+                )
             } catch (e: Exception) {
                 errorMessage = e.toUserMessage("Não foi possível chamar novamente.")
             }
         }
     }
 
-    fun confirmarPedido() {
-        val senha = senhaChamadaAtual ?: return
-        viewModelScope.launch {
-            try {
-                NetworkModule.apiService().confirmarPedido(ConfirmarPedidoRequest(senha))
-                pedidoDialogVisible = false
-            } catch (e: Exception) {
-                errorMessage = e.toUserMessage("Não foi possível confirmar o pedido.")
-            }
-        }
+    fun verPedido(senha: SenhaDto) {
+        if (!senha.tem_pedido) return
+        senhaPedidoSelecionada = senha
+        pedidoDialogVisible = true
     }
 
-    fun trocarOperador(onSuccess: () -> Unit) {
+    fun verPedidoAtual() {
+        val atual = atendimentoAtual ?: return
+        verPedido(atual)
+    }
+
+    fun verPedido(atendimento: AtendimentoDto) {
+        val atual = atendimento
+        if (!atual.tem_pedido) return
+        senhaPedidoSelecionada = SenhaDto(
+            id = atual.senha_id ?: 0,
+            senha = atual.senha,
+            tipo = atual.tipo,
+            tem_pedido = atual.tem_pedido,
+            pedido = atual.pedido,
+            pedido_confirmado = atual.pedido_confirmado,
+        )
+        pedidoDialogVisible = true
+    }
+
+    fun fecharPedido() {
+        pedidoDialogVisible = false
+        senhaPedidoSelecionada = null
+    }
+
+    fun confirmarPedido() {
+        val selecionada = senhaPedidoSelecionada ?: return
+        val atual = atendimentoAtual ?: return
+        val token = tokenDoAtendimento ?: return
+        if (selecionada.senha != atual.senha) return
         viewModelScope.launch {
             try {
-                val response = NetworkModule.apiService().liberarOperador()
-                sessionRepository.saveGenericSession(response.session_token)
-                SocketManager.disconnect()
-                onSuccess()
+                NetworkModule.apiService().confirmarPedido(
+                    ConfirmarPedidoRequest(selecionada.senha),
+                    "Bearer $token",
+                )
+                atendimentoAtual = atual.copy(pedido_confirmado = true)
+                atendimentos = atendimentos.map {
+                    if (it.senha_id == selecionada.id || it.senha == selecionada.senha) {
+                        it.copy(pedido_confirmado = true)
+                    } else {
+                        it
+                    }
+                }
+                fecharPedido()
             } catch (e: Exception) {
-                errorMessage = e.toUserMessage("Não foi possível trocar o operador.")
+                errorMessage = e.toUserMessage("Não foi possível confirmar o pedido.")
             }
         }
     }
@@ -150,5 +258,9 @@ class OperadorViewModel : ViewModel() {
     override fun onCleared() {
         super.onCleared()
         SocketManager.disconnect()
+    }
+
+    companion object {
+        const val PIN_LENGTH = 4
     }
 }

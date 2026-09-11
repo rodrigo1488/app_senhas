@@ -13,7 +13,7 @@ from sqlalchemy import func
 
 from backend.auth import api_login_required
 from backend.extensions import db
-from backend.models import AtendimentoAtual, Finalizado, Impressora, Operador, Senha, Setor, Usuario
+from backend.models import AtendimentoAtual, Finalizado, Impressora, Operador, Propaganda, Senha, Setor, Usuario
 from backend.services.operador_pin_service import OperadorPinError, definir_pin
 from backend.services.usuario_service import autenticar
 from backend.utils import (
@@ -22,6 +22,7 @@ from backend.utils import (
     get_configuracao,
     get_ngrok_url,
     process_image,
+    process_propaganda_image,
     set_configuracao,
     set_ngrok_url,
 )
@@ -275,6 +276,7 @@ def list_setores():
                 "descricao": s.descricao or "",
                 "senha_setor": s.senha_setor or "",
                 "modo_identificacao_operador": s.modo_identificacao_operador or "foto",
+                "propagandas_ativas": bool(s.propagandas_ativas),
             }
             for s in setores
         ]
@@ -297,6 +299,7 @@ def create_setor():
         descricao=(data.get("descricao") or "").strip(),
         senha_setor=(data.get("senha_setor") or "").strip(),
         modo_identificacao_operador=modo,
+        propagandas_ativas=bool(data.get("propagandas_ativas", False)),
     )
     db.session.add(setor)
     db.session.commit()
@@ -325,8 +328,19 @@ def update_setor(setor_id: int):
             setor.modo_identificacao_operador = modo
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
+    if "propagandas_ativas" in data:
+        setor.propagandas_ativas = bool(data.get("propagandas_ativas"))
     db.session.commit()
-    return jsonify({"id": setor.id, "nome": setor.nome})
+    return jsonify(
+        {
+            "id": setor.id,
+            "nome": setor.nome,
+            "descricao": setor.descricao,
+            "senha_setor": setor.senha_setor,
+            "modo_identificacao_operador": setor.modo_identificacao_operador or "foto",
+            "propagandas_ativas": bool(setor.propagandas_ativas),
+        }
+    )
 
 
 @admin_api_bp.route("/setores/<int:setor_id>", methods=["DELETE"])
@@ -334,6 +348,67 @@ def update_setor(setor_id: int):
 def delete_setor(setor_id: int):
     setor = Setor.query.get_or_404(setor_id)
     db.session.delete(setor)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
+# --- Propagandas (galeria global para TV) ------------------------------------
+
+
+@admin_api_bp.route("/propagandas", methods=["GET"])
+@api_login_required
+def list_propagandas():
+    itens = Propaganda.query.order_by(Propaganda.ordem.asc(), Propaganda.id.asc()).all()
+    return jsonify([p.to_dict() for p in itens])
+
+
+@admin_api_bp.route("/propagandas", methods=["POST"])
+@api_login_required
+def create_propaganda():
+    file = request.files.get("arquivo") or request.files.get("imagem")
+    if not file or not file.filename:
+        return jsonify({"error": "Imagem é obrigatória"}), 400
+    if not allowed_file(file.filename):
+        return jsonify({"error": "Tipo de arquivo não permitido"}), 400
+    file.seek(0, 2)
+    tamanho = file.tell()
+    file.seek(0)
+    if tamanho > current_app.config["MAX_FILE_SIZE"]:
+        return jsonify({"error": "Arquivo muito grande (máx. 5MB)"}), 400
+
+    filename = process_propaganda_image(file)
+    if not filename:
+        return jsonify({"error": "Não foi possível processar a imagem"}), 400
+
+    max_ordem = db.session.query(func.max(Propaganda.ordem)).scalar() or 0
+    item = Propaganda(arquivo=filename, ordem=max_ordem + 1, ativo=True)
+    db.session.add(item)
+    db.session.commit()
+    return jsonify(item.to_dict()), 201
+
+
+@admin_api_bp.route("/propagandas/<int:propaganda_id>", methods=["PUT"])
+@api_login_required
+def update_propaganda(propaganda_id: int):
+    item = Propaganda.query.get_or_404(propaganda_id)
+    data = request.get_json(silent=True) or {}
+    if "ordem" in data:
+        try:
+            item.ordem = int(data.get("ordem"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "ordem inválida"}), 400
+    if "ativo" in data:
+        item.ativo = bool(data.get("ativo"))
+    db.session.commit()
+    return jsonify(item.to_dict())
+
+
+@admin_api_bp.route("/propagandas/<int:propaganda_id>", methods=["DELETE"])
+@api_login_required
+def delete_propaganda(propaganda_id: int):
+    item = Propaganda.query.get_or_404(propaganda_id)
+    delete_old_image(item.arquivo)
+    db.session.delete(item)
     db.session.commit()
     return jsonify({"ok": True})
 

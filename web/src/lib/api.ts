@@ -41,6 +41,15 @@ export type Setor = {
   descricao: string;
   senha_setor: string;
   modo_identificacao_operador: "foto" | "pin";
+  propagandas_ativas: boolean;
+};
+
+export type Propaganda = {
+  id: number;
+  arquivo: string;
+  ordem: number;
+  ativo: boolean;
+  criado_em: string | null;
 };
 
 export type Operador = {

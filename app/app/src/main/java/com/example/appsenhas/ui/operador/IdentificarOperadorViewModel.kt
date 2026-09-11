@@ -62,8 +62,8 @@ class IdentificarOperadorViewModel : ViewModel() {
     }
 
     fun identificarPorPin(pin: String, onSuccess: () -> Unit) {
-        if (pin.length !in 4..6) {
-            errorMessage = "Digite um PIN de 4 a 6 números."
+        if (pin.length != OperadorViewModel.PIN_LENGTH) {
+            errorMessage = "Digite um PIN de 4 números."
             return
         }
         errorMessage = null

@@ -14,6 +14,7 @@ export default function SetoresPage() {
   const [descricao, setDescricao] = useState("");
   const [senhaSetor, setSenhaSetor] = useState("");
   const [modoIdentificacao, setModoIdentificacao] = useState<"foto" | "pin">("foto");
+  const [propagandasAtivas, setPropagandasAtivas] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -31,6 +32,7 @@ export default function SetoresPage() {
     setDescricao(setor.descricao || "");
     setSenhaSetor(setor.senha_setor || "");
     setModoIdentificacao(setor.modo_identificacao_operador || "foto");
+    setPropagandasAtivas(Boolean(setor.propagandas_ativas));
   }
 
   function resetForm() {
@@ -39,6 +41,7 @@ export default function SetoresPage() {
     setDescricao("");
     setSenhaSetor("");
     setModoIdentificacao("foto");
+    setPropagandasAtivas(false);
   }
 
   async function onSubmit(e: FormEvent) {
@@ -51,6 +54,7 @@ export default function SetoresPage() {
         descricao,
         senha_setor: senhaSetor,
         modo_identificacao_operador: modoIdentificacao,
+        propagandas_ativas: propagandasAtivas,
       });
       if (editing) {
         await apiFetch(`/api/v1/admin/setores/${editing.id}`, { method: "PUT", body });
@@ -69,6 +73,14 @@ export default function SetoresPage() {
   async function onDelete(id: number) {
     if (!confirm("Excluir este setor?")) return;
     await apiFetch(`/api/v1/admin/setores/${id}`, { method: "DELETE" });
+    await load();
+  }
+
+  async function togglePropagandas(setor: Setor) {
+    await apiFetch(`/api/v1/admin/setores/${setor.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ propagandas_ativas: !setor.propagandas_ativas }),
+    });
     await load();
   }
 
@@ -104,6 +116,16 @@ export default function SetoresPage() {
                 <option value="pin">PIN numérico</option>
               </select>
             </div>
+            <div className="flex items-center gap-3 space-y-0 pt-8">
+              <input
+                id="propagandas_ativas"
+                type="checkbox"
+                className="h-4 w-4 rounded border"
+                checked={propagandasAtivas}
+                onChange={(e) => setPropagandasAtivas(e.target.checked)}
+              />
+              <Label htmlFor="propagandas_ativas">Propagandas na TV</Label>
+            </div>
             <div className="space-y-2 md:col-span-2">
               <Label>Descrição</Label>
               <Input value={descricao} onChange={(e) => setDescricao(e.target.value)} />
@@ -137,9 +159,14 @@ export default function SetoresPage() {
                 </p>
                 <p className="text-xs text-muted-foreground">
                   Operadores: {s.modo_identificacao_operador === "pin" ? "PIN numérico" : "Clique na foto"}
+                  {" · "}
+                  TV: {s.propagandas_ativas ? "Propagandas ativas" : "Layout padrão"}
                 </p>
               </div>
               <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => togglePropagandas(s)}>
+                  {s.propagandas_ativas ? "Desligar TV ads" : "Ligar TV ads"}
+                </Button>
                 <Button variant="outline" size="sm" onClick={() => startEdit(s)}>
                   Editar
                 </Button>

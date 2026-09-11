@@ -45,7 +45,7 @@ export default function EditOperadorPage() {
     setLoading(true);
     setError(null);
     try {
-      if (pin && !/^\d{4,6}$/.test(pin)) throw new Error("O PIN deve conter de 4 a 6 números");
+      if (pin && !/^\d{4}$/.test(pin)) throw new Error("O PIN deve conter exatamente 4 números");
       if (pin !== confirmarPin) throw new Error("A confirmação do PIN não confere");
       const form = new FormData();
       form.set("nome", nome);
@@ -115,13 +115,13 @@ export default function EditOperadorPage() {
                 </p>
               </div>
               <div className="space-y-2">
-                <Label>Novo PIN numérico</Label>
+                <Label>Novo PIN numérico (4 dígitos)</Label>
                 <Input
                   type="password"
                   inputMode="numeric"
                   autoComplete="new-password"
                   value={pin}
-                  maxLength={6}
+                  maxLength={4}
                   onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
                 />
               </div>
@@ -132,7 +132,7 @@ export default function EditOperadorPage() {
                   inputMode="numeric"
                   autoComplete="new-password"
                   value={confirmarPin}
-                  maxLength={6}
+                  maxLength={4}
                   onChange={(e) => setConfirmarPin(e.target.value.replace(/\D/g, ""))}
                 />
               </div>

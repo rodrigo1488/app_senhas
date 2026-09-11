@@ -24,6 +24,7 @@ sealed class SocketEvent {
         val operadorFoto: String?,
         val temPedido: Boolean,
         val pedido: String?,
+        val pedidoConfirmado: Boolean,
     ) : SocketEvent()
 
     data class SenhaPosicao(

@@ -1,0 +1,125 @@
+import io
+import unittest
+from unittest.mock import patch
+
+from backend import create_app
+from backend.auth import create_session_token
+from backend.extensions import db
+from backend.models import Propaganda, Setor
+
+
+class PropagandasTvTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = create_app(
+            {
+                "TESTING": True,
+                "SECRET_KEY": "test-secret",
+                "SQLALCHEMY_DATABASE_URI": "sqlite://",
+            }
+        )
+
+    def setUp(self):
+        with self.app.app_context():
+            db.drop_all()
+            db.create_all()
+            setor = Setor(nome="Balcão", senha_setor="SETOR", propagandas_ativas=False)
+            db.session.add(setor)
+            db.session.commit()
+            self.setor_id = setor.id
+
+    def _token(self, role="tv"):
+        with self.app.app_context():
+            return create_session_token(self.setor_id, role)
+
+    def test_migration_creates_propaganda_table_and_setor_flag(self):
+        with self.app.app_context():
+            self.assertTrue(hasattr(Setor, "propagandas_ativas"))
+            p = Propaganda(arquivo="promo.jpg", ordem=1, ativo=True)
+            db.session.add(p)
+            db.session.commit()
+            self.assertIsNotNone(p.id)
+            setor = db.session.get(Setor, self.setor_id)
+            self.assertFalse(setor.propagandas_ativas)
+
+    def test_setor_toggle_propagandas_ativas(self):
+        client = self.app.test_client()
+        with client.session_transaction() as sess:
+            sess["user_id"] = "admin-test"
+
+        response = client.put(
+            f"/api/v1/admin/setores/{self.setor_id}",
+            json={"propagandas_ativas": True},
+        )
+        self.assertEqual(200, response.status_code)
+        self.assertTrue(response.get_json()["propagandas_ativas"])
+
+        with self.app.app_context():
+            setor = db.session.get(Setor, self.setor_id)
+            self.assertTrue(setor.propagandas_ativas)
+
+    def test_tv_config_empty_when_disabled(self):
+        with self.app.app_context():
+            db.session.add(Propaganda(arquivo="a.jpg", ordem=1, ativo=True))
+            db.session.commit()
+
+        response = self.app.test_client().get(
+            "/api/v1/setor/tv_config",
+            headers={"Authorization": f"Bearer {self._token()}"},
+        )
+        self.assertEqual(200, response.status_code)
+        payload = response.get_json()
+        self.assertFalse(payload["propagandas_ativas"])
+        self.assertEqual([], payload["imagens"])
+        self.assertEqual(15_000, payload["intervalo_ms"])
+
+    def test_tv_config_lists_only_active_ordered(self):
+        with self.app.app_context():
+            setor = db.session.get(Setor, self.setor_id)
+            setor.propagandas_ativas = True
+            db.session.add_all(
+                [
+                    Propaganda(arquivo="c.jpg", ordem=3, ativo=True),
+                    Propaganda(arquivo="a.jpg", ordem=1, ativo=True),
+                    Propaganda(arquivo="b.jpg", ordem=2, ativo=False),
+                ]
+            )
+            db.session.commit()
+
+        response = self.app.test_client().get(
+            "/api/v1/setor/tv_config",
+            headers={"Authorization": f"Bearer {self._token()}"},
+        )
+        self.assertEqual(200, response.status_code)
+        payload = response.get_json()
+        self.assertTrue(payload["propagandas_ativas"])
+        arquivos = [i["arquivo"] for i in payload["imagens"]]
+        self.assertEqual(["a.jpg", "c.jpg"], arquivos)
+        self.assertEqual(15_000, payload["intervalo_ms"])
+
+    @patch("backend.blueprints.admin_api_bp.process_propaganda_image", return_value="promo_tv.jpg")
+    def test_admin_upload_propaganda(self, _mock_process):
+        client = self.app.test_client()
+        with client.session_transaction() as sess:
+            sess["user_id"] = "admin-test"
+
+        data = {
+            "arquivo": (io.BytesIO(b"fake-image"), "promo.png"),
+        }
+        response = client.post(
+            "/api/v1/admin/propagandas",
+            data=data,
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(201, response.status_code)
+        payload = response.get_json()
+        self.assertEqual("promo_tv.jpg", payload["arquivo"])
+        self.assertTrue(payload["ativo"])
+
+        listed = client.get("/api/v1/admin/propagandas")
+        self.assertEqual(200, listed.status_code)
+        self.assertEqual(1, len(listed.get_json()))
+
+
+if __name__ == "__main__":
+    unittest.main()

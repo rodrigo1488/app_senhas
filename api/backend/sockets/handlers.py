@@ -34,7 +34,7 @@ from backend.sockets.emitters import (
     emit_senha_criada,
     emit_senha_posicao,
 )
-from backend.sockets.events import EV_AUTH_ERRO, room_operador, room_setor, room_ticket
+from backend.sockets.events import EV_AUTH_ERRO, room_operador, room_operadores, room_setor, room_ticket
 
 
 def _extract_token(auth) -> str | None:
@@ -86,7 +86,10 @@ def handle_connect(auth=None):
 
     setor_id = payload.get("setor_id")
     if setor_id:
-        join_room(room_setor(setor_id))
+        if payload.get("role") == "operador":
+            join_room(room_operadores(setor_id))
+        else:
+            join_room(room_setor(setor_id))
 
     if payload.get("role") == "operador" and payload.get("operador_id"):
         join_room(room_operador(setor_id, payload["operador_id"]))
@@ -180,13 +183,14 @@ def handle_operador_chamar_proxima(data):
         return
 
     emit_fila_atualizada(setor_id)
-    emit_senha_chamada(
-        resultado.senha,
-        resultado.operador.nome,
-        resultado.operador.foto_perfil,
-        resultado.alerta_preferenciais,
-        resultado.operador.id,
-    )
+    if resultado.senha:
+        emit_senha_chamada(
+            resultado.senha,
+            resultado.operador.nome,
+            resultado.operador.foto_perfil,
+            resultado.alerta_preferenciais,
+            resultado.operador.id,
+        )
     broadcast_posicao_fila(setor_id)
 
     if resultado.senha_anterior_finalizada and resultado.senha_anterior_finalizada.token_unico:
@@ -201,6 +205,23 @@ def handle_operador_chamar_proxima(data):
             setor_id, operador_id, operador.nome, operador.foto_perfil,
             resultado.senha_anterior_finalizada.id, resultado.senha_anterior_finalizada.senha,
         )
+
+    emit(
+        "operador:chamar_proxima:resultado",
+        {
+            "senha": resultado.senha.to_dict() if resultado.senha else None,
+            "chamada_realizada": resultado.chamada_realizada,
+            "mensagem": (
+                f"Senha {resultado.senha.senha} chamada com sucesso."
+                if resultado.senha
+                else "Atendimento finalizado. Não há senhas pendentes."
+                if resultado.senha_anterior_finalizada
+                else "Não há senhas pendentes."
+            ),
+            "tipo_chamado": resultado.tipo_chamado,
+            "alerta_preferenciais": resultado.alerta_preferenciais,
+        },
+    )
 
 
 @socketio.on("operador:chamar_novamente")
@@ -266,6 +287,7 @@ def handle_operador_confirmar_pedido(data):
     except FilaError as exc:
         emit("erro", {"mensagem": str(exc)})
         return
+    emit_fila_atualizada(session.get("setor_id"))
     if senha.token_unico:
         emit_pedido_status(senha.token_unico, senha.pedido, "preparando", mensagem)
 

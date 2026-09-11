@@ -18,21 +18,26 @@ def allowed_file(filename: str) -> bool:
     return ext in current_app.config["ALLOWED_EXTENSIONS"]
 
 
-def process_image(file) -> str | None:
+def process_image(file, max_size: tuple[int, int] = (500, 500), quality: int = 85) -> str | None:
     """Processa e salva a imagem com UUID único, retorna o nome do arquivo."""
     try:
         file_uuid = str(uuid.uuid4())
         image = Image.open(file)
         if image.mode in ("RGBA", "LA", "P"):
             image = image.convert("RGB")
-        image.thumbnail((500, 500), Image.Resampling.LANCZOS)
+        image.thumbnail(max_size, Image.Resampling.LANCZOS)
         filename = f"{file_uuid}.jpg"
         filepath = os.path.join(current_app.config["UPLOAD_FOLDER"], filename)
-        image.save(filepath, "JPEG", quality=85, optimize=True)
+        image.save(filepath, "JPEG", quality=quality, optimize=True)
         return filename
     except Exception as exc:  # pragma: no cover - defensivo, igual ao código legado
         current_app.logger.error(f"Erro ao processar imagem: {exc}")
         return None
+
+
+def process_propaganda_image(file) -> str | None:
+    """Salva imagem de propaganda em resolução adequada para TV (~1920px)."""
+    return process_image(file, max_size=(1920, 1920), quality=88)
 
 
 def delete_old_image(filename: str | None) -> None:

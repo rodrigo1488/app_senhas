@@ -39,7 +39,7 @@ export default function OperadoresPage() {
     setLoading(true);
     setError(null);
     try {
-      if (pin && !/^\d{4,6}$/.test(pin)) throw new Error("O PIN deve conter de 4 a 6 números");
+      if (pin && !/^\d{4}$/.test(pin)) throw new Error("O PIN deve conter exatamente 4 números");
       if (pin !== confirmarPin) throw new Error("A confirmação do PIN não confere");
       const form = new FormData();
       form.set("nome", nome);
@@ -102,13 +102,13 @@ export default function OperadoresPage() {
               <Input type="file" accept="image/*" onChange={(e) => setFoto(e.target.files?.[0] || null)} />
             </div>
             <div className="space-y-2">
-              <Label>PIN numérico (4 a 6 dígitos)</Label>
+              <Label>PIN numérico (4 dígitos)</Label>
               <Input
                 type="password"
                 inputMode="numeric"
                 autoComplete="new-password"
                 value={pin}
-                maxLength={6}
+                maxLength={4}
                 onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))}
               />
             </div>
@@ -119,7 +119,7 @@ export default function OperadoresPage() {
                 inputMode="numeric"
                 autoComplete="new-password"
                 value={confirmarPin}
-                maxLength={6}
+                maxLength={4}
                 onChange={(e) => setConfirmarPin(e.target.value.replace(/\D/g, ""))}
               />
             </div>

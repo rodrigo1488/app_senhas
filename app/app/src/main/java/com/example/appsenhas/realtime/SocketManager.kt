@@ -94,6 +94,7 @@ object SocketManager {
                     operadorFoto = obj.optStringOrNull("operador_foto"),
                     temPedido = obj.optBoolean("tem_pedido", false),
                     pedido = obj.optStringOrNull("pedido"),
+                    pedidoConfirmado = obj.optBoolean("pedido_confirmado", false),
                 )
             )
         })

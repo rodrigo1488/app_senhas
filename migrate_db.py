@@ -154,6 +154,35 @@ def migrate_database():
                 print("✅ Hash do PIN adicionado com sucesso!")
             else:
                 print("✅ Hash do PIN já existe na tabela operadores.")
+
+            cursor.execute("PRAGMA table_info(setores)")
+            setor_cols = [column[1] for column in cursor.fetchall()]
+            if 'propagandas_ativas' not in setor_cols:
+                print("Adicionando propagandas_ativas à tabela setores...")
+                cursor.execute(
+                    "ALTER TABLE setores ADD COLUMN propagandas_ativas BOOLEAN NOT NULL DEFAULT 0"
+                )
+                conn.commit()
+                print("✅ Coluna propagandas_ativas adicionada!")
+            else:
+                print("✅ Coluna propagandas_ativas já existe.")
+
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='propagandas'")
+        if not cursor.fetchone():
+            print("Criando tabela 'propagandas'...")
+            cursor.execute("""
+                CREATE TABLE propagandas (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    arquivo TEXT NOT NULL,
+                    ordem INTEGER NOT NULL DEFAULT 0,
+                    ativo BOOLEAN NOT NULL DEFAULT 1,
+                    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.commit()
+            print("✅ Tabela 'propagandas' criada com sucesso!")
+        else:
+            print("✅ Tabela 'propagandas' já existe.")
         
         # Verificar se a tabela atendimento_atual existe
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='atendimento_atual'")

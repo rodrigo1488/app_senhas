@@ -33,16 +33,20 @@ class FilaError(Exception):
 
 @dataclass
 class ChamadaResultado:
-    senha: Senha
-    tipo_chamado: str
+    senha: Optional[Senha]
+    tipo_chamado: Optional[str]
     alerta_preferenciais: bool
     operador: Operador
     senha_anterior_finalizada: Optional[Senha] = None
     pedido: dict = field(default_factory=dict)
 
+    @property
+    def chamada_realizada(self) -> bool:
+        return self.senha is not None
 
-def serializar_fila(setor_id: int) -> dict:
-    """Monta o payload completo do evento `fila:atualizada` para um setor."""
+
+def serializar_fila(setor_id: int, incluir_pedidos: bool = False) -> dict:
+    """Monta a fila, incluindo pedidos somente para a tela Operador."""
     pendentes = (
         Senha.query.filter_by(setor_id=setor_id, status="A")
         .order_by(Senha.tipo.desc(), Senha.id.asc())
@@ -62,7 +66,25 @@ def serializar_fila(setor_id: int) -> dict:
 
     return {
         "setor_id": setor_id,
-        "pendentes": [p.to_dict() for p in pendentes],
+        "pendentes": [
+            {
+                "id": senha.id,
+                "senha": senha.senha,
+                "tipo": senha.tipo,
+                "setor_id": senha.setor_id,
+                "status": senha.status,
+                **(
+                    {
+                        "tem_pedido": bool(senha.tem_pedido),
+                        "pedido": senha.pedido,
+                        "pedido_confirmado": bool(senha.pedido_confirmado),
+                    }
+                    if incluir_pedidos
+                    else {}
+                ),
+            }
+            for senha in pendentes
+        ],
         "atendimentos": [
             {
                 "operador_id": operador.id,
@@ -71,6 +93,15 @@ def serializar_fila(setor_id: int) -> dict:
                 "senha": senha.senha,
                 "tipo": senha.tipo,
                 "senha_id": senha.id,
+                **(
+                    {
+                        "tem_pedido": bool(senha.tem_pedido),
+                        "pedido": senha.pedido,
+                        "pedido_confirmado": bool(senha.pedido_confirmado),
+                    }
+                    if incluir_pedidos
+                    else {}
+                ),
             }
             for operador, senha in sorted(ultimo_por_operador.values(), key=lambda t: t[0].nome or "")
         ],
@@ -167,8 +198,16 @@ def chamar_proxima(setor_id: int, operador_id: int) -> ChamadaResultado:
             normais_chamadas += 1
 
         if proxima is None:
-            db.session.rollback()
-            raise FilaError("Sem senhas pendentes")
+            # A ausência de uma próxima senha é um resultado válido. O commit é
+            # indispensável para manter a finalização do atendimento anterior.
+            db.session.commit()
+            return ChamadaResultado(
+                senha=None,
+                tipo_chamado=None,
+                alerta_preferenciais=False,
+                operador=operador,
+                senha_anterior_finalizada=senha_anterior_finalizada,
+            )
 
         proxima.status = "C"
         proxima.chamada_em = agora

@@ -15,6 +15,7 @@ data class SetorDto(
     val nome: String,
     val descricao: String? = null,
     val modo_identificacao_operador: String = "foto",
+    val propagandas_ativas: Boolean = false,
 )
 
 @Serializable
@@ -97,9 +98,12 @@ data class AvaliacaoPendenteDto(
 
 @Serializable
 data class ChamarProximaResponseDto(
-    val senha: SenhaDto,
-    val tipo_chamado: String,
+    val senha: SenhaDto? = null,
+    val chamada_realizada: Boolean = senha != null,
+    val mensagem: String? = null,
+    val tipo_chamado: String? = null,
     val alerta_preferenciais: Boolean = false,
+    val session_token: String? = null,
 )
 
 @Serializable
@@ -133,6 +137,20 @@ data class SelecionarPapelResponse(
 data class OperadoresResponse(
     val operadores: List<OperadorDto> = emptyList(),
     val modo_identificacao_operador: String = "foto",
+)
+
+@Serializable
+data class PropagandaImagemDto(
+    val id: Int,
+    val arquivo: String,
+    val ordem: Int = 0,
+)
+
+@Serializable
+data class TvConfigDto(
+    val propagandas_ativas: Boolean = false,
+    val imagens: List<PropagandaImagemDto> = emptyList(),
+    val intervalo_ms: Long = 15_000,
 )
 
 @Serializable

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Building2,
+  ImageIcon,
   LayoutDashboard,
   LogOut,
   Printer,
@@ -31,6 +32,7 @@ const NAV = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/operadores", label: "Operadores", icon: Users },
   { href: "/admin/setores", label: "Setores", icon: Building2 },
+  { href: "/admin/propagandas", label: "Propagandas", icon: ImageIcon },
   { href: "/admin/impressoras", label: "Impressoras", icon: Printer },
   { href: "/admin/configuracoes", label: "Configurações", icon: Settings },
 ];

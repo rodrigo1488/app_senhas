@@ -11,9 +11,21 @@ import androidx.compose.ui.graphics.Color
  * do Material genérico padrão.
  */
 
-// Tela de login/identidade do app
-val IndigoApp = Color(0xFF4F46E5)
-val IndigoAppClaro = Color(0xFF6366F1)
+// Tokens sRGB convertidos da paleta OKLCH do web (tema claro).
+val AppBackground = Color(0xFFFFFFFF)
+val AppForeground = Color(0xFF18181B)
+val AppCard = Color(0xFFFFFFFF)
+val AppPrimary = Color(0xFFF54900)
+val AppPrimaryForeground = Color(0xFFFFF7ED)
+val AppSecondary = Color(0xFFF4F4F5)
+val AppMutedForeground = Color(0xFF71717A)
+val AppDestructive = Color(0xFFE7000B)
+val AppBorder = Color(0xFFE4E4E7)
+val AppRing = Color(0xFFFF8904)
+
+// Aliases mantidos para as outras telas; a identidade principal deixa de ser roxa.
+val IndigoApp = AppPrimary
+val IndigoAppClaro = AppRing
 
 // Cliente (retirar senha) — ver templates/senhas.html
 val FundoClienteEscuro = Color(0xFF121212)
@@ -29,8 +41,8 @@ val GradienteTv = Brush.horizontalGradient(listOf(Color(0xFFF7971E), Color(0xFFF
 val GradienteAvaliacao = Brush.horizontalGradient(listOf(Color(0xFFF85032), Color(0xFFE73827)))
 
 // Operador (fila/atendimento) — ver templates/senhas_pendentes.html
-val FundoOperadorClaro = Color(0xFFF4F4F4)
-val GradienteHeroOperador = Brush.linearGradient(listOf(Color(0xFF667EEA), Color(0xFF764BA2)))
+val FundoOperadorClaro = AppBackground
+val GradienteHeroOperador = Brush.linearGradient(listOf(AppPrimary, AppRing))
 val GradienteVerPedido = Brush.horizontalGradient(listOf(Color(0xFFFF6B6B), Color(0xFFEE5A24)))
 val GradienteConfirmar = Brush.horizontalGradient(listOf(Color(0xFF28A745), Color(0xFF20C997)))
 val AmareloAlertaPreferenciais = Color(0xFFFFEB3B)

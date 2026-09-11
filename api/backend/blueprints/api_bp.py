@@ -17,8 +17,13 @@ from time import monotonic
 
 from flask import Blueprint, jsonify, request
 
-from backend.auth import api_token_required, create_session_token
-from backend.models import AtendimentoAtual, Impressora, Operador, Senha, Setor
+from backend.auth import (
+    api_token_required,
+    consume_operator_action_token,
+    create_operator_action_token,
+    create_session_token,
+)
+from backend.models import AtendimentoAtual, Impressora, Operador, Propaganda, Senha, Setor
 from backend.services.avaliacao_service import AvaliacaoError, buscar_avaliacao_pendente, registrar_avaliacao
 from backend.services.fila_service import (
     FilaError,
@@ -109,9 +114,14 @@ def selecionar_papel(session_payload):
     operador_id = data.get("operador_id")
     operador = None
     if role == "operador":
+        if session_payload.get("role") == "operador" and session_payload.get("operador_id"):
+            return jsonify({"error": "Identificação anterior não pode trocar de operador"}), 403
         setor = Setor.query.get(setor_id)
         modo = (setor.modo_identificacao_operador if setor else "foto") or "foto"
-        if modo == "pin":
+        identificacao_informada = bool(data.get("pin")) or operador_id is not None
+        if not identificacao_informada:
+            operador_id = None
+        elif modo == "pin":
             attempt_key = _pin_attempt_key(setor_id)
             if _pin_is_blocked(attempt_key):
                 return jsonify({"error": "Muitas tentativas. Aguarde 5 minutos"}), 429
@@ -124,7 +134,8 @@ def selecionar_papel(session_payload):
             operador = Operador.query.filter_by(id=operador_id, setor_id=setor_id).first()
             if not operador:
                 return jsonify({"error": "Operador inválido para este setor"}), 400
-        operador_id = operador.id
+        if operador:
+            operador_id = operador.id
     elif role == "avaliacao" and operador_id:
         operador = Operador.query.filter_by(id=operador_id, setor_id=setor_id).first()
         if not operador:
@@ -132,7 +143,10 @@ def selecionar_papel(session_payload):
     else:
         operador_id = None
 
-    session_token = create_session_token(session_payload["setor_id"], role=role, operador_id=operador_id)
+    if role == "operador" and operador:
+        session_token = create_operator_action_token(setor_id, operador.id)
+    else:
+        session_token = create_session_token(setor_id, role=role, operador_id=operador_id)
     return jsonify({
         "session_token": session_token,
         "operador": operador.to_dict() if operador else None,
@@ -142,7 +156,8 @@ def selecionar_papel(session_payload):
 @api_bp.route("/sessao/liberar_operador", methods=["POST"])
 @api_token_required
 def liberar_operador(session_payload):
-    session_token = create_session_token(session_payload["setor_id"], role="generic")
+    role = "operador" if session_payload.get("role") == "operador" else "generic"
+    session_token = create_session_token(session_payload["setor_id"], role=role)
     return jsonify({"session_token": session_token, "operador": None})
 
 
@@ -165,7 +180,39 @@ def setor_operadores(session_payload):
 def setor_fila(session_payload):
     """Estado inicial da fila — usado só para hidratar a tela na abertura do
     app; qualquer mudança depois disso chega via `fila:atualizada`."""
-    return jsonify(serializar_fila(session_payload["setor_id"]))
+    return jsonify(
+        serializar_fila(
+            session_payload["setor_id"],
+            incluir_pedidos=session_payload.get("role") == "operador",
+        )
+    )
+
+
+@api_bp.route("/setor/tv_config", methods=["GET"])
+@api_token_required
+def setor_tv_config(session_payload):
+    """Configuração da TV: layout de propaganda e imagens globais ativas."""
+    setor = Setor.query.get(session_payload["setor_id"])
+    ativas = bool(setor.propagandas_ativas) if setor else False
+    imagens = []
+    if ativas:
+        imagens = [
+            {
+                "id": p.id,
+                "arquivo": p.arquivo,
+                "ordem": p.ordem,
+            }
+            for p in Propaganda.query.filter_by(ativo=True)
+            .order_by(Propaganda.ordem.asc(), Propaganda.id.asc())
+            .all()
+        ]
+    return jsonify(
+        {
+            "propagandas_ativas": ativas,
+            "imagens": imagens,
+            "intervalo_ms": 15_000,
+        }
+    )
 
 
 @api_bp.route("/setor/atendimento_atual", methods=["GET"])
@@ -246,6 +293,8 @@ def chamar_proxima_route(session_payload):
     if session_payload.get("role") != "operador" or not session_payload.get("operador_id"):
         return jsonify({"error": "Sessão de operador obrigatória"}), 403
     operador_id = session_payload["operador_id"]
+    if not consume_operator_action_token(session_payload):
+        return jsonify({"error": "Identificação expirada ou já utilizada"}), 403
     if data.get("operador_id") not in {None, operador_id}:
         return jsonify({"error": "Não é permitido chamar por outro operador"}), 403
     setor_id = session_payload["setor_id"]
@@ -258,13 +307,14 @@ def chamar_proxima_route(session_payload):
         return jsonify({"error": str(exc)}), 400
 
     emit_fila_atualizada(setor_id)
-    emit_senha_chamada(
-        resultado.senha,
-        resultado.operador.nome,
-        resultado.operador.foto_perfil,
-        resultado.alerta_preferenciais,
-        resultado.operador.id,
-    )
+    if resultado.senha:
+        emit_senha_chamada(
+            resultado.senha,
+            resultado.operador.nome,
+            resultado.operador.foto_perfil,
+            resultado.alerta_preferenciais,
+            resultado.operador.id,
+        )
     broadcast_posicao_fila(setor_id)
 
     if resultado.senha_anterior_finalizada:
@@ -281,10 +331,20 @@ def chamar_proxima_route(session_payload):
             finalizada.id, finalizada.senha,
         )
 
+    mensagem = (
+        f"Senha {resultado.senha.senha} chamada com sucesso."
+        if resultado.senha
+        else "Atendimento finalizado. Não há senhas pendentes."
+        if resultado.senha_anterior_finalizada
+        else "Não há senhas pendentes."
+    )
     return jsonify({
-        "senha": resultado.senha.to_dict(),
+        "senha": resultado.senha.to_dict() if resultado.senha else None,
+        "chamada_realizada": resultado.chamada_realizada,
+        "mensagem": mensagem,
         "tipo_chamado": resultado.tipo_chamado,
         "alerta_preferenciais": resultado.alerta_preferenciais,
+        "session_token": create_session_token(setor_id, role="operador"),
     })
 
 
@@ -348,6 +408,7 @@ def confirmar_pedido_route(session_payload):
         )
     except FilaError as exc:
         return jsonify({"error": str(exc)}), 404
+    emit_fila_atualizada(session_payload["setor_id"])
     if senha.token_unico:
         emit_pedido_status(senha.token_unico, senha.pedido, "preparando", mensagem)
     return jsonify({"success": True})
