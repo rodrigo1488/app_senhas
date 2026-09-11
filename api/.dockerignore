@@ -1,0 +1,13 @@
+.git
+.gitignore
+.venv
+__pycache__/
+**/__pycache__/
+*.pyc
+.env
+.env.example
+appsenhas.sqlite
+appsenhas.sqlite-shm
+appsenhas.sqlite-wal
+*.md
+.DS_Store

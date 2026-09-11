@@ -1,143 +1,82 @@
 # Deploy com Docker + PostgreSQL
 
-O backend Flask passou a rodar em container, com **PostgreSQL** como banco de
-dados padrão (substituindo o `appsenhas.sqlite` legado, que continua
-disponível apenas como fallback de desenvolvimento sem Docker — ver seção
-["Rodando sem Docker"](#rodando-sem-docker)).
+Monorepo: **`api`** (Flask), **`web`** (Next admin), **`db`** (Postgres 16).
 
-## Arquivos envolvidos
+## Arquivos
 
 | Arquivo | Papel |
 |---|---|
-| `Dockerfile` | Imagem do backend (Python 3.12 + Gunicorn + worker eventlet) |
-| `docker-compose.yml` | Orquestra os serviços `db` (Postgres 16) e `backend` |
-| `.dockerignore` | Evita copiar `.venv`, `APPSENHAS/`, `.git`, etc. para a imagem |
-| `.env` / `.env.example` | Variáveis de ambiente (senhas, chaves, Supabase, VAPID) |
-| `backend/__init__.py` | `_resolve_database_config()` decide SQLite vs Postgres |
-| `scripts/migrate_sqlite_to_postgres.py` | Migra os dados do `appsenhas.sqlite` existente para o Postgres |
+| `api/Dockerfile` | Imagem da API (Python 3.12 + Gunicorn + eventlet) |
+| `web/Dockerfile` | Imagem do painel Next.js (standalone) |
+| `docker-compose.yml` | Serviços `db`, `api`, `web` |
+| `.env` / `.env.example` | Senhas, chaves, URLs |
+| `api/backend/__init__.py` | SQLite vs Postgres via `DATABASE_URL` |
+| `api/scripts/migrate_sqlite_to_postgres.py` | Migra SQLite legado → Postgres |
 
 ## Subindo a stack
 
 ```bash
 cp .env.example .env
-# edite .env: defina POSTGRES_PASSWORD, APP_SECRET_KEY, e as credenciais
-# de Supabase/VAPID que já estavam em uso.
+# edite POSTGRES_PASSWORD, APP_SECRET_KEY, ADMIN_PASSWORD
 
-docker compose up --build
+docker compose up --build -d
 ```
 
-Isso sobe dois containers:
+| Serviço | Porta | Função |
+|---------|-------|--------|
+| `web` | **3000** | Painel admin Next.js (sidebar) |
+| `api` | **5000** | Flask: kiosk, `/api/v1/*`, Socket.IO |
+| `db` | 5432 | PostgreSQL |
 
-- **`db`**: PostgreSQL 16, com os dados persistidos no volume `postgres_data`
-  (sobrevive a `docker compose down` — para apagar de vez, use
-  `docker compose down -v`).
-- **`backend`**: a aplicação Flask + Socket.IO, servida por Gunicorn com um
-  worker eventlet, na porta `5000`. As fotos de operador enviadas pelo admin
-  ficam no volume `uploads_data` (`/app/static/uploads` dentro do container),
-  para não se perderem a cada rebuild da imagem.
+Volumes: `postgres_data`, `uploads_data` (fotos de operadores).
 
-O backend só inicia depois que o Postgres responde ao `pg_isready`
-(`depends_on: condition: service_healthy` no `docker-compose.yml`).
+O schema é criado automaticamente em banco vazio (`db.create_all()`).
 
-Ao subir por cima de um banco Postgres vazio, o backend cria o schema
-automaticamente (`db.create_all()` em `backend/__init__.py::_init_database`)
-— nenhuma migration manual é necessária para uma instalação nova.
+## Admin padrão
 
-## Usuário administrador padrão
+Na primeira inicialização, se a tabela `usuarios` estiver vazia:
 
-O login do painel (`/login`) autentica contra a tabela local `usuarios`
-(Postgres/SQLite) — não depende de nenhum serviço externo. Na primeira
-inicialização, se essa tabela estiver vazia, um admin padrão é criado
-automaticamente (`backend/__init__.py::_seed_admin_padrao`):
+- Email: `ADMIN_EMAIL` (padrão `admin@appsenhas.local`)
+- Senha: `ADMIN_PASSWORD` (padrão `admin123`)
 
-- Email: `ADMIN_EMAIL` (padrão: `admin@appsenhas.local`)
-- Senha: `ADMIN_PASSWORD` (padrão: `admin123`)
+Login do painel: **http://localhost:3000/login**
 
-Defina essas duas variáveis no `.env` **antes** do primeiro `docker compose up`
-para já subir com credenciais próprias. Se você já subiu com os valores
-padrão, troque a senha (ou crie outro admin) com:
+A autenticação continua sendo **sessão Flask** (cookies). O Next faz rewrite
+de `/api/v1/*` para a API, então o browser só fala com a porta 3000 para o
+admin.
+
+Trocar senha:
 
 ```bash
-docker compose exec backend python scripts/criar_admin.py admin@appsenhas.local "senha-nova-forte"
-
-# ou, para criar um segundo admin:
-docker compose exec backend python scripts/criar_admin.py outra@empresa.com "senha" "Nome da Empresa"
+docker compose exec api python scripts/criar_admin.py admin@appsenhas.local "senha-nova-forte"
 ```
 
-O mesmo script funciona fora do Docker (`python scripts/criar_admin.py ...`),
-usando o banco configurado em `DATABASE_URL`/fallback SQLite.
+## Migrando SQLite → Postgres
 
-> Login via Supabase foi removido — se você usava o painel antes dessa
-> migração, seus usuários antigos ficavam na tabela `users` do Supabase e
-> **não são migrados automaticamente**; crie-os de novo localmente com o
-> script acima.
-
-## Migrando dados existentes do SQLite
-
-Se você já tem um `appsenhas.sqlite` com dados reais (setores, operadores,
-senhas, avaliações) e quer preservá-los ao migrar para o Postgres do
-`docker-compose.yml`:
+Com a stack no ar e `appsenhas.sqlite` disponível (ex.: em `api/`):
 
 ```bash
-# 1. Suba só o banco:
-docker compose up -d db
-
-# 2. Rode a migração (localmente, com o Postgres exposto em localhost:5432
-#    pelo docker-compose.yml, ou de dentro de um container com acesso à rede
-#    do compose):
-DATABASE_URL=postgresql+psycopg2://appsenhas:SUA_SENHA@localhost:5432/appsenhas \
-    python scripts/migrate_sqlite_to_postgres.py
-
-# 3. Suba o backend normalmente:
-docker compose up -d backend
+docker compose exec -e DATABASE_URL=postgresql+psycopg2://appsenhas:SENHA@db:5432/appsenhas \
+  api python scripts/migrate_sqlite_to_postgres.py /caminho/appsenhas.sqlite
 ```
 
-O script (`scripts/migrate_sqlite_to_postgres.py`):
-- Cria o schema no Postgres (reaproveita `create_app()`);
-- Copia os dados tabela por tabela, preservando os `id` originais (essencial
-  para manter as chaves estrangeiras entre `senhas`, `atendimento_atual` e
-  `finalizados` intactas);
-- Ajusta as sequences do Postgres para continuarem depois do maior `id`
-  migrado;
-- Pula tabelas que já têm dados no destino (evita duplicar em uma segunda
-  execução); use `--forcar` para truncar e migrar de novo do zero.
-
-## Variáveis de ambiente
-
-Ver `.env.example` para a lista completa. As mais relevantes para o Docker:
-
-| Variável | Uso |
-|---|---|
-| `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Credenciais do container `db`; usadas também para montar o `DATABASE_URL` do `backend` |
-| `DATABASE_URL` | Só precisa ser definida manualmente se você **não** usar o `docker-compose.yml` (ex.: Postgres gerenciado externo) |
-| `APP_SECRET_KEY` | Chave de sessão do Flask (defina algo aleatório e fixo em produção) |
-| `ADMIN_EMAIL` / `ADMIN_PASSWORD` | Credenciais do admin padrão, criado só se a tabela `usuarios` estiver vazia (ver seção acima) |
-| `VAPID_*` | Notificações Web Push |
-
-## Por que um único worker eventlet?
-
-O Flask-SocketIO com `eventlet` mantém o estado das *rooms* (setor, ticket,
-avaliação — ver `documentacao/REALTIME_PROTOCOL.md`) na memória do processo.
-Com mais de um worker Gunicorn, cada processo teria sua própria cópia
-dessas rooms, e um cliente conectado ao worker A nunca receberia eventos
-emitidos a partir de uma requisição atendida pelo worker B — quebraria o
-tempo real. Rodar múltiplos workers exigiria um message queue externo
-(Redis, via `socketio.init_app(app, message_queue=...)`), o que não é
-necessário para o volume de uso desta aplicação (fila de senhas de um único
-setor/estabelecimento por instância).
+(Em host local, monte o arquivo ou copie para o container.)
 
 ## Rodando sem Docker
 
-Se `DATABASE_URL` não estiver definida, `backend/__init__.py` continua
-usando o `appsenhas.sqlite` da raiz do repo — o mesmo comportamento de
-antes da migração para Postgres. Isso serve para quem só quer rodar
-`python app.py` rapidamente em desenvolvimento, sem subir um Postgres.
+**API** (`cd api && python app.py`) — sem `DATABASE_URL` usa `api/appsenhas.sqlite`.
 
-## Verificando que subiu corretamente
+**Web** (Node >= 20):
 
 ```bash
-curl http://localhost:5000/api/v1/health
-# {"status": "ok"}
+cd web
+npm install
+API_INTERNAL_URL=http://127.0.0.1:5000 npm run dev
 ```
 
-Os logs de cada serviço: `docker compose logs -f backend` / `docker compose logs -f db`.
+## Notas
+
+- Um único worker eventlet no Gunicorn (rooms Socket.IO não compartilham
+  memória entre workers sem Redis).
+- Kiosk HTML (`/senhas`, `/senha_atual`, etc.) continua na API Flask.
+- Rotas Jinja `/admin` e `/login` redirecionam para o Next (`ADMIN_WEB_URL`).

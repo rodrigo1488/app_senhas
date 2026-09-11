@@ -1,30 +1,37 @@
-# Cache local do Gradle usado para validar o build do APPSENHAS neste
-# ambiente (equivalente a ~/.gradle, mas dentro do repo por limitação de
-# sandbox de rede/disco) — nunca deve ser versionado.
+# Cache local do Gradle (sandbox) — nunca versionar.
 /.gradle_home/
 
-# Segredos locais (Supabase, chave da app, credenciais do Postgres). Use
-# .env.example como modelo.
+# Segredos locais. Use .env.example como modelo.
 .env
 
-# Banco de dados legado (SQLite) — a partir da migração para PostgreSQL
-# (ver docker-compose.yml e backend/__init__.py), não deve mais ser
-# versionado; ele contém dados reais e não é a fonte da verdade em
-# produção. Mantido localmente só para quem ainda usa o modo sem Docker ou
-# como fonte para scripts/migrate_sqlite_to_postgres.py.
+# Banco SQLite legado (fallback sem Docker) — pode ficar em api/
 appsenhas.sqlite
 appsenhas.sqlite-shm
 appsenhas.sqlite-wal
+api/appsenhas.sqlite
+api/appsenhas.sqlite-shm
+api/appsenhas.sqlite-wal
 
 # Python
 __pycache__/
 *.pyc
 .venv/
 
-# Uploads enviados pelo admin (fotos de operador) — persistem via volume
-# Docker em produção, não fazem sentido versionados no repo.
-static/uploads/*
-!static/uploads/.gitkeep
+# Uploads de fotos de operador
+api/static/uploads/*
+!api/static/uploads/.gitkeep
+
+# Next.js
+web/node_modules/
+web/.next/
+web/out/
+
+# Android
+app/.gradle/
+app/build/
+app/app/build/
+app/.kotlin/
+app/local.properties
 
 # Diversos
 .DS_Store
