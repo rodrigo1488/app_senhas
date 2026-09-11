@@ -19,6 +19,7 @@ class AvaliacaoViewModel : ViewModel() {
     private var meuOperadorId: Int? = null
 
     var operadorNome by mutableStateOf<String?>(null)
+    var operadorFoto by mutableStateOf<String?>(null)
     var senhaId by mutableStateOf<Int?>(null)
     var senha by mutableStateOf<String?>(null)
     var enviado by mutableStateOf(false)
@@ -46,6 +47,7 @@ class AvaliacaoViewModel : ViewModel() {
             senhaId = event.senhaId
             senha = event.senha
             operadorNome = event.operadorNome ?: operadorNome
+            operadorFoto = event.operadorFoto ?: operadorFoto
             enviado = false
         }
     }
@@ -59,6 +61,7 @@ class AvaliacaoViewModel : ViewModel() {
                 senhaId = pendente.senha_id
                 senha = pendente.senha
                 if (pendente.operador_nome != null) operadorNome = pendente.operador_nome
+                if (pendente.operador_foto != null) operadorFoto = pendente.operador_foto
             } catch (e: Exception) {
                 errorMessage = e.toUserMessage("Não foi possível carregar a avaliação pendente.")
             } finally {

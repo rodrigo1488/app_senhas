@@ -11,33 +11,30 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 
+// Esquema de cores próprio (não o roxo genérico do template do Android
+// Studio) — usa o Indigo do painel admin/login.html como cor de marca, para
+// que o app tenha uma identidade visual consistente com o resto do sistema
+// (cada tela então sobrepõe suas próprias cores vindas dos templates web
+// legados — ver AppSenhasColors.kt — por cima deste tema base).
 private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
+    primary = IndigoAppClaro,
+    secondary = VerdeSenhaNormal,
+    tertiary = DouradoEstrela,
 )
 
 private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
-
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+    primary = IndigoApp,
+    secondary = VerdeSenhaNormal,
+    tertiary = DouradoEstrela,
 )
 
 @Composable
 fun APPSENHASTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    // Dynamic color (Material You) desligado por padrão: queremos a MESMA
+    // identidade visual em qualquer aparelho, igual ao kiosk web, em vez de
+    // cores que variam com o papel de parede do usuário.
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {

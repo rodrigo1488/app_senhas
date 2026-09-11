@@ -29,6 +29,7 @@ class ClienteViewModel : ViewModel() {
     var chamada by mutableStateOf(false)
     var finalizada by mutableStateOf(false)
     var operadorNome by mutableStateOf<String?>(null)
+    var operadorFoto by mutableStateOf<String?>(null)
     var temPedido by mutableStateOf(false)
     var pedidoTexto by mutableStateOf<String?>(null)
     var pedidoStatusMensagem by mutableStateOf<String?>(null)
@@ -52,6 +53,7 @@ class ClienteViewModel : ViewModel() {
                 if (event.ticketToken == currentToken) {
                     chamada = true
                     operadorNome = event.operadorNome
+                    operadorFoto = event.operadorFoto
                     posicao = 0
                 }
             }
@@ -117,6 +119,7 @@ class ClienteViewModel : ViewModel() {
         chamada = false
         finalizada = false
         operadorNome = null
+        operadorFoto = null
         temPedido = false
         pedidoTexto = null
         pedidoStatusMensagem = null

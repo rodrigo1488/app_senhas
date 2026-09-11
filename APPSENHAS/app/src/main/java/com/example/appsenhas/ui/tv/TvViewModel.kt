@@ -22,6 +22,7 @@ class TvViewModel : ViewModel() {
 
     var ultimaChamadaSenha by mutableStateOf<String?>(null)
     var ultimaChamadaOperador by mutableStateOf<String?>(null)
+    var ultimaChamadaOperadorFoto by mutableStateOf<String?>(null)
 
     var errorMessage by mutableStateOf<String?>(null)
 
@@ -37,6 +38,7 @@ class TvViewModel : ViewModel() {
                 atendimentos = fila.atendimentos
                 ultimaChamadaSenha = atendimentos.firstOrNull()?.senha
                 ultimaChamadaOperador = atendimentos.firstOrNull()?.operador_nome
+                ultimaChamadaOperadorFoto = atendimentos.firstOrNull()?.operador_foto
             } catch (e: Exception) {
                 errorMessage = e.toUserMessage("Não foi possível carregar a fila.")
             }
@@ -55,6 +57,7 @@ class TvViewModel : ViewModel() {
             is SocketEvent.SenhaChamada -> {
                 ultimaChamadaSenha = event.senha
                 ultimaChamadaOperador = event.operadorNome
+                ultimaChamadaOperadorFoto = event.operadorFoto
             }
             else -> Unit
         }
