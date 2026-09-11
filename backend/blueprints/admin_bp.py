@@ -55,12 +55,18 @@ def admin():
         .group_by(Setor.id, Setor.nome)
         .all()
     )
+    # `Finalizado.avaliacao` é TEXT e algumas linhas antigas trazem "" (string
+    # vazia) em vez de NULL para "sem avaliação". CAST('' AS FLOAT) é
+    # silenciosamente 0.0 no SQLite, mas dá erro no Postgres
+    # (invalid input syntax for type double precision) — por isso o
+    # NULLIF(..., '') antes do CAST, para o AVG ignorar como NULL nos dois.
+    avaliacao_numerica = func.cast(func.nullif(Finalizado.avaliacao, ""), db.Float)
     medias_operadores = (
-        db.session.query(Operador.nome, func.avg(func.cast(Finalizado.avaliacao, db.Float)), Setor.nome)
+        db.session.query(Operador.nome, func.avg(avaliacao_numerica), Setor.nome)
         .join(Finalizado, Finalizado.operador_id == Operador.id)
         .outerjoin(Setor, Operador.setor_id == Setor.id)
         .group_by(Operador.id, Operador.nome, Setor.nome)
-        .order_by(func.avg(func.cast(Finalizado.avaliacao, db.Float)).desc())
+        .order_by(func.avg(avaliacao_numerica).desc())
         .all()
     )
     melhor_operador = medias_operadores[0] if medias_operadores else None
@@ -69,11 +75,11 @@ def admin():
     medias_por_setor: dict[int, list] = {}
     for setor in setores:
         medias_por_setor[setor.id] = (
-            db.session.query(Operador.nome, func.avg(func.cast(Finalizado.avaliacao, db.Float)))
+            db.session.query(Operador.nome, func.avg(avaliacao_numerica))
             .join(Finalizado, Finalizado.operador_id == Operador.id)
             .filter(Operador.setor_id == setor.id)
             .group_by(Operador.id, Operador.nome)
-            .order_by(func.avg(func.cast(Finalizado.avaliacao, db.Float)).desc())
+            .order_by(func.avg(avaliacao_numerica).desc())
             .all()
         )
 
