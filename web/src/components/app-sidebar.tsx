@@ -3,7 +3,9 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  Activity,
   Building2,
+  Grid3x3,
   ImageIcon,
   LayoutDashboard,
   LogOut,
@@ -30,6 +32,8 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/admin/heatmap", label: "Mapa de calor", icon: Grid3x3 },
+  { href: "/admin/fila-ao-vivo", label: "Fila ao Vivo", icon: Activity },
   { href: "/admin/operadores", label: "Operadores", icon: Users },
   { href: "/admin/setores", label: "Setores", icon: Building2 },
   { href: "/admin/propagandas", label: "Propagandas", icon: ImageIcon },

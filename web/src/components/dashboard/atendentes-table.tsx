@@ -37,7 +37,18 @@ export function AtendentesTable({ rows }: { rows: AnalyticsData["atendentes"] })
                 <td className="py-2.5 pr-3">{fmt(r.espera.media, " min")}</td>
                 <td className="py-2.5 pr-3">{fmt(r.espera.p90, " min")}</td>
                 <td className="py-2.5 pr-3">{fmt(r.tempo_atendimento_medio, " min")}</td>
-                <td className="py-2.5">{fmt(r.nota_media)}</td>
+                <td className="py-2.5">
+                  {r.nota_media != null ? (
+                    <span>
+                      {r.nota_media.toFixed(2)}
+                      <span className="ml-1 text-xs text-muted-foreground">
+                        ({r.n_avaliacoes ?? 0})
+                      </span>
+                    </span>
+                  ) : (
+                    "—"
+                  )}
+                </td>
               </tr>
             ))}
             {!rows.length ? (

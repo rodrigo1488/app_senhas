@@ -59,6 +59,8 @@ export type Operador = {
   setor_nome: string | null;
   foto_perfil: string | null;
   tem_pin: boolean;
+  nota_media?: number | null;
+  n_avaliacoes?: number;
 };
 
 export type Impressora = {
@@ -154,6 +156,7 @@ export type AnalyticsData = {
     espera: EsperaStats;
     tempo_atendimento_medio: number | null;
     nota_media: number | null;
+    n_avaliacoes: number;
   }[];
   distribuicao_notas: { nota: string; total: number; pct: number }[];
   espera_x_satisfacao: { faixa: string; nota_media: number | null; amostras: number }[];
@@ -169,4 +172,62 @@ export type AnalyticsData = {
     setores: { id: number; nome: string }[];
     operadores: { id: number; nome: string; setor_id: number | null }[];
   };
+};
+
+export type FilaAoVivoKpis = {
+  solicitacoes: number;
+  atendimentos: number;
+  desistencias: number;
+  taxa_desistencia: number | null;
+  tempo_espera_medio: number | null;
+  tempo_atendimento_medio: number | null;
+  tempo_total_medio: number | null;
+  por_tipo_solicitacoes: { normal: number; preferencial: number; total: number };
+};
+
+export type FilaAoVivoData = {
+  setor: { id: number; nome: string };
+  agora: {
+    espera: {
+      normal: number;
+      preferencial: number;
+      total: number;
+      pct_normal: number;
+      pct_preferencial: number;
+    };
+    em_atendimento: {
+      normal: number;
+      preferencial: number;
+      total: number;
+      pct_normal: number;
+      pct_preferencial: number;
+    };
+  };
+  operadores_atendendo: {
+    operador_id: number;
+    operador_nome: string;
+    operador_foto: string | null;
+    senha: string;
+    tipo: string;
+    desde: string | null;
+  }[];
+  operadores_em_pausa: unknown[];
+  ultima_hora: FilaAoVivoKpis;
+  hoje: FilaAoVivoKpis;
+  fila: {
+    setor_id: number;
+    pendentes: { id: number; senha: string; tipo: string; status: string }[];
+    atendimentos: {
+      operador_id: number;
+      operador_nome: string;
+      senha: string;
+      tipo: string;
+      senha_id: number;
+    }[];
+  };
+  config: {
+    ignorar_finalizados_automaticos: boolean;
+    abandono_minutos: number;
+  };
+  atualizado_em: string;
 };

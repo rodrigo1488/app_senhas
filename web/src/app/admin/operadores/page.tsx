@@ -152,6 +152,19 @@ export default function OperadoresPage() {
                   <p className="text-xs text-muted-foreground">
                     {op.setor_nome || "Sem setor"} · {op.tem_pin ? "PIN configurado" : "Sem PIN"}
                   </p>
+                  <p className="mt-0.5 text-sm tabular-nums">
+                    {op.nota_media != null ? (
+                      <>
+                        <span className="font-medium">Nota {op.nota_media.toFixed(2)}</span>
+                        <span className="ml-1 text-xs text-muted-foreground">
+                          média · {op.n_avaliacoes ?? 0} avaliação
+                          {(op.n_avaliacoes ?? 0) === 1 ? "" : "ões"}
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">Sem avaliações</span>
+                    )}
+                  </p>
                 </div>
               </div>
               <div className="flex gap-2">

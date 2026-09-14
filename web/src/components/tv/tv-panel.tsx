@@ -16,13 +16,17 @@ import {
   type TvConfig,
   type TvFila,
   type TvPropagandaImagem,
-  type TvSenha,
   type TvSetor,
 } from "@/lib/tv-api";
 import { connectTvSocket, type SenhaChamadaTv } from "@/lib/tv-socket";
 
 type Props = {
   initialCodigo?: string | null;
+};
+
+type ChamadaTipo = {
+  senha: string | null;
+  foto: string | null;
 };
 
 export function TvPanel({ initialCodigo }: Props) {
@@ -33,12 +37,8 @@ export function TvPanel({ initialCodigo }: Props) {
   const [loggingIn, setLoggingIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [pendentes, setPendentes] = useState<TvSenha[]>([]);
-  const [ultimaSenha, setUltimaSenha] = useState<string | null>(null);
-  const [ultimaOperador, setUltimaOperador] = useState<string | null>(null);
-  const [ultimaOperadorFoto, setUltimaOperadorFoto] = useState<string | null>(null);
-  const [ultimaNormal, setUltimaNormal] = useState<string | null>(null);
-  const [ultimaPreferencial, setUltimaPreferencial] = useState<string | null>(null);
+  const [normal, setNormal] = useState<ChamadaTipo>({ senha: null, foto: null });
+  const [preferencial, setPreferencial] = useState<ChamadaTipo>({ senha: null, foto: null });
 
   const [config, setConfig] = useState<TvConfig | null>(null);
   const [imagemIndex, setImagemIndex] = useState(0);
@@ -47,7 +47,6 @@ export function TvPanel({ initialCodigo }: Props) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const imagens = useMemo(() => config?.imagens ?? [], [config?.imagens]);
-  const showPropaganda = Boolean(config?.propagandas_ativas && imagens.length > 0);
 
   const playCallSound = useCallback((senha: string) => {
     const normalized = senha.trim();
@@ -62,14 +61,10 @@ export function TvPanel({ initialCodigo }: Props) {
   }, []);
 
   const syncFromAtendimentos = useCallback((lista: TvAtendimento[]) => {
-    const first = lista[0];
-    setUltimaSenha(first?.senha ?? null);
-    setUltimaOperador(first?.operador_nome ?? null);
-    setUltimaOperadorFoto(first?.operador_foto ?? null);
-    const normal = lista.find((a) => a.tipo === "normal");
-    const preferencial = lista.find((a) => a.tipo === "preferencial");
-    if (normal) setUltimaNormal(normal.senha);
-    if (preferencial) setUltimaPreferencial(preferencial.senha);
+    const n = lista.find((a) => a.tipo === "normal");
+    const p = lista.find((a) => a.tipo === "preferencial");
+    if (n) setNormal({ senha: n.senha, foto: n.operador_foto ?? null });
+    if (p) setPreferencial({ senha: p.senha, foto: p.operador_foto ?? null });
   }, []);
 
   const hydrate = useCallback(
@@ -85,7 +80,6 @@ export function TvPanel({ initialCodigo }: Props) {
             }) satisfies TvConfig,
         ),
       ]);
-      setPendentes(fila.pendentes ?? []);
       syncFromAtendimentos(fila.atendimentos ?? []);
       setConfig(tvConfig);
       setImagemIndex(0);
@@ -142,20 +136,18 @@ export function TvPanel({ initialCodigo }: Props) {
     if (!token) return;
     const socket = connectTvSocket(token);
 
-    socket.on("fila:atualizada", (data: { pendentes?: TvSenha[]; atendimentos?: TvAtendimento[] }) => {
-      setPendentes(data.pendentes ?? []);
+    socket.on("fila:atualizada", (data: { atendimentos?: TvAtendimento[] }) => {
       syncFromAtendimentos(data.atendimentos ?? []);
     });
 
     socket.on("senha:chamada", (data: SenhaChamadaTv) => {
-      if (data.senha) {
-        setUltimaSenha(data.senha);
-        playCallSound(data.senha);
-      }
-      if (data.operador_nome) setUltimaOperador(data.operador_nome);
-      if (data.operador_foto !== undefined) setUltimaOperadorFoto(data.operador_foto ?? null);
-      if (data.tipo === "preferencial") setUltimaPreferencial(data.senha);
-      if (data.tipo === "normal") setUltimaNormal(data.senha);
+      if (data.senha) playCallSound(data.senha);
+      const chamada: ChamadaTipo = {
+        senha: data.senha ?? null,
+        foto: data.operador_foto ?? null,
+      };
+      if (data.tipo === "preferencial") setPreferencial(chamada);
+      if (data.tipo === "normal") setNormal(chamada);
     });
 
     socket.on("auth:erro", (payload: { mensagem?: string }) => {
@@ -171,15 +163,14 @@ export function TvPanel({ initialCodigo }: Props) {
   }, [token, syncFromAtendimentos, playCallSound]);
 
   useEffect(() => {
-    if (!showPropaganda || imagens.length <= 1) return;
+    if (imagens.length <= 1) return;
     const ms = Math.max(1000, config?.intervalo_ms ?? 15_000);
     const id = window.setInterval(() => {
       setImagemIndex((i) => (i + 1) % imagens.length);
     }, ms);
     return () => window.clearInterval(id);
-  }, [showPropaganda, imagens.length, config?.intervalo_ms]);
+  }, [imagens.length, config?.intervalo_ms]);
 
-  // Recarrega config de propaganda periodicamente (sem socket dedicado).
   useEffect(() => {
     if (!token) return;
     const id = window.setInterval(() => {
@@ -213,7 +204,6 @@ export function TvPanel({ initialCodigo }: Props) {
     clearTvToken();
     setToken(null);
     setSetor(null);
-    setPendentes([]);
     setConfig(null);
     setError(null);
   }
@@ -267,7 +257,7 @@ export function TvPanel({ initialCodigo }: Props) {
   }
 
   return (
-    <div className="relative min-h-screen bg-background text-foreground">
+    <div className="relative h-screen w-screen overflow-hidden bg-black text-foreground">
       <button
         type="button"
         onClick={onLogout}
@@ -277,45 +267,32 @@ export function TvPanel({ initialCodigo }: Props) {
         Sair{setor?.nome ? ` · ${setor.nome}` : ""}
       </button>
 
-      {showPropaganda ? (
-        <PropagandaLayout
-          imageUrl={currentImage}
-          preferencial={ultimaPreferencial}
-          normal={ultimaNormal}
-        />
-      ) : (
-        <DefaultLayout
-          senha={ultimaSenha}
-          operadorNome={ultimaOperador}
-          operadorFoto={ultimaOperadorFoto}
-          pendentes={pendentes}
-          error={error}
-        />
-      )}
-    </div>
-  );
-}
+      <div className="flex h-full w-full flex-col">
+        <div className="relative min-h-0 flex-[78]">
+          {currentImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={currentImage} alt="Propaganda" className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full items-center justify-center bg-zinc-950 text-white/40">
+              Sem imagem de propaganda
+            </div>
+          )}
+        </div>
 
-function PropagandaLayout({
-  imageUrl,
-  preferencial,
-  normal,
-}: {
-  imageUrl: string | null;
-  preferencial: string | null;
-  normal: string | null;
-}) {
-  return (
-    <div className="flex h-screen w-screen flex-col">
-      <div className="relative flex-[0.78] bg-black">
-        {imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={imageUrl} alt="Propaganda" className="h-full w-full object-cover" />
-        ) : null}
-      </div>
-      <div className="flex flex-[0.22]">
-        <TipoPanel titulo="PREFERENCIAL" senha={preferencial} className="bg-[#1A1A1A] text-[#F5F5F5]" />
-        <TipoPanel titulo="NORMAL" senha={normal} className="bg-[#E85D04] text-white" />
+        <div className="flex min-h-0 flex-[22]">
+          <TipoPanel
+            titulo="PREFERENCIAL"
+            senha={preferencial.senha}
+            foto={preferencial.foto}
+            className="bg-[#120B1E] text-white"
+          />
+          <TipoPanel
+            titulo="NORMAL"
+            senha={normal.senha}
+            foto={normal.foto}
+            className="bg-[#E85D04] text-white"
+          />
+        </div>
       </div>
     </div>
   );
@@ -324,96 +301,36 @@ function PropagandaLayout({
 function TipoPanel({
   titulo,
   senha,
+  foto,
   className,
 }: {
   titulo: string;
   senha: string | null;
+  foto: string | null;
   className: string;
 }) {
+  const photo = uploadsUrl(foto);
   return (
-    <div className={cn("flex flex-1 flex-col items-center justify-center px-6 py-4", className)}>
-      <p className="text-xl font-semibold tracking-[0.2em] opacity-85 sm:text-2xl">{titulo}</p>
-      <p className={cn("mt-1 font-black tracking-tight", senha ? "text-6xl sm:text-7xl" : "text-5xl")}>
-        {senha ?? "—"}
-      </p>
-    </div>
-  );
-}
-
-function DefaultLayout({
-  senha,
-  operadorNome,
-  operadorFoto,
-  pendentes,
-  error,
-}: {
-  senha: string | null;
-  operadorNome: string | null;
-  operadorFoto: string | null;
-  pendentes: TvSenha[];
-  error: string | null;
-}) {
-  const photo = uploadsUrl(operadorFoto);
-  return (
-    <div className="grid h-screen w-screen grid-cols-1 gap-6 p-6 lg:grid-cols-[1.65fr_1fr] lg:p-8">
-      <section className="flex flex-col items-center justify-center rounded-3xl border border-border bg-card p-8 shadow-sm">
-        <p className="text-xl font-semibold tracking-[0.25em] text-primary">SENHA ATUAL</p>
+    <div className={cn("flex flex-1 flex-col items-center justify-center px-6 py-3", className)}>
+      <p className="text-lg font-bold tracking-[0.18em] sm:text-xl md:text-2xl">{titulo}</p>
+      <div className="mt-2 flex items-center gap-4 sm:gap-5">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/15 sm:h-16 sm:w-16 md:h-20 md:w-20">
+          {photo ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={photo} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <UserRound className="h-8 w-8 opacity-80 sm:h-9 sm:w-9" />
+          )}
+        </div>
         <p
           className={cn(
-            "my-5 text-center font-black leading-none tracking-tight",
-            senha ? "text-7xl sm:text-8xl lg:text-[6.5rem]" : "text-5xl text-muted-foreground",
+            "font-black tracking-tight",
+            senha ? "text-5xl sm:text-6xl md:text-7xl" : "text-4xl opacity-60 sm:text-5xl",
           )}
         >
-          {senha ?? "Aguardando"}
+          {senha ?? "—"}
         </p>
-        {operadorNome ? (
-          <div className="flex items-center gap-4 rounded-2xl bg-secondary px-5 py-3">
-            <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border-2 border-primary bg-card">
-              {photo ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={photo} alt={operadorNome} className="h-full w-full object-cover" />
-              ) : (
-                <UserRound className="h-9 w-9 text-primary" />
-              )}
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">DIRIJA-SE A</p>
-              <p className="text-2xl font-bold">{operadorNome}</p>
-            </div>
-          </div>
-        ) : (
-          <p className="text-xl text-muted-foreground">A próxima chamada aparecerá aqui</p>
-        )}
-      </section>
-
-      <section className="flex min-h-0 flex-col rounded-3xl border border-border bg-card p-6">
-        <h2 className="text-2xl font-bold">FILA DE ESPERA</h2>
-        <p className="mb-4 mt-1 text-muted-foreground">
-          {pendentes.length} {pendentes.length === 1 ? "senha aguardando" : "senhas aguardando"}
-        </p>
-        <ul className="min-h-0 flex-1 space-y-2.5 overflow-y-auto pr-1">
-          {pendentes.map((item) => {
-            const preferential = item.tipo === "preferencial";
-            return (
-              <li
-                key={item.id}
-                className="flex items-center justify-between rounded-xl bg-secondary px-4 py-3"
-              >
-                <span className="text-2xl font-bold">{item.senha}</span>
-                <span
-                  className={cn(
-                    "text-sm font-bold",
-                    preferential ? "text-destructive" : "text-primary",
-                  )}
-                >
-                  {preferential ? "PREFERENCIAL" : "NORMAL"}
-                </span>
-              </li>
-            );
-          })}
-        </ul>
-        {error ? <p className="mt-3 text-sm text-destructive">{error}</p> : null}
-      </section>
+      </div>
     </div>
   );
 }

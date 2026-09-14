@@ -150,6 +150,61 @@ def analytics():
     return jsonify(payload)
 
 
+@admin_api_bp.route("/fila-ao-vivo", methods=["GET"])
+@api_login_required
+def fila_ao_vivo():
+    """Snapshot operacional por setor (Fila ao Vivo)."""
+    from backend.services.live_fila_service import montar_fila_ao_vivo
+
+    setor_raw = request.args.get("setor_id")
+    if not setor_raw:
+        return jsonify({"error": "setor_id é obrigatório"}), 400
+    try:
+        setor_id = int(setor_raw)
+    except ValueError:
+        return jsonify({"error": "setor_id inválido"}), 400
+    try:
+        return jsonify(montar_fila_ao_vivo(setor_id))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 404
+
+
+@admin_api_bp.route("/fila-ao-vivo/token", methods=["GET"])
+@api_login_required
+def fila_ao_vivo_token():
+    """JWT role=tv para o admin escutar Socket.IO do setor sem polling."""
+    from backend.auth import create_session_token
+
+    setor_raw = request.args.get("setor_id")
+    if not setor_raw:
+        return jsonify({"error": "setor_id é obrigatório"}), 400
+    try:
+        setor_id = int(setor_raw)
+    except ValueError:
+        return jsonify({"error": "setor_id inválido"}), 400
+    if not Setor.query.get(setor_id):
+        return jsonify({"error": "Setor não encontrado"}), 404
+    token = create_session_token(setor_id, role="tv", ttl_seconds=60 * 60 * 8)
+    return jsonify({"session_token": token, "setor_id": setor_id})
+
+
+@admin_api_bp.route("/fila-ao-vivo/config", methods=["PUT"])
+@api_login_required
+def fila_ao_vivo_config():
+    data = request.get_json(silent=True) or {}
+    if "ignorar_finalizados_automaticos" in data:
+        set_configuracao(
+            "ignorar_finalizados_automaticos",
+            "1" if data.get("ignorar_finalizados_automaticos") else "0",
+        )
+    return jsonify(
+        {
+            "ignorar_finalizados_automaticos": (get_configuracao("ignorar_finalizados_automaticos") or "0")
+            in ("1", "true", "True", "yes")
+        }
+    )
+
+
 @admin_api_bp.route("/dashboard", methods=["GET"])
 @api_login_required
 def dashboard():
@@ -425,6 +480,20 @@ def list_operadores():
         .order_by(Operador.nome)
         .all()
     )
+    avaliacao_num = _avaliacao_numerica()
+    medias = {
+        oid: (float(media) if media is not None else None, int(n or 0))
+        for oid, media, n in (
+            db.session.query(
+                Finalizado.operador_id,
+                func.avg(avaliacao_num),
+                func.count(avaliacao_num),
+            )
+            .filter(Finalizado.avaliacao.isnot(None), Finalizado.avaliacao != "")
+            .group_by(Finalizado.operador_id)
+            .all()
+        )
+    }
     return jsonify(
         [
             {
@@ -434,6 +503,12 @@ def list_operadores():
                 "setor_nome": setor_nome,
                 "foto_perfil": op.foto_perfil,
                 "tem_pin": bool(op.pin_hash),
+                "nota_media": (
+                    round(medias[op.id][0], 2)
+                    if op.id in medias and medias[op.id][0] is not None
+                    else None
+                ),
+                "n_avaliacoes": medias[op.id][1] if op.id in medias else 0,
             }
             for op, setor_nome in rows
         ]

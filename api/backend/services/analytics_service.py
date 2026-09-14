@@ -379,6 +379,7 @@ def montar_analytics(
                     round(mean(b["atendimento_min"]), 2) if b["atendimento_min"] else None
                 ),
                 "nota_media": round(mean(b["notas"]), 2) if b["notas"] else None,
+                "n_avaliacoes": len(b["notas"]),
             }
         )
 
