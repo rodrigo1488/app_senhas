@@ -79,11 +79,11 @@ export function uploadsUrl(path: string | null | undefined): string | null {
   if (!value) return null;
   if (value.startsWith("http://") || value.startsWith("https://")) return value;
   const normalized = value.replace(/^\//, "").replace(/^uploads\//, "");
-  const base = resolveApiBaseUrl().replace(/\/$/, "");
-  // Prefer same-origin proxy when available (smart TVs behind reverse proxy).
-  if (typeof window !== "undefined" && window.location.port !== "3000") {
+  // Prefer same-origin (HTTPS / túnel) — rewrite `/uploads` no Next.
+  if (typeof window !== "undefined" && window.location.protocol === "https:") {
     return `${window.location.origin}/uploads/${normalized}`;
   }
+  const base = resolveApiBaseUrl().replace(/\/$/, "");
   return `${base}/uploads/${normalized}`;
 }
 
