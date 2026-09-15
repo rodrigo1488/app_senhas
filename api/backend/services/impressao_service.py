@@ -1,5 +1,4 @@
-"""Serviço de impressão térmica (ESC/POS) — inalterado em relação ao
-comportamento do `app.py` legado, apenas isolado como serviço reutilizável."""
+"""Serviço de impressão térmica (ESC/POS) — cupom compacto."""
 import datetime
 import io
 
@@ -39,15 +38,14 @@ def imprimir_senha_com_ip(
     p = None
     try:
         p = Network(impressora_ip, current_app.config["IMPRESSORA_PORTA"])
-        p.set(align="center", bold=True)
-        p.text("\n")
-        p.text("=" * 32 + "\n")
-        p.text("\n")
+        agora = datetime.datetime.now()
 
+        p.set(align="center", bold=True)
+        p.text("=" * 32 + "\n")
+
+        # Nome da empresa: único bloco double (destaque sem alongar o cupom).
         p.set(align="center", bold=True, double_height=True, double_width=True)
         p.text(f"{obter_nome_empresa()}\n")
-        p.set(align="center", bold=True)
-        p.text("\n")
 
         imagem_senha = gerar_imagem_senha(senha)
         if imagem_senha:
@@ -60,43 +58,30 @@ def imprimir_senha_com_ip(
                 current_app.logger.error(f"Erro ao imprimir imagem da senha: {exc}")
                 p.set(align="center", bold=True, double_height=True, double_width=True)
                 p.text(f"{senha}\n")
-                p.set(align="center", bold=True)
         else:
             p.set(align="center", bold=True, double_height=True, double_width=True)
             p.text(f"{senha}\n")
-            p.set(align="center", bold=True)
 
-        p.text("\n")
+        p.set(align="center", bold=True)
         p.text("=" * 32 + "\n")
-        p.set(align="center", bold=True, double_height=True)
-        p.text(f"Data: {datetime.datetime.now().strftime('%d/%m/%Y')}\n")
-        p.text(f"Hora: {datetime.datetime.now().strftime('%H:%M')}\n")
+        # Altura normal: double_height em data/setor dobrava o papel.
+        p.text(f"{agora.strftime('%d/%m/%Y')}  {agora.strftime('%H:%M')}\n")
         p.text(f"{nome_setor}\n")
         if descricao_setor:
             p.text(f"{descricao_setor}\n")
-        p.set(align="center", bold=True)
         p.text("=" * 32 + "\n")
 
         if token_unico:
-            p.text("\n")
-            p.set(align="center", bold=True, double_height=True)
-            p.text("Escaneie para receber\n")
-            p.text("notificacao quando\n")
-            p.text("for sua vez\n")
-            p.set(align="center", bold=True)
-            p.text("\n")
+            p.text("Escaneie para notificar\n")
             qr_buffer = gerar_qr_code_notificacao(token_unico)
             if qr_buffer:
                 try:
                     p.image(qr_buffer, impl="bitImageRaster", center=True)
                 except Exception as exc:
                     current_app.logger.error(f"Erro ao imprimir QR Code: {exc}")
-            p.text("\n")
+            p.text("=" * 32 + "\n")
 
-        p.set(align="center", bold=True, double_height=True)
         p.text("Aguarde ser chamada\n")
-        p.text("na tela de atendimento\n")
-        p.set(align="center", bold=True)
         p.text("=" * 32 + "\n")
         p.cut()
         return True

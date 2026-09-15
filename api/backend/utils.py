@@ -128,11 +128,12 @@ def get_notification_url(token: str) -> str:
 
 
 def gerar_qr_code_bytes(data: str) -> bytes:
+    # box_size menor: QR legível sem consumir metade do cupom.
     qr = qrcode.QRCode(
         version=1,
         error_correction=qrcode.constants.ERROR_CORRECT_M,
-        box_size=8,
-        border=2,
+        box_size=4,
+        border=1,
     )
     qr.add_data(data)
     qr.make(fit=True)
@@ -155,11 +156,11 @@ def gerar_qr_code_notificacao(token_unico: str) -> io.BytesIO | None:
 
 
 def gerar_imagem_senha(senha: str, largura_maxima: int = 384):
-    """Gera bitmap alto contraste da senha para impressora térmica."""
+    """Gera bitmap alto contraste da senha, com altura justa ao texto."""
     try:
-        altura = 120
-        # RGB + traço reforçado evita cinza do antialias (fica apagado no térmico).
-        imagem = Image.new("RGB", (largura_maxima, altura), "white")
+        # Canvas alto só para medir; depois recorta o padding vertical.
+        canvas_h = 140
+        imagem = Image.new("RGB", (largura_maxima, canvas_h), "white")
         draw = ImageDraw.Draw(imagem)
 
         fontes_possiveis = [
@@ -205,14 +206,16 @@ def gerar_imagem_senha(senha: str, largura_maxima: int = 384):
             largura_texto = bbox[2] - bbox[0]
 
         altura_texto = bbox[3] - bbox[1]
+        pad_y = 4
         x = (largura_maxima - largura_texto) // 2
-        y = (altura - altura_texto) // 2
-        # "Negrito" por sobreposição — traço mais grosso na térmica.
+        y = pad_y - bbox[1]
         for dx, dy in ((0, 0), (1, 0), (0, 1), (1, 1), (2, 0), (0, 2)):
             draw.text((x + dx, y + dy), senha, fill="black", font=fonte)
 
+        # Recorte justo: remove faixa branca acima/abaixo da senha.
+        crop_bottom = min(canvas_h, pad_y + altura_texto + 4)
+        imagem = imagem.crop((0, 0, largura_maxima, crop_bottom))
         cinza = imagem.convert("L")
-        # Limiar alto: qualquer pixel não-branco vira preto puro.
         return cinza.point(lambda p: 0 if p < 200 else 255, mode="1")
     except Exception as exc:  # pragma: no cover
         current_app.logger.error(f"Erro ao gerar imagem da senha '{senha}': {exc}")
