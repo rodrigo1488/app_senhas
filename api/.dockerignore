@@ -6,6 +6,9 @@ __pycache__/
 *.pyc
 .env
 .env.example
+compuflow.sqlite
+compuflow.sqlite-shm
+compuflow.sqlite-wal
 appsenhas.sqlite
 appsenhas.sqlite-shm
 appsenhas.sqlite-wal

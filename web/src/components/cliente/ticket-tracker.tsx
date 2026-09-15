@@ -233,7 +233,7 @@ export function TicketTracker({ token }: Props) {
       <header className="relative z-10 flex items-center justify-between px-4 py-3">
         <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
           <Ticket className="h-4 w-4 text-primary" />
-          AppSenhas
+          CompuFlow
         </div>
         <ModeToggle />
       </header>

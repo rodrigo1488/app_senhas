@@ -65,7 +65,7 @@ export function AppSidebar({ nomeEmpresa }: { nomeEmpresa?: string }) {
           </div>
           {open && (
             <div className="min-w-0">
-              <p className="truncate text-sm font-bold">AppSenhas</p>
+              <p className="truncate text-sm font-bold">CompuFlow</p>
               <p className="truncate text-xs text-muted-foreground">
                 {nomeEmpresa || "Painel admin"}
               </p>

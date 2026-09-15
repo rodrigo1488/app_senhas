@@ -13,7 +13,7 @@ import { apiFetch } from "@/lib/api";
 export default function LoginPage() {
   const router = useRouter();
   const search = useSearchParams();
-  const [email, setEmail] = useState("admin@appsenhas.local");
+  const [email, setEmail] = useState("admin@compuflow.local");
   const [senha, setSenha] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -50,6 +50,7 @@ export default function LoginPage() {
           <div className="mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-primary-foreground">
             <Ticket className="h-7 w-7" />
           </div>
+          <p className="text-sm font-semibold uppercase tracking-[0.2em] text-primary">CompuFlow</p>
           <CardTitle className="text-2xl">Painel Administrativo</CardTitle>
           <CardDescription>Entre com sua conta para gerenciar o sistema</CardDescription>
         </CardHeader>

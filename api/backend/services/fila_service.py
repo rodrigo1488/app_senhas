@@ -11,19 +11,18 @@ Nenhuma função aqui emite eventos de socket diretamente — quem chama decide
 quando emitir (normalmente logo depois de uma chamada bem-sucedida), para
 manter a camada de serviço testável e livre de efeitos colaterais de rede.
 """
-import random
 import threading
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 from backend.extensions import db
 from backend.models import AtendimentoAtual, Finalizado, Operador, Senha, Setor
 from backend.utils import gerar_token_unico, get_configuracao
 
-# Lock por setor para serializar "chamar próxima" (evita duas senhas iguais
-# sendo chamadas simultaneamente por dois operadores do mesmo setor).
+# Lock por setor para serializar "chamar próxima" e emissão de senhas
+# (evita duas senhas iguais sob concorrência no mesmo setor).
 _setor_locks: dict[int, threading.Lock] = defaultdict(threading.Lock)
 
 
@@ -43,6 +42,40 @@ class ChamadaResultado:
     @property
     def chamada_realizada(self) -> bool:
         return self.senha is not None
+
+
+def _inicio_fim_dia(agora: datetime) -> tuple[datetime, datetime]:
+    inicio = agora.replace(hour=0, minute=0, second=0, microsecond=0)
+    return inicio, inicio + timedelta(days=1)
+
+
+def _proximo_codigo_senha(setor_id: int, tipo: str, agora: Optional[datetime] = None) -> str:
+    """Contagem crescente por setor/tipo a partir de 1; zera todo dia às 00:00."""
+    agora = agora or datetime.now()
+    inicio, fim = _inicio_fim_dia(agora)
+    prefixo = (tipo or "n")[:1].upper()
+
+    emitidas = (
+        Senha.query.filter(
+            Senha.setor_id == setor_id,
+            Senha.tipo == tipo,
+            Senha.data_hora >= inicio,
+            Senha.data_hora < fim,
+        )
+        .with_entities(Senha.senha)
+        .all()
+    )
+
+    maior = 0
+    for (codigo,) in emitidas:
+        texto = (codigo or "").strip()
+        if len(texto) < 2 or texto[0].upper() != prefixo:
+            continue
+        sufixo = texto[1:]
+        if sufixo.isdigit():
+            maior = max(maior, int(sufixo))
+
+    return f"{prefixo}{maior + 1}"
 
 
 def serializar_fila(setor_id: int, incluir_pedidos: bool = False) -> dict:
@@ -108,22 +141,81 @@ def serializar_fila(setor_id: int, incluir_pedidos: bool = False) -> dict:
     }
 
 
+def listar_chamadas_recentes(setor_id: int, limite: int = 8) -> list[dict]:
+    """Retorna chamadas atuais e finalizadas para hidratar o painel TV web."""
+    limite = max(1, min(limite, 20))
+    chamadas: list[dict] = []
+
+    atuais = (
+        db.session.query(AtendimentoAtual, Senha, Operador)
+        .join(Senha, Senha.id == AtendimentoAtual.senha_id)
+        .join(Operador, Operador.id == AtendimentoAtual.operador_id)
+        .filter(AtendimentoAtual.setor_id == setor_id)
+        .all()
+    )
+    for atendimento, senha, operador in atuais:
+        chamada_em = senha.chamada_em or atendimento.data_hora
+        chamadas.append(
+            {
+                "senha_id": senha.id,
+                "senha": senha.senha,
+                "tipo": senha.tipo,
+                "operador_id": operador.id,
+                "operador_nome": operador.nome,
+                "operador_foto": operador.foto_perfil,
+                "chamada_em": chamada_em.isoformat() if chamada_em else None,
+                "status": "atual",
+            }
+        )
+
+    finalizadas = (
+        db.session.query(Finalizado, Senha, Operador)
+        .join(Senha, Senha.id == Finalizado.senha_id)
+        .join(Operador, Operador.id == Finalizado.operador_id)
+        .filter(Finalizado.setor_id == setor_id)
+        .order_by(Senha.chamada_em.desc(), Finalizado.data_hora.desc(), Finalizado.id.desc())
+        .limit(limite)
+        .all()
+    )
+    for finalizado, senha, operador in finalizadas:
+        chamada_em = senha.chamada_em or finalizado.data_hora
+        chamadas.append(
+            {
+                "senha_id": senha.id,
+                "senha": senha.senha,
+                "tipo": senha.tipo,
+                "operador_id": operador.id,
+                "operador_nome": operador.nome,
+                "operador_foto": operador.foto_perfil,
+                "chamada_em": chamada_em.isoformat() if chamada_em else None,
+                "status": "finalizada",
+            }
+        )
+
+    chamadas.sort(key=lambda item: item["chamada_em"] or "", reverse=True)
+    return chamadas[:limite]
+
+
 def criar_senha(setor_id: int, tipo: str) -> Senha:
     setor = Setor.query.get(setor_id)
     if not setor:
         raise FilaError("Setor não encontrado")
 
-    codigo_senha = f"{tipo[:1].upper()}{random.randint(1000, 9999)}"
-    senha = Senha(
-        senha=codigo_senha,
-        tipo=tipo,
-        setor_id=setor_id,
-        status="A",
-        token_unico=gerar_token_unico(),
-    )
-    db.session.add(senha)
-    db.session.commit()
-    return senha
+    lock = _setor_locks[setor_id]
+    with lock:
+        agora = datetime.now()
+        codigo_senha = _proximo_codigo_senha(setor_id, tipo, agora)
+        senha = Senha(
+            senha=codigo_senha,
+            tipo=tipo,
+            setor_id=setor_id,
+            status="A",
+            token_unico=gerar_token_unico(),
+            data_hora=agora,
+        )
+        db.session.add(senha)
+        db.session.commit()
+        return senha
 
 
 def listar_operadores(setor_id: int) -> list[Operador]:

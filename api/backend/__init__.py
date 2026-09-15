@@ -1,5 +1,5 @@
 """
-Pacote da aplicação Flask "App Senhas".
+Pacote da aplicação Flask "CompuFlow".
 
 Este pacote substitui o antigo `backend/__init__.py` monolítico por uma estrutura modular:
 
@@ -195,6 +195,7 @@ def _init_database(app: Flask) -> None:
     db.create_all()
     _migrate_operator_identification_columns()
     _migrate_propagandas_columns()
+    _migrate_tv_layout_column()
 
     is_sqlite = db.engine.dialect.name == "sqlite"
 
@@ -260,6 +261,24 @@ def _migrate_propagandas_columns() -> None:
             )
 
 
+def _migrate_tv_layout_column() -> None:
+    """Garante a preferência de layout exclusiva do painel TV web."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    setores_columns = {column["name"] for column in inspector.get_columns("setores")}
+    if_not_exists = "IF NOT EXISTS " if db.engine.dialect.name == "postgresql" else ""
+
+    with db.engine.begin() as conn:
+        if "layout_tv_web" not in setores_columns:
+            conn.execute(
+                text(
+                    f"ALTER TABLE setores ADD COLUMN {if_not_exists}"
+                    "layout_tv_web VARCHAR(20) NOT NULL DEFAULT 'propaganda'"
+                )
+            )
+
+
 def _ensure_column(conn, table: str, column: str, col_type: str, is_sqlite: bool) -> None:
     """ADD COLUMN idempotente (SQLite não tem IF NOT EXISTS em todas as versões)."""
     from sqlalchemy import text
@@ -295,7 +314,7 @@ def _seed_admin_padrao(app: Flask) -> None:
     if existe_algum_admin():
         return
 
-    admin_email = os.getenv("ADMIN_EMAIL", "admin@appsenhas.local")
+    admin_email = os.getenv("ADMIN_EMAIL", "admin@compuflow.local")
     admin_password = os.getenv("ADMIN_PASSWORD", "admin123")
     criar_ou_atualizar_admin(admin_email, admin_password)
     app.logger.warning(

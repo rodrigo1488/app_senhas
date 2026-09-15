@@ -16,6 +16,7 @@ class Setor(db.Model):
     senha_setor = db.Column(db.Text)  # "código do setor" usado no login do app/kiosk
     modo_identificacao_operador = db.Column(db.String(10), nullable=False, default="foto")
     propagandas_ativas = db.Column(db.Boolean, nullable=False, default=False)
+    layout_tv_web = db.Column(db.String(20), nullable=False, default="propaganda")
 
     operadores = db.relationship("Operador", backref="setor", lazy="dynamic")
     impressoras = db.relationship("Impressora", backref="setor", lazy="dynamic")
@@ -28,6 +29,7 @@ class Setor(db.Model):
             "descricao": self.descricao,
             "modo_identificacao_operador": self.modo_identificacao_operador or "foto",
             "propagandas_ativas": bool(self.propagandas_ativas),
+            "layout_tv_web": self.layout_tv_web or "propaganda",
         }
 
 

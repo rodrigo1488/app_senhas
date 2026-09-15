@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.appsenhas"
+    namespace = "com.example.compuflow"
     compileSdk {
         version = release(36) {
             minorApiLevel = 1
@@ -13,7 +13,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.appsenhas"
+        applicationId = "com.example.compuflow"
         minSdk = 24
         targetSdk = 36
         versionCode = 7

@@ -32,6 +32,7 @@ from backend.services.fila_service import (
     confirmar_pedido,
     criar_senha,
     estado_atendimento_atual,
+    listar_chamadas_recentes,
     listar_operadores,
     salvar_pedido,
     serializar_fila,
@@ -209,8 +210,26 @@ def setor_tv_config(session_payload):
     return jsonify(
         {
             "propagandas_ativas": ativas,
+            "layout_tv_web": (setor.layout_tv_web if setor else None) or "propaganda",
+            "setor_nome": setor.nome if setor else None,
             "imagens": imagens,
             "intervalo_ms": 15_000,
+        }
+    )
+
+
+@api_bp.route("/setor/tv_chamadas_recentes", methods=["GET"])
+@api_token_required
+def setor_tv_chamadas_recentes(session_payload):
+    """Histórico curto usado exclusivamente para hidratar o painel TV web."""
+    if session_payload.get("role") != "tv":
+        return jsonify({"error": "Sessão de TV obrigatória"}), 403
+    return jsonify(
+        {
+            "chamadas": listar_chamadas_recentes(
+                session_payload["setor_id"],
+                limite=8,
+            )
         }
     )
 

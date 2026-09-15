@@ -36,7 +36,7 @@ O schema é criado automaticamente em banco vazio (`db.create_all()`).
 
 Na primeira inicialização, se a tabela `usuarios` estiver vazia:
 
-- Email: `ADMIN_EMAIL` (padrão `admin@appsenhas.local`)
+- Email: `ADMIN_EMAIL` (padrão `admin@compuflow.local`)
 - Senha: `ADMIN_PASSWORD` (padrão `admin123`)
 
 Login do painel: **http://localhost:3000/login**
@@ -48,7 +48,7 @@ admin.
 Trocar senha:
 
 ```bash
-docker compose exec api python scripts/criar_admin.py admin@appsenhas.local "senha-nova-forte"
+docker compose exec api python scripts/criar_admin.py admin@compuflow.local "senha-nova-forte"
 ```
 
 ## Migrando SQLite → Postgres

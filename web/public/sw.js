@@ -9,7 +9,7 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("push", (event) => {
   let data = {
-    title: "AppSenhas",
+    title: "CompuFlow",
     body: "Atualização da sua senha",
     icon: "/icon-192.png",
     badge: "/icon-192.png",

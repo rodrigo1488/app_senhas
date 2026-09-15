@@ -1,11 +1,13 @@
 import io
 import unittest
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 from backend import create_app
 from backend.auth import create_session_token
 from backend.extensions import db
-from backend.models import Propaganda, Setor
+from backend.models import AtendimentoAtual, Finalizado, Operador, Propaganda, Senha, Setor
+from backend.services.fila_service import listar_chamadas_recentes
 
 
 class PropagandasTvTest(unittest.TestCase):
@@ -58,6 +60,28 @@ class PropagandasTvTest(unittest.TestCase):
             setor = db.session.get(Setor, self.setor_id)
             self.assertTrue(setor.propagandas_ativas)
 
+    def test_setor_persiste_layout_tv_web_e_rejeita_valor_invalido(self):
+        client = self.app.test_client()
+        with client.session_transaction() as sess:
+            sess["user_id"] = "admin-test"
+
+        response = client.put(
+            f"/api/v1/admin/setores/{self.setor_id}",
+            json={"layout_tv_web": "fila"},
+        )
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("fila", response.get_json()["layout_tv_web"])
+
+        invalid = client.put(
+            f"/api/v1/admin/setores/{self.setor_id}",
+            json={"layout_tv_web": "desconhecido"},
+        )
+        self.assertEqual(400, invalid.status_code)
+
+        with self.app.app_context():
+            setor = db.session.get(Setor, self.setor_id)
+            self.assertEqual("fila", setor.layout_tv_web)
+
     def test_tv_config_empty_when_disabled(self):
         with self.app.app_context():
             db.session.add(Propaganda(arquivo="a.jpg", ordem=1, ativo=True))
@@ -70,6 +94,8 @@ class PropagandasTvTest(unittest.TestCase):
         self.assertEqual(200, response.status_code)
         payload = response.get_json()
         self.assertFalse(payload["propagandas_ativas"])
+        self.assertEqual("propaganda", payload["layout_tv_web"])
+        self.assertEqual("Balcão", payload["setor_nome"])
         self.assertEqual([], payload["imagens"])
         self.assertEqual(15_000, payload["intervalo_ms"])
 
@@ -96,6 +122,107 @@ class PropagandasTvTest(unittest.TestCase):
         arquivos = [i["arquivo"] for i in payload["imagens"]]
         self.assertEqual(["a.jpg", "c.jpg"], arquivos)
         self.assertEqual(15_000, payload["intervalo_ms"])
+
+    def test_tv_chamadas_recentes_restaura_atual_e_historico_do_setor(self):
+        agora = datetime.now()
+        with self.app.app_context():
+            operador = Operador(nome="Ana", setor_id=self.setor_id)
+            outro_setor = Setor(nome="Outro", senha_setor="OUTRO")
+            db.session.add_all([operador, outro_setor])
+            db.session.flush()
+
+            atual = Senha(
+                senha="N12",
+                tipo="normal",
+                setor_id=self.setor_id,
+                status="C",
+                chamada_em=agora,
+            )
+            anterior = Senha(
+                senha="P8",
+                tipo="preferencial",
+                setor_id=self.setor_id,
+                status="F",
+                chamada_em=agora - timedelta(minutes=5),
+                finalizado_em=agora - timedelta(minutes=2),
+            )
+            externa = Senha(
+                senha="N99",
+                tipo="normal",
+                setor_id=outro_setor.id,
+                status="F",
+                chamada_em=agora + timedelta(minutes=1),
+            )
+            db.session.add_all([atual, anterior, externa])
+            db.session.flush()
+            db.session.add_all(
+                [
+                    AtendimentoAtual(
+                        senha_id=atual.id,
+                        setor_id=self.setor_id,
+                        operador_id=operador.id,
+                        data_hora=agora,
+                    ),
+                    Finalizado(
+                        senha_id=anterior.id,
+                        setor_id=self.setor_id,
+                        operador_id=operador.id,
+                        data_hora=agora - timedelta(minutes=2),
+                    ),
+                    Finalizado(
+                        senha_id=externa.id,
+                        setor_id=outro_setor.id,
+                        operador_id=operador.id,
+                        data_hora=agora + timedelta(minutes=1),
+                    ),
+                ]
+            )
+            db.session.commit()
+
+        response = self.app.test_client().get(
+            "/api/v1/setor/tv_chamadas_recentes",
+            headers={"Authorization": f"Bearer {self._token()}"},
+        )
+        self.assertEqual(200, response.status_code)
+        chamadas = response.get_json()["chamadas"]
+        self.assertEqual(["N12", "P8"], [item["senha"] for item in chamadas])
+        self.assertEqual(["atual", "finalizada"], [item["status"] for item in chamadas])
+        self.assertEqual("Ana", chamadas[0]["operador_nome"])
+
+    def test_tv_chamadas_recentes_exige_papel_tv(self):
+        response = self.app.test_client().get(
+            "/api/v1/setor/tv_chamadas_recentes",
+            headers={"Authorization": f"Bearer {self._token('cliente')}"},
+        )
+        self.assertEqual(403, response.status_code)
+
+    def test_tv_chamadas_recentes_respeita_limite(self):
+        with self.app.app_context():
+            operador = Operador(nome="Bia", setor_id=self.setor_id)
+            db.session.add(operador)
+            db.session.flush()
+            for index in range(10):
+                senha = Senha(
+                    senha=f"N{index + 1}",
+                    tipo="normal",
+                    setor_id=self.setor_id,
+                    status="F",
+                    chamada_em=datetime.now() - timedelta(minutes=index),
+                )
+                db.session.add(senha)
+                db.session.flush()
+                db.session.add(
+                    Finalizado(
+                        senha_id=senha.id,
+                        setor_id=self.setor_id,
+                        operador_id=operador.id,
+                    )
+                )
+            db.session.commit()
+
+            chamadas = listar_chamadas_recentes(self.setor_id, limite=4)
+            self.assertEqual(4, len(chamadas))
+            self.assertEqual(["N1", "N2", "N3", "N4"], [item["senha"] for item in chamadas])
 
     @patch("backend.blueprints.admin_api_bp.process_propaganda_image", return_value="promo_tv.jpg")
     def test_admin_upload_propaganda(self, _mock_process):

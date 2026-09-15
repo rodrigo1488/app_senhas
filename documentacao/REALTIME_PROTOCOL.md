@@ -1,8 +1,8 @@
-# Protocolo de Tempo Real (Socket.IO) — App Senhas
+# Protocolo de Tempo Real (Socket.IO) — CompuFlow
 
 Este documento é a **fonte única da verdade** do protocolo de tempo real usado pelo
 backend Flask, pelas telas web restantes (`templates/`) e pelo app Android
-(`APPSENHAS/`). Qualquer alteração de evento/payload precisa ser refletida aqui
+(`CompuFlow/`). Qualquer alteração de evento/payload precisa ser refletida aqui
 **antes** de mudar o código, dos dois lados (servidor e clientes).
 
 Não existe mais polling: nenhum cliente deve chamar `setInterval` para buscar
@@ -200,6 +200,6 @@ responde imediatamente com `senha:posicao`.
 ## 7. Convenção para o app Android
 
 O app Android usa o cliente `io.socket:socket.io-client` e implementa esse
-mesmo contrato em `SocketManager.kt` (ver `APPSENHAS/app/src/main/java/.../realtime/`).
+mesmo contrato em `SocketManager.kt` (ver `CompuFlow/app/src/main/java/.../realtime/`).
 Nomes de evento, nomes de campo e formato de room são **idênticos** aos
 descritos aqui — não existem apelidos por plataforma.

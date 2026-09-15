@@ -7,7 +7,7 @@ Execute antes de fazer o build para verificar dependências
 import sys
 
 print("=" * 60)
-print("TESTE DE IMPORTS - App Senhas")
+print("TESTE DE IMPORTS - CompuFlow")
 print("=" * 60)
 print()
 

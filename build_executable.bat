@@ -1,9 +1,9 @@
 @echo off
-REM Script para gerar executável do App Senhas usando PyInstaller
+REM Script para gerar executável do CompuFlow usando PyInstaller
 REM Execute este arquivo no Windows
 
 echo ========================================
-echo   Gerando Executavel - App Senhas
+echo   Gerando Executavel - CompuFlow
 echo ========================================
 echo.
 
@@ -28,7 +28,7 @@ REM Limpar builds anteriores
 echo Limpando builds anteriores...
 if exist build rmdir /s /q build
 if exist dist rmdir /s /q dist
-if exist AppSenhas.spec del /q AppSenhas.spec
+if exist CompuFlow.spec del /q CompuFlow.spec
 echo [OK] Limpeza concluida
 echo.
 
@@ -73,7 +73,7 @@ echo ========================================
 echo   Executavel gerado com sucesso!
 echo ========================================
 echo.
-echo O executavel esta em: dist\AppSenhas.exe
+echo O executavel esta em: dist\CompuFlow.exe
 echo.
 echo IMPORTANTE:
 echo - Copie a pasta 'dist' completa para onde desejar

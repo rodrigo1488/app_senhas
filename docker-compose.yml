@@ -25,7 +25,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-appsenhas}:${POSTGRES_PASSWORD:-appsenhas}@db:5432/${POSTGRES_DB:-appsenhas}
       APP_SECRET_KEY: ${APP_SECRET_KEY:-}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@appsenhas.local}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@compuflow.local}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-admin123}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://web:3000}
       ADMIN_WEB_URL: ${ADMIN_WEB_URL:-http://localhost:3000}

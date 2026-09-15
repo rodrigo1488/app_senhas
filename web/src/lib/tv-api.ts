@@ -1,6 +1,6 @@
 import { resolveApiBaseUrl } from "@/lib/cliente-socket";
 
-const TV_TOKEN_KEY = "appsenhas_tv_session";
+const TV_TOKEN_KEY = "compuflow_tv_session";
 
 export type TvSetor = {
   id: number;
@@ -40,8 +40,25 @@ export type TvPropagandaImagem = {
 
 export type TvConfig = {
   propagandas_ativas: boolean;
+  layout_tv_web: "propaganda" | "fila";
+  setor_nome?: string | null;
   imagens: TvPropagandaImagem[];
   intervalo_ms: number;
+};
+
+export type TvRecentCall = {
+  senha_id: number;
+  senha: string;
+  tipo: string;
+  operador_id?: number | null;
+  operador_nome?: string | null;
+  operador_foto?: string | null;
+  chamada_em?: string | null;
+  status: "atual" | "finalizada";
+};
+
+export type TvRecentCallsResponse = {
+  chamadas: TvRecentCall[];
 };
 
 export function getStoredTvToken(): string | null {

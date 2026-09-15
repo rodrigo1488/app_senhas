@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { TicketTracker } from "@/components/cliente/ticket-tracker";
 
 export const metadata: Metadata = {
-  title: "Acompanhar senha · AppSenhas",
+  title: "Acompanhar senha · CompuFlow",
   description: "Acompanhe sua senha e receba notificações",
 };
 

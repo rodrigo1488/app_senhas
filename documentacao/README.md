@@ -1,6 +1,6 @@
-# Documentação do Projeto App Senhas
+# Documentação do Projeto CompuFlow
 
-Esta pasta contém toda a documentação do projeto App Senhas, organizada por categorias.
+Esta pasta contém toda a documentação do projeto CompuFlow, organizada por categorias.
 
 ## 🏗️ Arquitetura e Deploy
 

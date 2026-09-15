@@ -55,7 +55,7 @@ def enviar_web_push(
     try:
         from pywebpush import webpush
 
-        email = current_app.config.get("VAPID_EMAIL") or "mailto:admin@appsenhas.local"
+        email = current_app.config.get("VAPID_EMAIL") or "mailto:admin@compuflow.local"
         if not str(email).startswith("mailto:"):
             email = f"mailto:{email}"
 

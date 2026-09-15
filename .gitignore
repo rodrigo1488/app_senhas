@@ -4,13 +4,14 @@
 # Segredos locais. Use .env.example como modelo.
 .env
 
-# Banco SQLite legado (fallback sem Docker) — pode ficar em api/
+# Banco SQLite (fallback sem Docker) — pode ficar em api/
 appsenhas.sqlite
 appsenhas.sqlite-shm
 appsenhas.sqlite-wal
 api/appsenhas.sqlite
 api/appsenhas.sqlite-shm
 api/appsenhas.sqlite-wal
+
 
 # Python
 __pycache__/

@@ -1,4 +1,4 @@
-# AppSenhas — monorepo
+# CompuFlow — monorepo
 
 Sistema de senhas / filas: API Flask + painel admin Next.js + app Android.
 
@@ -25,7 +25,7 @@ docker compose up --build -d
 | Postgres | localhost:5432 |
 
 Admin padrão (primeira subida): `ADMIN_EMAIL` / `ADMIN_PASSWORD` do `.env`
-(padrão `admin@appsenhas.local` / `admin123`).
+(padrão `admin@compuflow.local` / `admin123`).
 
 Trocar senha:
 

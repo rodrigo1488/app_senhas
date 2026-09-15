@@ -10,6 +10,7 @@ export type FilaAtualizadaPayload = {
 
 export type SenhaChamadaTv = {
   setor_id?: number;
+  senha_id?: number | null;
   senha: string;
   tipo?: string | null;
   operador_id?: number | null;

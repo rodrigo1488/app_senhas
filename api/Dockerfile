@@ -1,4 +1,4 @@
-# Imagem da API Flask + Socket.IO ("App Senhas").
+# Imagem da API Flask + Socket.IO ("CompuFlow").
 #
 # Contexto de build: pasta `api/` (ver docker-compose.yml).
 # Gunicorn + worker eventlet (1 worker — estado de rooms Socket.IO não

@@ -37,6 +37,13 @@ def _modo_identificacao(valor) -> str:
     return modo
 
 
+def _layout_tv_web(valor) -> str:
+    layout = (valor or "propaganda").strip().lower()
+    if layout not in {"propaganda", "fila"}:
+        raise ValueError("Layout da TV web deve ser propaganda ou fila")
+    return layout
+
+
 def _validar_setor_pronto_para_pin(setor: Setor) -> None:
     sem_pin = setor.operadores.filter(
         (Operador.pin_hash.is_(None)) | (Operador.pin_hash == "")
@@ -332,6 +339,7 @@ def list_setores():
                 "senha_setor": s.senha_setor or "",
                 "modo_identificacao_operador": s.modo_identificacao_operador or "foto",
                 "propagandas_ativas": bool(s.propagandas_ativas),
+                "layout_tv_web": s.layout_tv_web or "propaganda",
             }
             for s in setores
         ]
@@ -347,6 +355,7 @@ def create_setor():
         return jsonify({"error": "Nome é obrigatório"}), 400
     try:
         modo = _modo_identificacao(data.get("modo_identificacao_operador"))
+        layout_tv_web = _layout_tv_web(data.get("layout_tv_web"))
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     setor = Setor(
@@ -355,6 +364,7 @@ def create_setor():
         senha_setor=(data.get("senha_setor") or "").strip(),
         modo_identificacao_operador=modo,
         propagandas_ativas=bool(data.get("propagandas_ativas", False)),
+        layout_tv_web=layout_tv_web,
     )
     db.session.add(setor)
     db.session.commit()
@@ -385,6 +395,11 @@ def update_setor(setor_id: int):
             return jsonify({"error": str(exc)}), 400
     if "propagandas_ativas" in data:
         setor.propagandas_ativas = bool(data.get("propagandas_ativas"))
+    if "layout_tv_web" in data:
+        try:
+            setor.layout_tv_web = _layout_tv_web(data.get("layout_tv_web"))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
     db.session.commit()
     return jsonify(
         {
@@ -394,6 +409,7 @@ def update_setor(setor_id: int):
             "senha_setor": setor.senha_setor,
             "modo_identificacao_operador": setor.modo_identificacao_operador or "foto",
             "propagandas_ativas": bool(setor.propagandas_ativas),
+            "layout_tv_web": setor.layout_tv_web or "propaganda",
         }
     )
 

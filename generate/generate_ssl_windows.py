@@ -28,7 +28,7 @@ def generate_ssl_certificate():
             x509.NameAttribute(NameOID.COUNTRY_NAME, "BR"),
             x509.NameAttribute(NameOID.STATE_OR_PROVINCE_NAME, "SP"),
             x509.NameAttribute(NameOID.LOCALITY_NAME, "Sao Paulo"),
-            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "App Senhas"),
+            x509.NameAttribute(NameOID.ORGANIZATION_NAME, "CompuFlow"),
             x509.NameAttribute(NameOID.COMMON_NAME, "localhost"),
         ])
         

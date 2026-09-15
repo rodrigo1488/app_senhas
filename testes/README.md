@@ -1,6 +1,6 @@
 # Pasta de Testes
 
-Esta pasta contém todos os arquivos de teste do projeto App Senhas.
+Esta pasta contém todos os arquivos de teste do projeto CompuFlow.
 
 ## Arquivos Python de Teste
 

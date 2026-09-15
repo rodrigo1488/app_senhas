@@ -42,6 +42,7 @@ export type Setor = {
   senha_setor: string;
   modo_identificacao_operador: "foto" | "pin";
   propagandas_ativas: boolean;
+  layout_tv_web: "propaganda" | "fila";
 };
 
 export type Propaganda = {

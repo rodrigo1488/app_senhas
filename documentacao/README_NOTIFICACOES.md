@@ -1,4 +1,4 @@
-# Notificações do cliente (QR) — AppSenhas
+# Notificações do cliente (QR) — CompuFlow
 
 ## Visão geral
 

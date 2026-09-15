@@ -14,8 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AppSenhas · Admin",
-  description: "Painel administrativo do App Senhas",
+  title: "CompuFlow · Admin",
+  description: "Painel administrativo do CompuFlow",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

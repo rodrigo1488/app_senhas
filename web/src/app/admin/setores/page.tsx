@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, type ReactNode, useEffect, useState } from "react";
+import { GalleryHorizontalEnd, ListStart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,6 +16,7 @@ export default function SetoresPage() {
   const [senhaSetor, setSenhaSetor] = useState("");
   const [modoIdentificacao, setModoIdentificacao] = useState<"foto" | "pin">("foto");
   const [propagandasAtivas, setPropagandasAtivas] = useState(false);
+  const [layoutTvWeb, setLayoutTvWeb] = useState<"propaganda" | "fila">("propaganda");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -33,6 +35,7 @@ export default function SetoresPage() {
     setSenhaSetor(setor.senha_setor || "");
     setModoIdentificacao(setor.modo_identificacao_operador || "foto");
     setPropagandasAtivas(Boolean(setor.propagandas_ativas));
+    setLayoutTvWeb(setor.layout_tv_web || "propaganda");
   }
 
   function resetForm() {
@@ -42,6 +45,7 @@ export default function SetoresPage() {
     setSenhaSetor("");
     setModoIdentificacao("foto");
     setPropagandasAtivas(false);
+    setLayoutTvWeb("propaganda");
   }
 
   async function onSubmit(e: FormEvent) {
@@ -55,6 +59,7 @@ export default function SetoresPage() {
         senha_setor: senhaSetor,
         modo_identificacao_operador: modoIdentificacao,
         propagandas_ativas: propagandasAtivas,
+        layout_tv_web: layoutTvWeb,
       });
       if (editing) {
         await apiFetch(`/api/v1/admin/setores/${editing.id}`, { method: "PUT", body });
@@ -126,6 +131,30 @@ export default function SetoresPage() {
               />
               <Label htmlFor="propagandas_ativas">Propagandas na TV</Label>
             </div>
+            <fieldset className="space-y-3 md:col-span-2">
+              <div>
+                <Label>Layout da TV web</Label>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Escolha como este setor será exibido ao abrir o painel pelo navegador.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <LayoutOption
+                  active={layoutTvWeb === "propaganda"}
+                  icon={<GalleryHorizontalEnd className="h-5 w-5" />}
+                  title="Propagandas"
+                  description="Mídia em destaque com as chamadas em uma faixa inferior."
+                  onClick={() => setLayoutTvWeb("propaganda")}
+                />
+                <LayoutOption
+                  active={layoutTvWeb === "fila"}
+                  icon={<ListStart className="h-5 w-5" />}
+                  title="Fluxo de chamadas"
+                  description="Senha atual em destaque, histórico e próximas da fila."
+                  onClick={() => setLayoutTvWeb("fila")}
+                />
+              </div>
+            </fieldset>
             <div className="space-y-2 md:col-span-2">
               <Label>Descrição</Label>
               <Input value={descricao} onChange={(e) => setDescricao(e.target.value)} />
@@ -160,7 +189,8 @@ export default function SetoresPage() {
                 <p className="text-xs text-muted-foreground">
                   Operadores: {s.modo_identificacao_operador === "pin" ? "PIN numérico" : "Clique na foto"}
                   {" · "}
-                  TV: {s.propagandas_ativas ? "Propagandas ativas" : "Layout padrão"}
+                  TV web: {s.layout_tv_web === "fila" ? "Fluxo de chamadas" : "Propagandas"}
+                  {s.layout_tv_web !== "fila" && !s.propagandas_ativas ? " (sem imagens ativas)" : ""}
                 </p>
               </div>
               <div className="flex gap-2">
@@ -180,5 +210,45 @@ export default function SetoresPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function LayoutOption({
+  active,
+  icon,
+  title,
+  description,
+  onClick,
+}: {
+  active: boolean;
+  icon: ReactNode;
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      onClick={onClick}
+      className={`flex items-start gap-3 rounded-xl border p-4 text-left transition ${
+        active
+          ? "border-primary bg-primary/5 ring-1 ring-primary"
+          : "border-border bg-card hover:border-primary/40 hover:bg-muted/40"
+      }`}
+    >
+      <span
+        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${
+          active ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+        }`}
+      >
+        {icon}
+      </span>
+      <span>
+        <span className="block font-semibold">{title}</span>
+        <span className="mt-1 block text-sm leading-snug text-muted-foreground">{description}</span>
+      </span>
+    </button>
   );
 }

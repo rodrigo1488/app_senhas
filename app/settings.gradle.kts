@@ -22,5 +22,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "APP SENHAS"
+rootProject.name = "CompuFlow"
 include(":app")

@@ -79,7 +79,7 @@
 ## Estrutura de Arquivos
 
 ```
-app_senhas-main/
+compuflow/
 ├── static/
 │   └── uploads/          # Pasta para armazenar as imagens
 ├── templates/

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { ForceLightTheme } from "@/components/tv/force-light-theme";
 
 export const metadata: Metadata = {
-  title: "Painel TV · AppSenhas",
+  title: "Painel TV · CompuFlow",
   description: "Painel de chamadas para televisão via navegador",
 };
 

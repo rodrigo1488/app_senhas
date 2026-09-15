@@ -1,4 +1,4 @@
-# Painel admin Next.js (AppSenhas)
+# Painel admin Next.js (CompuFlow)
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./

@@ -5,6 +5,7 @@ import { UserRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { TvFlowLayout } from "@/components/tv/tv-flow-layout";
 import { cn } from "@/lib/utils";
 import {
   clearTvToken,
@@ -16,6 +17,9 @@ import {
   type TvConfig,
   type TvFila,
   type TvPropagandaImagem,
+  type TvRecentCall,
+  type TvRecentCallsResponse,
+  type TvSenha,
   type TvSetor,
 } from "@/lib/tv-api";
 import { connectTvSocket, type SenhaChamadaTv } from "@/lib/tv-socket";
@@ -31,7 +35,7 @@ type ChamadaTipo = {
 
 export function TvPanel({ initialCodigo }: Props) {
   const [token, setToken] = useState<string | null>(null);
-  const [setor, setSetor] = useState<TvSetor | null>(null);
+  const [, setSetor] = useState<TvSetor | null>(null);
   const [codigo, setCodigo] = useState(initialCodigo ?? "");
   const [bootstrapping, setBootstrapping] = useState(true);
   const [loggingIn, setLoggingIn] = useState(false);
@@ -42,6 +46,8 @@ export function TvPanel({ initialCodigo }: Props) {
 
   const [config, setConfig] = useState<TvConfig | null>(null);
   const [imagemIndex, setImagemIndex] = useState(0);
+  const [pendentes, setPendentes] = useState<TvSenha[]>([]);
+  const [chamadas, setChamadas] = useState<TvRecentCall[]>([]);
 
   const lastCallRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -69,19 +75,32 @@ export function TvPanel({ initialCodigo }: Props) {
 
   const hydrate = useCallback(
     async (sessionToken: string) => {
-      const [fila, tvConfig] = await Promise.all([
+      const [fila, tvConfig, recentCalls] = await Promise.all([
         tvApiFetch<TvFila>("/api/v1/setor/fila", { token: sessionToken }),
         tvApiFetch<TvConfig>("/api/v1/setor/tv_config", { token: sessionToken }).catch(
           () =>
             ({
               propagandas_ativas: false,
+              layout_tv_web: "propaganda",
+              setor_nome: null,
               imagens: [] as TvPropagandaImagem[],
               intervalo_ms: 15_000,
             }) satisfies TvConfig,
         ),
+        tvApiFetch<TvRecentCallsResponse>("/api/v1/setor/tv_chamadas_recentes", {
+          token: sessionToken,
+        }).catch(() => ({ chamadas: [] })),
       ]);
       syncFromAtendimentos(fila.atendimentos ?? []);
+      setPendentes(fila.pendentes ?? []);
+      setChamadas(recentCalls.chamadas ?? []);
       setConfig(tvConfig);
+      setSetor((current) =>
+        current ?? {
+          id: fila.setor_id,
+          nome: tvConfig.setor_nome || "Painel de atendimento",
+        },
+      );
       setImagemIndex(0);
     },
     [syncFromAtendimentos],
@@ -136,8 +155,9 @@ export function TvPanel({ initialCodigo }: Props) {
     if (!token) return;
     const socket = connectTvSocket(token);
 
-    socket.on("fila:atualizada", (data: { atendimentos?: TvAtendimento[] }) => {
+    socket.on("fila:atualizada", (data: { atendimentos?: TvAtendimento[]; pendentes?: TvSenha[] }) => {
       syncFromAtendimentos(data.atendimentos ?? []);
+      setPendentes(data.pendentes ?? []);
     });
 
     socket.on("senha:chamada", (data: SenhaChamadaTv) => {
@@ -148,6 +168,24 @@ export function TvPanel({ initialCodigo }: Props) {
       };
       if (data.tipo === "preferencial") setPreferencial(chamada);
       if (data.tipo === "normal") setNormal(chamada);
+      setChamadas((current) => {
+        const next: TvRecentCall = {
+          senha_id: data.senha_id ?? Date.now(),
+          senha: data.senha,
+          tipo: data.tipo ?? "normal",
+          operador_id: data.operador_id,
+          operador_nome: data.operador_nome,
+          operador_foto: data.operador_foto,
+          chamada_em: new Date().toISOString(),
+          status: "atual",
+        };
+        return [
+          next,
+          ...current.filter((item) =>
+            data.senha_id ? item.senha_id !== data.senha_id : item.senha !== data.senha,
+          ),
+        ].slice(0, 8);
+      });
     });
 
     socket.on("auth:erro", (payload: { mensagem?: string }) => {
@@ -200,18 +238,12 @@ export function TvPanel({ initialCodigo }: Props) {
     }
   }
 
-  function onLogout() {
-    clearTvToken();
-    setToken(null);
-    setSetor(null);
-    setConfig(null);
-    setError(null);
-  }
-
   const currentImage = useMemo(() => {
     const arquivo = imagens[imagemIndex]?.arquivo;
     return uploadsUrl(arquivo);
   }, [imagens, imagemIndex]);
+
+  const layout = config?.layout_tv_web ?? "propaganda";
 
   if (bootstrapping) {
     return (
@@ -229,7 +261,7 @@ export function TvPanel({ initialCodigo }: Props) {
           className="w-full max-w-md space-y-5 rounded-2xl border border-border bg-card p-8 shadow-sm"
         >
           <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-primary">AppSenhas</p>
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-primary">CompuFlow</p>
             <h1 className="mt-2 text-3xl font-bold tracking-tight">Painel da TV</h1>
             <p className="mt-1 text-muted-foreground">
               Entre com o código do setor para exibir as chamadas no navegador.
@@ -258,15 +290,13 @@ export function TvPanel({ initialCodigo }: Props) {
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-black text-foreground">
-      <button
-        type="button"
-        onClick={onLogout}
-        className="absolute right-3 top-3 z-20 rounded-md bg-black/40 px-3 py-1 text-xs text-white opacity-40 transition hover:opacity-100"
-        title="Sair"
-      >
-        Sair{setor?.nome ? ` · ${setor.nome}` : ""}
-      </button>
-
+      {layout === "fila" ? (
+        <TvFlowLayout
+          chamadas={chamadas}
+          pendentes={pendentes}
+          currentImage={currentImage}
+        />
+      ) : (
       <div className="flex h-full w-full flex-col">
         <div className="relative min-h-0 flex-[78]">
           {currentImage ? (
@@ -294,6 +324,7 @@ export function TvPanel({ initialCodigo }: Props) {
           />
         </div>
       </div>
+      )}
     </div>
   );
 }
