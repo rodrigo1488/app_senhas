@@ -104,17 +104,21 @@ def obter_nome_empresa() -> str:
 
 
 def get_cliente_web_base() -> str:
-    """Host do painel Next (página pública /acompanhar).
+    """Host público do painel Next (página `/acompanhar`).
 
-    Usa `ADMIN_WEB_URL` (ex.: http://localhost:3000 ou um túnel apontando
-    para o Next). Não reutiliza o ngrok da API Flask — esse túnel costuma
-    apontar para a porta 5000, onde `/acompanhar` não existe.
+    Prioridade:
+    1. URL salva no admin (`ngrok_url` / URL pública)
+    2. Variável de ambiente `ADMIN_WEB_URL`
+    3. IP local na porta 3000 (fallback de desenvolvimento)
     """
-    import os
+    configurada = (get_ngrok_url() or "").strip().rstrip("/")
+    if configurada:
+        return configurada
 
-    admin = (os.getenv("ADMIN_WEB_URL") or "").rstrip("/")
+    admin = (os.getenv("ADMIN_WEB_URL") or "").strip().rstrip("/")
     if admin:
         return admin
+
     ip_local = obter_ip_rede_local()
     return f"http://{ip_local}:3000"
 
@@ -124,7 +128,12 @@ def get_notification_url(token: str) -> str:
 
 
 def gerar_qr_code_bytes(data: str) -> bytes:
-    qr = qrcode.QRCode(version=1, error_correction=qrcode.constants.ERROR_CORRECT_L, box_size=5, border=2)
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=8,
+        border=2,
+    )
     qr.add_data(data)
     qr.make(fit=True)
     img = qr.make_image(fill_color="black", back_color="white")
@@ -137,6 +146,7 @@ def gerar_qr_code_bytes(data: str) -> bytes:
 def gerar_qr_code_notificacao(token_unico: str) -> io.BytesIO | None:
     try:
         url = get_notification_url(token_unico)
+        current_app.logger.info("QR de acompanhamento: %s", url)
         data = gerar_qr_code_bytes(url)
         return io.BytesIO(data)
     except Exception as exc:  # pragma: no cover
@@ -145,20 +155,29 @@ def gerar_qr_code_notificacao(token_unico: str) -> io.BytesIO | None:
 
 
 def gerar_imagem_senha(senha: str, largura_maxima: int = 384):
-    """Gera uma imagem bitmap da senha para impressão térmica."""
+    """Gera bitmap alto contraste da senha para impressora térmica."""
     try:
-        altura = 80
-        imagem = Image.new("L", (largura_maxima, altura), 255)
+        altura = 120
+        # RGB + traço reforçado evita cinza do antialias (fica apagado no térmico).
+        imagem = Image.new("RGB", (largura_maxima, altura), "white")
         draw = ImageDraw.Draw(imagem)
 
         fontes_possiveis = [
-            "arial.ttf", "Arial.ttf", "arialbd.ttf", "Arial-Bold.ttf",
-            "calibri.ttf", "Calibri.ttf", "calibrib.ttf", "Calibri-Bold.ttf",
-            "verdana.ttf", "Verdana.ttf", "verdanab.ttf", "Verdana-Bold.ttf",
-            "DejaVuSans-Bold.ttf", "DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "DejaVuSans-Bold.ttf",
+            "DejaVuSans.ttf",
+            "arialbd.ttf",
+            "Arial-Bold.ttf",
+            "arial.ttf",
+            "Arial.ttf",
+            "calibrib.ttf",
+            "Calibri-Bold.ttf",
+            "verdanab.ttf",
+            "Verdana-Bold.ttf",
         ]
         fonte = None
-        tamanho_fonte = 72
+        tamanho_fonte = 84
         fonte_nome_usada = None
         for fonte_nome in fontes_possiveis:
             try:
@@ -168,19 +187,18 @@ def gerar_imagem_senha(senha: str, largura_maxima: int = 384):
             except Exception:
                 continue
         if fonte is None:
-            # Nenhuma fonte TrueType encontrada no sistema (ex.: imagem Docker
-            # sem fonts-dejavu-core instalado). `load_default()` sem `size`
-            # retorna um bitmap fixo de ~8px — praticamente ilegível impresso.
-            # Passar `size=` (Pillow >= 10.1) mantém o número grande mesmo
-            # nesse fallback.
             fonte = ImageFont.load_default(size=tamanho_fonte)
 
         bbox = draw.textbbox((0, 0), senha, font=fonte)
         largura_texto = bbox[2] - bbox[0]
-        while largura_texto > largura_maxima - 20 and tamanho_fonte > 18:
-            tamanho_fonte -= 5
+        while largura_texto > largura_maxima - 16 and tamanho_fonte > 28:
+            tamanho_fonte -= 4
             try:
-                fonte = ImageFont.truetype(fonte_nome_usada, tamanho_fonte) if fonte_nome_usada else ImageFont.load_default(size=tamanho_fonte)
+                fonte = (
+                    ImageFont.truetype(fonte_nome_usada, tamanho_fonte)
+                    if fonte_nome_usada
+                    else ImageFont.load_default(size=tamanho_fonte)
+                )
             except Exception:
                 fonte = ImageFont.load_default(size=tamanho_fonte)
             bbox = draw.textbbox((0, 0), senha, font=fonte)
@@ -189,8 +207,13 @@ def gerar_imagem_senha(senha: str, largura_maxima: int = 384):
         altura_texto = bbox[3] - bbox[1]
         x = (largura_maxima - largura_texto) // 2
         y = (altura - altura_texto) // 2
-        draw.text((x, y), senha, fill=0, font=fonte)
-        return imagem.convert("1")
+        # "Negrito" por sobreposição — traço mais grosso na térmica.
+        for dx, dy in ((0, 0), (1, 0), (0, 1), (1, 1), (2, 0), (0, 2)):
+            draw.text((x + dx, y + dy), senha, fill="black", font=fonte)
+
+        cinza = imagem.convert("L")
+        # Limiar alto: qualquer pixel não-branco vira preto puro.
+        return cinza.point(lambda p: 0 if p < 200 else 255, mode="1")
     except Exception as exc:  # pragma: no cover
         current_app.logger.error(f"Erro ao gerar imagem da senha '{senha}': {exc}")
         return None

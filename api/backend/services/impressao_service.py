@@ -39,15 +39,14 @@ def imprimir_senha_com_ip(
     p = None
     try:
         p = Network(impressora_ip, current_app.config["IMPRESSORA_PORTA"])
-        p.set(align="center")
-        p.text("\x1b\x21\x00")
+        p.set(align="center", bold=True)
         p.text("\n")
         p.text("=" * 32 + "\n")
         p.text("\n")
 
-        p.text("\x1b\x21\x10")
+        p.set(align="center", bold=True, double_height=True, double_width=True)
         p.text(f"{obter_nome_empresa()}\n")
-        p.text("\x1b\x21\x00")
+        p.set(align="center", bold=True)
         p.text("\n")
 
         imagem_senha = gerar_imagem_senha(senha)
@@ -59,28 +58,32 @@ def imprimir_senha_com_ip(
                 p.image(buffer, impl="bitImageRaster", center=True)
             except Exception as exc:
                 current_app.logger.error(f"Erro ao imprimir imagem da senha: {exc}")
-                p.text("\x1b\x21\x30")
+                p.set(align="center", bold=True, double_height=True, double_width=True)
                 p.text(f"{senha}\n")
-                p.text("\x1b\x21\x00")
+                p.set(align="center", bold=True)
         else:
-            p.text("\x1b\x21\x30")
+            p.set(align="center", bold=True, double_height=True, double_width=True)
             p.text(f"{senha}\n")
-            p.text("\x1b\x21\x00")
+            p.set(align="center", bold=True)
 
         p.text("\n")
         p.text("=" * 32 + "\n")
+        p.set(align="center", bold=True, double_height=True)
         p.text(f"Data: {datetime.datetime.now().strftime('%d/%m/%Y')}\n")
         p.text(f"Hora: {datetime.datetime.now().strftime('%H:%M')}\n")
         p.text(f"{nome_setor}\n")
         if descricao_setor:
             p.text(f"{descricao_setor}\n")
+        p.set(align="center", bold=True)
         p.text("=" * 32 + "\n")
 
         if token_unico:
             p.text("\n")
+            p.set(align="center", bold=True, double_height=True)
             p.text("Escaneie para receber\n")
-            p.text("notificação quando\n")
+            p.text("notificacao quando\n")
             p.text("for sua vez\n")
+            p.set(align="center", bold=True)
             p.text("\n")
             qr_buffer = gerar_qr_code_notificacao(token_unico)
             if qr_buffer:
@@ -90,8 +93,10 @@ def imprimir_senha_com_ip(
                     current_app.logger.error(f"Erro ao imprimir QR Code: {exc}")
             p.text("\n")
 
+        p.set(align="center", bold=True, double_height=True)
         p.text("Aguarde ser chamada\n")
         p.text("na tela de atendimento\n")
+        p.set(align="center", bold=True)
         p.text("=" * 32 + "\n")
         p.cut()
         return True

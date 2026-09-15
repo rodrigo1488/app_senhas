@@ -110,17 +110,20 @@ export default function ConfiguracoesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Ngrok / URL pública</CardTitle>
-          <CardDescription>Base para QR Code de notificação do cliente</CardDescription>
+          <CardTitle>URL pública do painel (QR)</CardTitle>
+          <CardDescription>
+            Domínio usado no QR impresso para o cliente abrir `/acompanhar`. Ex.:{" "}
+            <code>https://seu-dominio.com</code> ou o túnel do Next — não use a URL da API (:5000).
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form className="flex flex-col gap-3 md:flex-row md:items-end" onSubmit={saveNgrok}>
             <div className="flex-1 space-y-2">
-              <Label>URL</Label>
+              <Label>URL do painel web</Label>
               <Input
                 value={config.ngrok_url}
                 onChange={(e) => setConfig({ ...config, ngrok_url: e.target.value })}
-                placeholder="https://xxxx.ngrok-free.app"
+                placeholder="https://app.seudominio.com"
               />
             </div>
             <Button type="submit">Salvar</Button>
