@@ -51,6 +51,7 @@ export type Propaganda = {
   ordem: number;
   ativo: boolean;
   criado_em: string | null;
+  setor_ids: number[];
 };
 
 export type Operador = {

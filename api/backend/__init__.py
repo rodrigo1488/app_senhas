@@ -216,6 +216,7 @@ def _init_database(app: Flask) -> None:
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_finalizados_setor_operador ON finalizados (setor_id, operador_id)"))
         conn.commit()
 
+    _backfill_setor_propagandas()
     _seed_admin_padrao(app)
 
 
@@ -277,6 +278,36 @@ def _migrate_tv_layout_column() -> None:
                     "layout_tv_web VARCHAR(20) NOT NULL DEFAULT 'propaganda'"
                 )
             )
+
+
+def _backfill_setor_propagandas() -> None:
+    """Preserva a galeria global existente na primeira migração para vínculos por setor."""
+    from sqlalchemy import text
+
+    migration_key = "setor_propagandas_migrado_v1"
+    with db.engine.begin() as conn:
+        migrated = conn.execute(
+            text("SELECT 1 FROM configuracoes WHERE chave = :chave LIMIT 1"),
+            {"chave": migration_key},
+        ).first()
+        if migrated:
+            return
+        conn.execute(
+            text(
+                "INSERT INTO setor_propagandas (setor_id, propaganda_id) "
+                "SELECT setores.id, propagandas.id FROM setores CROSS JOIN propagandas"
+            )
+        )
+        conn.execute(
+            text(
+                "INSERT INTO configuracoes (chave, valor, descricao, data_atualizacao) "
+                "VALUES (:chave, '1', :descricao, CURRENT_TIMESTAMP)"
+            ),
+            {
+                "chave": migration_key,
+                "descricao": "Migração da galeria global para propagandas por setor",
+            },
+        )
 
 
 def _ensure_column(conn, table: str, column: str, col_type: str, is_sqlite: bool) -> None:

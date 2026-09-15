@@ -7,6 +7,18 @@ from datetime import datetime
 from backend.extensions import db
 
 
+setor_propagandas = db.Table(
+    "setor_propagandas",
+    db.Column("setor_id", db.Integer, db.ForeignKey("setores.id", ondelete="CASCADE"), primary_key=True),
+    db.Column(
+        "propaganda_id",
+        db.Integer,
+        db.ForeignKey("propagandas.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+
 class Setor(db.Model):
     __tablename__ = "setores"
 
@@ -21,6 +33,12 @@ class Setor(db.Model):
     operadores = db.relationship("Operador", backref="setor", lazy="dynamic")
     impressoras = db.relationship("Impressora", backref="setor", lazy="dynamic")
     senhas = db.relationship("Senha", backref="setor", lazy="dynamic")
+    propagandas = db.relationship(
+        "Propaganda",
+        secondary=setor_propagandas,
+        back_populates="setores",
+        lazy="select",
+    )
 
     def to_dict(self):
         return {
@@ -149,7 +167,7 @@ class Usuario(db.Model):
 
 
 class Propaganda(db.Model):
-    """Imagens globais exibidas na TV quando o setor ativa `propagandas_ativas`."""
+    """Imagem publicitária vinculável a um ou mais setores."""
 
     __tablename__ = "propagandas"
 
@@ -158,6 +176,12 @@ class Propaganda(db.Model):
     ordem = db.Column(db.Integer, nullable=False, default=0)
     ativo = db.Column(db.Boolean, nullable=False, default=True)
     criado_em = db.Column(db.DateTime, default=datetime.now)
+    setores = db.relationship(
+        "Setor",
+        secondary=setor_propagandas,
+        back_populates="propagandas",
+        lazy="select",
+    )
 
     def to_dict(self):
         return {
@@ -166,4 +190,5 @@ class Propaganda(db.Model):
             "ordem": self.ordem,
             "ativo": bool(self.ativo),
             "criado_em": self.criado_em.isoformat() if self.criado_em else None,
+            "setor_ids": sorted(setor.id for setor in self.setores),
         }

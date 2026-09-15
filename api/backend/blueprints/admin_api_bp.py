@@ -458,6 +458,41 @@ def create_propaganda():
     return jsonify(item.to_dict()), 201
 
 
+@admin_api_bp.route("/propagandas/setores", methods=["PUT"])
+@api_login_required
+def update_propagandas_setores():
+    data = request.get_json(silent=True) or {}
+    propaganda_ids = data.get("propaganda_ids")
+    setor_ids = data.get("setor_ids")
+    if not isinstance(propaganda_ids, list) or not propaganda_ids:
+        return jsonify({"error": "Selecione ao menos uma mídia"}), 400
+    if not isinstance(setor_ids, list):
+        return jsonify({"error": "setor_ids deve ser uma lista"}), 400
+
+    try:
+        propaganda_ids = sorted({int(item_id) for item_id in propaganda_ids})
+        setor_ids = sorted({int(setor_id) for setor_id in setor_ids})
+    except (TypeError, ValueError):
+        return jsonify({"error": "IDs de mídias ou setores inválidos"}), 400
+
+    propagandas = Propaganda.query.filter(Propaganda.id.in_(propaganda_ids)).all()
+    setores = Setor.query.filter(Setor.id.in_(setor_ids)).all() if setor_ids else []
+    if len(propagandas) != len(propaganda_ids):
+        return jsonify({"error": "Uma ou mais mídias não foram encontradas"}), 404
+    if len(setores) != len(setor_ids):
+        return jsonify({"error": "Um ou mais setores não foram encontrados"}), 404
+
+    for propaganda in propagandas:
+        propaganda.setores = setores
+    db.session.commit()
+    return jsonify(
+        {
+            "atualizadas": len(propagandas),
+            "setor_ids": setor_ids,
+        }
+    )
+
+
 @admin_api_bp.route("/propagandas/<int:propaganda_id>", methods=["PUT"])
 @api_login_required
 def update_propaganda(propaganda_id: int):

@@ -23,7 +23,7 @@ from backend.auth import (
     create_operator_action_token,
     create_session_token,
 )
-from backend.models import AtendimentoAtual, Impressora, Operador, Propaganda, Senha, Setor
+from backend.models import AtendimentoAtual, Impressora, Operador, Propaganda, Senha, Setor, setor_propagandas
 from backend.services.avaliacao_service import AvaliacaoError, buscar_avaliacao_pendente, registrar_avaliacao
 from backend.services.fila_service import (
     FilaError,
@@ -204,6 +204,8 @@ def setor_tv_config(session_payload):
                 "ordem": p.ordem,
             }
             for p in Propaganda.query.filter_by(ativo=True)
+            .join(setor_propagandas, setor_propagandas.c.propaganda_id == Propaganda.id)
+            .filter(setor_propagandas.c.setor_id == session_payload["setor_id"])
             .order_by(Propaganda.ordem.asc(), Propaganda.id.asc())
             .all()
         ]

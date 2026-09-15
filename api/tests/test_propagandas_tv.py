@@ -103,13 +103,13 @@ class PropagandasTvTest(unittest.TestCase):
         with self.app.app_context():
             setor = db.session.get(Setor, self.setor_id)
             setor.propagandas_ativas = True
-            db.session.add_all(
-                [
-                    Propaganda(arquivo="c.jpg", ordem=3, ativo=True),
-                    Propaganda(arquivo="a.jpg", ordem=1, ativo=True),
-                    Propaganda(arquivo="b.jpg", ordem=2, ativo=False),
-                ]
-            )
+            imagens = [
+                Propaganda(arquivo="c.jpg", ordem=3, ativo=True),
+                Propaganda(arquivo="a.jpg", ordem=1, ativo=True),
+                Propaganda(arquivo="b.jpg", ordem=2, ativo=False),
+            ]
+            db.session.add_all(imagens)
+            setor.propagandas.extend(imagens)
             db.session.commit()
 
         response = self.app.test_client().get(
@@ -122,6 +122,40 @@ class PropagandasTvTest(unittest.TestCase):
         arquivos = [i["arquivo"] for i in payload["imagens"]]
         self.assertEqual(["a.jpg", "c.jpg"], arquivos)
         self.assertEqual(15_000, payload["intervalo_ms"])
+
+    def test_admin_vincula_varias_propagandas_a_varios_setores(self):
+        client = self.app.test_client()
+        with client.session_transaction() as sess:
+            sess["user_id"] = "admin-test"
+
+        with self.app.app_context():
+            outro = Setor(nome="Caixa", senha_setor="CAIXA", propagandas_ativas=True)
+            p1 = Propaganda(arquivo="a.jpg", ordem=1, ativo=True)
+            p2 = Propaganda(arquivo="b.jpg", ordem=2, ativo=True)
+            exclusiva = Propaganda(arquivo="somente-balcao.jpg", ordem=3, ativo=True)
+            exclusiva.setores.append(db.session.get(Setor, self.setor_id))
+            db.session.add_all([outro, p1, p2, exclusiva])
+            db.session.commit()
+            outro_id = outro.id
+            propaganda_ids = [p1.id, p2.id]
+            outro_token = create_session_token(outro_id, "tv")
+
+        response = client.put(
+            "/api/v1/admin/propagandas/setores",
+            json={"propaganda_ids": propaganda_ids, "setor_ids": [self.setor_id, outro_id]},
+        )
+        self.assertEqual(200, response.status_code)
+        self.assertEqual(2, response.get_json()["atualizadas"])
+
+        listed = client.get("/api/v1/admin/propagandas").get_json()
+        vinculadas = [item for item in listed if item["id"] in propaganda_ids]
+        self.assertTrue(all(item["setor_ids"] == [self.setor_id, outro_id] for item in vinculadas))
+
+        response = self.app.test_client().get(
+            "/api/v1/setor/tv_config",
+            headers={"Authorization": f"Bearer {outro_token}"},
+        )
+        self.assertEqual(["a.jpg", "b.jpg"], [item["arquivo"] for item in response.get_json()["imagens"]])
 
     def test_tv_chamadas_recentes_restaura_atual_e_historico_do_setor(self):
         agora = datetime.now()
