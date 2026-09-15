@@ -35,6 +35,10 @@ const nextConfig: NextConfig = {
         destination: `${apiInternal}/api/vapid-public-key`,
       },
       {
+        source: "/socket.io",
+        destination: `${apiInternal}/socket.io`,
+      },
+      {
         source: "/socket.io/:path*",
         destination: `${apiInternal}/socket.io/:path*`,
       },

@@ -200,6 +200,24 @@ export function TvPanel({ initialCodigo }: Props) {
     };
   }, [token, syncFromAtendimentos, playCallSound]);
 
+  // Reserva: se o socket falhar atrás do túnel, a TV ainda acompanha as chamadas.
+  useEffect(() => {
+    if (!token) return;
+    const refreshFila = () => {
+      tvApiFetch<TvFila>("/api/v1/setor/fila", { token })
+        .then((fila) => {
+          syncFromAtendimentos(fila.atendimentos ?? []);
+          setPendentes(fila.pendentes ?? []);
+        })
+        .catch(() => undefined);
+      tvApiFetch<TvRecentCallsResponse>("/api/v1/setor/tv_chamadas_recentes", { token })
+        .then((res) => setChamadas(res.chamadas ?? []))
+        .catch(() => undefined);
+    };
+    const id = window.setInterval(refreshFila, 4000);
+    return () => window.clearInterval(id);
+  }, [token, syncFromAtendimentos]);
+
   useEffect(() => {
     if (imagens.length <= 1) return;
     const ms = Math.max(1000, config?.intervalo_ms ?? 15_000);

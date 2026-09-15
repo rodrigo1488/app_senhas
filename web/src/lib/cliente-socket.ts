@@ -79,9 +79,15 @@ export function resolveApiBaseUrl(): string {
 /** Socket.IO apontando para a API alcançável a partir do dispositivo do cliente. */
 export function connectTicketSocket(token: string): Socket {
   const base = resolveApiBaseUrl();
+  const viaHttpsProxy =
+    typeof window !== "undefined" &&
+    window.location.protocol === "https:" &&
+    (!base || base === window.location.origin);
+
   return io(base || "/", {
     path: "/socket.io",
-    transports: ["websocket", "polling"],
+    transports: viaHttpsProxy ? ["polling"] : ["websocket", "polling"],
+    upgrade: !viaHttpsProxy,
     auth: { ticket_token: token },
     autoConnect: true,
     reconnection: true,

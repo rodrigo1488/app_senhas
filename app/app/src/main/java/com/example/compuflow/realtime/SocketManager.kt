@@ -6,6 +6,7 @@ import com.example.compuflow.data.remote.dto.SenhaDto
 import io.socket.client.IO
 import io.socket.client.Socket
 import io.socket.emitter.Emitter
+import io.socket.engineio.client.transports.Polling
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -38,11 +39,17 @@ object SocketManager {
 
     private fun connect(httpBaseUrl: String, auth: Map<String, String>) {
         disconnect()
-        val options = IO.Options.builder()
+        val optionsBuilder = IO.Options.builder()
             .setAuth(auth)
             .setReconnection(true)
             .setTimeout(20_000)
-            .build()
+
+        // Túnel HTTPS (Next rewrite) costuma quebrar upgrade WebSocket — força polling.
+        if (httpBaseUrl.startsWith("https://", ignoreCase = true)) {
+            optionsBuilder.setTransports(arrayOf(Polling.NAME))
+        }
+
+        val options = optionsBuilder.build()
 
         val newSocket = try {
             IO.socket(httpBaseUrl, options)

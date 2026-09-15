@@ -18,12 +18,24 @@ export type SenhaChamadaTv = {
   operador_foto?: string | null;
 };
 
+/** True quando o browser fala com a API pelo mesmo origin HTTPS (rewrite Next). */
+function usesHttpsSameOriginProxy(base: string): boolean {
+  if (typeof window === "undefined") return false;
+  if (window.location.protocol !== "https:") return false;
+  return !base || base === window.location.origin;
+}
+
 /** Socket da TV: autentica com JWT de sessão e entra na room do setor. */
 export function connectTvSocket(sessionToken: string): Socket {
   const base = resolveApiBaseUrl();
+  // Rewrite do Next/Cloudflare não faz upgrade WebSocket de forma confiável —
+  // polling HTTP passa pelo mesmo proxy que já serve `/api/v1`.
+  const viaProxy = usesHttpsSameOriginProxy(base);
+
   return io(base || "/", {
     path: "/socket.io",
-    transports: ["websocket", "polling"],
+    transports: viaProxy ? ["polling"] : ["websocket", "polling"],
+    upgrade: !viaProxy,
     auth: { session_token: sessionToken },
     autoConnect: true,
     reconnection: true,

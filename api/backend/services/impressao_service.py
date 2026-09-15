@@ -83,7 +83,17 @@ def imprimir_senha_com_ip(
 
         p.text("Aguarde ser chamada\n")
         p.text("=" * 32 + "\n")
-        p.cut()
+        # cut(feed=True) avança ~6 linhas vazias até o cortador — sobra um "pedaço"
+        # gigante embaixo. Avanço curto + corte parcial sem feed extra.
+        p.text("\n")
+        try:
+            p.cut(mode="PART", feed=False)
+        except TypeError:
+            # python-escpos antigo sem parâmetro feed
+            try:
+                p.cut(mode="PART")
+            except Exception:
+                p.cut()
         return True
     except Exception as exc:
         current_app.logger.error(f"Erro ao imprimir senha '{senha}': {exc}")
