@@ -8,6 +8,7 @@ from backend.auth import create_session_token
 from backend.extensions import db
 from backend.models import AtendimentoAtual, Finalizado, Operador, Propaganda, Senha, Setor
 from backend.services.fila_service import listar_chamadas_recentes
+from backend.services.usuario_service import criar_ou_atualizar_admin
 
 
 class PropagandasTvTest(unittest.TestCase):
@@ -25,6 +26,11 @@ class PropagandasTvTest(unittest.TestCase):
         with self.app.app_context():
             db.drop_all()
             db.create_all()
+            from backend import _migrate_usuario_papeis
+
+            _migrate_usuario_papeis()
+            admin = criar_ou_atualizar_admin("admin@test.local", "admin123")
+            self.admin_id = admin.id
             setor = Setor(nome="Balcão", senha_setor="SETOR", propagandas_ativas=False)
             db.session.add(setor)
             db.session.commit()
@@ -33,6 +39,12 @@ class PropagandasTvTest(unittest.TestCase):
     def _token(self, role="tv"):
         with self.app.app_context():
             return create_session_token(self.setor_id, role)
+
+    def _admin_client(self):
+        client = self.app.test_client()
+        with client.session_transaction() as sess:
+            sess["user_id"] = self.admin_id
+        return client
 
     def test_migration_creates_propaganda_table_and_setor_flag(self):
         with self.app.app_context():
@@ -45,9 +57,7 @@ class PropagandasTvTest(unittest.TestCase):
             self.assertFalse(setor.propagandas_ativas)
 
     def test_setor_toggle_propagandas_ativas(self):
-        client = self.app.test_client()
-        with client.session_transaction() as sess:
-            sess["user_id"] = "admin-test"
+        client = self._admin_client()
 
         response = client.put(
             f"/api/v1/admin/setores/{self.setor_id}",
@@ -61,9 +71,7 @@ class PropagandasTvTest(unittest.TestCase):
             self.assertTrue(setor.propagandas_ativas)
 
     def test_setor_persiste_layout_tv_web_e_rejeita_valor_invalido(self):
-        client = self.app.test_client()
-        with client.session_transaction() as sess:
-            sess["user_id"] = "admin-test"
+        client = self._admin_client()
 
         response = client.put(
             f"/api/v1/admin/setores/{self.setor_id}",
@@ -260,9 +268,7 @@ class PropagandasTvTest(unittest.TestCase):
 
     @patch("backend.blueprints.admin_api_bp.process_propaganda_image", return_value="promo_tv.jpg")
     def test_admin_upload_propaganda(self, _mock_process):
-        client = self.app.test_client()
-        with client.session_transaction() as sess:
-            sess["user_id"] = "admin-test"
+        client = self._admin_client()
 
         data = {
             "arquivo": (io.BytesIO(b"fake-image"), "promo.png"),
@@ -272,7 +278,7 @@ class PropagandasTvTest(unittest.TestCase):
             data=data,
             content_type="multipart/form-data",
         )
-        self.assertEqual(201, response.status_code)
+        self.assertEqual(201, response.status_code, response.get_json())
         payload = response.get_json()
         self.assertEqual("promo_tv.jpg", payload["arquivo"])
         self.assertTrue(payload["ativo"])

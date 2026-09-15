@@ -101,6 +101,7 @@ def montar_analytics(
     from_s: Optional[str] = None,
     to_s: Optional[str] = None,
     setor_id: Optional[int] = None,
+    setor_ids: Optional[list[int]] = None,
     operador_id: Optional[int] = None,
     abandono_minutos: Optional[int] = None,
 ) -> dict[str, Any]:
@@ -114,9 +115,20 @@ def montar_analytics(
         )
     meta_espera = float(get_configuracao("meta_espera_minutos") or DEFAULT_META_ESPERA_MIN)
 
+    escopo_ids = list(setor_ids) if setor_ids is not None else None
+    if escopo_ids is not None and setor_id is not None and setor_id not in escopo_ids:
+        escopo_ids = []
+    elif escopo_ids is not None and setor_id is not None:
+        escopo_ids = [setor_id]
+    elif setor_id is not None:
+        escopo_ids = [setor_id]
+
     q = Senha.query.filter(Senha.data_hora >= inicio, Senha.data_hora < fim)
-    if setor_id:
-        q = q.filter(Senha.setor_id == setor_id)
+    if escopo_ids is not None:
+        if not escopo_ids:
+            q = q.filter(False)
+        else:
+            q = q.filter(Senha.setor_id.in_(escopo_ids))
 
     senha_ids_operador: Optional[set[int]] = None
     if operador_id:
@@ -134,8 +146,19 @@ def montar_analytics(
     else:
         senhas = q.all()
 
-    setores = {s.id: s for s in Setor.query.all()}
+    setores_q = Setor.query.order_by(Setor.nome)
+    operadores_q = Operador.query.order_by(Operador.nome)
+    if escopo_ids is not None:
+        if not escopo_ids:
+            setores_q = setores_q.filter(False)
+            operadores_q = operadores_q.filter(False)
+        else:
+            setores_q = setores_q.filter(Setor.id.in_(escopo_ids))
+            operadores_q = operadores_q.filter(Operador.setor_id.in_(escopo_ids))
+    setores = {s.id: s for s in setores_q.all()}
     operadores = {o.id: o for o in Operador.query.all()}
+    if escopo_ids is not None:
+        operadores = {oid: o for oid, o in operadores.items() if o.setor_id in escopo_ids}
 
     # Finalizados no período (por data do finalizado ou da senha emitida)
     fq = (
@@ -143,8 +166,11 @@ def montar_analytics(
         .join(Senha, Senha.id == Finalizado.senha_id)
         .filter(Senha.data_hora >= inicio, Senha.data_hora < fim)
     )
-    if setor_id:
-        fq = fq.filter(Finalizado.setor_id == setor_id)
+    if escopo_ids is not None:
+        if not escopo_ids:
+            fq = fq.filter(False)
+        else:
+            fq = fq.filter(Senha.setor_id.in_(escopo_ids))
     if operador_id:
         fq = fq.filter(Finalizado.operador_id == operador_id)
     finalizados_rows = fq.all()
@@ -432,8 +458,11 @@ def montar_analytics(
 
     # Pico de fila A (agora, opcionalmente no setor filtrado)
     qa = Senha.query.filter(Senha.status == "A")
-    if setor_id:
-        qa = qa.filter(Senha.setor_id == setor_id)
+    if escopo_ids is not None:
+        if not escopo_ids:
+            qa = qa.filter(False)
+        else:
+            qa = qa.filter(Senha.setor_id.in_(escopo_ids))
     fila_a = qa.count()
     if fila_a >= 10:
         alertas.append(
@@ -458,8 +487,11 @@ def montar_analytics(
             .filter(Finalizado.data_hora >= a, Finalizado.data_hora < b)
             .filter(and_(Finalizado.avaliacao.isnot(None), Finalizado.avaliacao != ""))
         )
-        if setor_id:
-            qn = qn.filter(Finalizado.setor_id == setor_id)
+        if escopo_ids is not None:
+            if not escopo_ids:
+                qn = qn.filter(False)
+            else:
+                qn = qn.filter(Finalizado.setor_id.in_(escopo_ids))
         if operador_id:
             qn = qn.filter(Finalizado.operador_id == operador_id)
         vals = []
@@ -508,10 +540,10 @@ def montar_analytics(
         "espera_x_satisfacao": espera_x_satisfacao,
         "alertas": alertas,
         "filtros": {
-            "setores": [{"id": s.id, "nome": s.nome} for s in Setor.query.order_by(Setor.nome)],
+            "setores": [{"id": s.id, "nome": s.nome} for s in sorted(setores.values(), key=lambda x: x.nome or "")],
             "operadores": [
                 {"id": o.id, "nome": o.nome, "setor_id": o.setor_id}
-                for o in Operador.query.order_by(Operador.nome)
+                for o in sorted(operadores.values(), key=lambda x: x.nome or "")
             ],
         },
     }

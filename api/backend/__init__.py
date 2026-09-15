@@ -196,6 +196,7 @@ def _init_database(app: Flask) -> None:
     _migrate_operator_identification_columns()
     _migrate_propagandas_columns()
     _migrate_tv_layout_column()
+    _migrate_usuario_papeis()
 
     is_sqlite = db.engine.dialect.name == "sqlite"
 
@@ -308,6 +309,62 @@ def _backfill_setor_propagandas() -> None:
                 "descricao": "Migração da galeria global para propagandas por setor",
             },
         )
+
+
+def _migrate_usuario_papeis() -> None:
+    """Colunas de papel/nome em usuarios + tabela usuario_setores."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    tables = set(inspector.get_table_names())
+    if "usuarios" not in tables:
+        return
+    cols = {c["name"] for c in inspector.get_columns("usuarios")}
+    is_pg = db.engine.dialect.name == "postgresql"
+    if_not_exists = "IF NOT EXISTS " if is_pg else ""
+
+    with db.engine.begin() as conn:
+        if "papel" not in cols:
+            conn.execute(
+                text(
+                    f"ALTER TABLE usuarios ADD COLUMN {if_not_exists}"
+                    "papel VARCHAR(20) NOT NULL DEFAULT 'admin'"
+                )
+            )
+        if "nome" not in cols:
+            conn.execute(
+                text(
+                    f"ALTER TABLE usuarios ADD COLUMN {if_not_exists}nome TEXT"
+                )
+            )
+        if "usuario_setores" not in tables:
+            if is_pg:
+                conn.execute(
+                    text(
+                        """
+                        CREATE TABLE IF NOT EXISTS usuario_setores (
+                            usuario_id INTEGER NOT NULL REFERENCES usuarios(id),
+                            setor_id INTEGER NOT NULL REFERENCES setores(id),
+                            PRIMARY KEY (usuario_id, setor_id)
+                        )
+                        """
+                    )
+                )
+            else:
+                conn.execute(
+                    text(
+                        """
+                        CREATE TABLE IF NOT EXISTS usuario_setores (
+                            usuario_id INTEGER NOT NULL,
+                            setor_id INTEGER NOT NULL,
+                            PRIMARY KEY (usuario_id, setor_id),
+                            FOREIGN KEY(usuario_id) REFERENCES usuarios(id),
+                            FOREIGN KEY(setor_id) REFERENCES setores(id)
+                        )
+                        """
+                    )
+                )
+        conn.execute(text("UPDATE usuarios SET papel = 'admin' WHERE papel IS NULL OR papel = ''"))
 
 
 def _ensure_column(conn, table: str, column: str, col_type: str, is_sqlite: bool) -> None:

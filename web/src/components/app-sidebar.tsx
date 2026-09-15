@@ -12,6 +12,7 @@ import {
   Printer,
   Settings,
   Ticket,
+  UserCog,
   Users,
 } from "lucide-react";
 import {
@@ -27,24 +28,34 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, type AdminUser } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-const NAV = [
+const NAV_BASE = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
   { href: "/admin/heatmap", label: "Mapa de calor", icon: Grid3x3 },
   { href: "/admin/fila-ao-vivo", label: "Fila ao Vivo", icon: Activity },
   { href: "/admin/operadores", label: "Operadores", icon: Users },
   { href: "/admin/setores", label: "Setores", icon: Building2 },
-  { href: "/admin/propagandas", label: "Propagandas", icon: ImageIcon },
+  { href: "/admin/propagandas", label: "Propagandas", icon: ImageIcon, adminOnly: true },
   { href: "/admin/impressoras", label: "Impressoras", icon: Printer },
-  { href: "/admin/configuracoes", label: "Configurações", icon: Settings },
-];
+  { href: "/admin/usuarios", label: "Usuários", icon: UserCog, adminOnly: true },
+  { href: "/admin/configuracoes", label: "Configurações", icon: Settings, adminOnly: true },
+] as const;
 
-export function AppSidebar({ nomeEmpresa }: { nomeEmpresa?: string }) {
+export function AppSidebar({
+  nomeEmpresa,
+  user,
+}: {
+  nomeEmpresa?: string;
+  user?: AdminUser | null;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const { open } = useSidebar();
+  const isAdmin = Boolean(user?.is_admin ?? user?.papel !== "gerente");
+
+  const nav = NAV_BASE.filter((item) => !("adminOnly" in item && item.adminOnly) || isAdmin);
 
   async function logout() {
     try {
@@ -69,6 +80,11 @@ export function AppSidebar({ nomeEmpresa }: { nomeEmpresa?: string }) {
               <p className="truncate text-xs text-muted-foreground">
                 {nomeEmpresa || "Painel admin"}
               </p>
+              {user?.papel ? (
+                <p className="truncate text-[11px] text-muted-foreground">
+                  {user.papel === "admin" ? "Administrador" : "Gerente"}
+                </p>
+              ) : null}
             </div>
           )}
         </div>
@@ -78,7 +94,7 @@ export function AppSidebar({ nomeEmpresa }: { nomeEmpresa?: string }) {
         <SidebarGroup>
           <SidebarGroupLabel>Menu</SidebarGroupLabel>
           <SidebarMenu>
-            {NAV.map((item) => {
+            {nav.map((item) => {
               const active =
                 item.href === "/admin"
                   ? pathname === "/admin"
@@ -108,13 +124,6 @@ export function AppSidebar({ nomeEmpresa }: { nomeEmpresa?: string }) {
           <LogOut className="h-4 w-4" />
           {open && "Sair"}
         </Button>
-        {open && (
-          <p className="px-1 text-[11px] text-muted-foreground">
-            <Link href="http://localhost:5000/setores" className="underline-offset-2 hover:underline">
-              Kiosk web (API)
-            </Link>
-          </p>
-        )}
       </SidebarFooter>
     </Sidebar>
   );

@@ -32,7 +32,22 @@ export async function apiFetch<T = unknown>(
 export type AdminUser = {
   id: number;
   email: string;
+  nome?: string;
   nome_empresa: string;
+  papel: "admin" | "gerente";
+  is_admin?: boolean;
+  setor_ids?: number[];
+  setores?: { id: number; nome: string }[];
+};
+
+export type PainelUsuario = {
+  id: number;
+  email: string;
+  nome: string;
+  papel: "admin" | "gerente";
+  setor_ids: number[];
+  setores: { id: number; nome: string }[];
+  criado_em: string | null;
 };
 
 export type Setor = {

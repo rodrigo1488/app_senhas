@@ -8,6 +8,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -21,11 +22,13 @@ import com.example.compuflow.data.remote.NetworkModule
 import com.example.compuflow.data.remote.dto.Papel
 import com.example.compuflow.ui.avaliacao.AvaliacaoScreen
 import com.example.compuflow.ui.cliente.ClienteScreen
+import com.example.compuflow.ui.kiosk.SoftKioskHost
 import com.example.compuflow.ui.login.LoginScreen
 import com.example.compuflow.ui.modo.SelecionarModoScreen
 import com.example.compuflow.ui.operador.IdentificarOperadorScreen
 import com.example.compuflow.ui.operador.OperadorScreen
 import com.example.compuflow.ui.tv.TvScreen
+import kotlinx.coroutines.launch
 
 /**
  * Grafo de navegação do app: `login -> modo -> (identificar_operador ->) tela do papel`.
@@ -36,7 +39,36 @@ import com.example.compuflow.ui.tv.TvScreen
 @Composable
 fun AppNavGraph() {
     val navController = rememberNavController()
+    val scope = rememberCoroutineScope()
     var setorNome by remember { mutableStateOf("") }
+
+    fun voltarAoMenuSelecao() {
+        scope.launch {
+            val sessionRepository = AppGraph.sessionRepository
+            try {
+                val livre = NetworkModule.apiService().liberarOperador()
+                sessionRepository.saveGenericSession(livre.session_token)
+            } catch (_: Exception) {
+                sessionRepository.clearPapel()
+            }
+            setorNome = sessionRepository.getSetorNome() ?: setorNome
+            navController.navigate(Routes.MODO) {
+                popUpTo(navController.graph.id) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
+
+    fun trocarSetor() {
+        scope.launch {
+            AppGraph.sessionRepository.logout()
+            setorNome = ""
+            navController.navigate(Routes.LOGIN) {
+                popUpTo(navController.graph.id) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
 
     NavHost(navController = navController, startDestination = Routes.BOOT) {
         composable(Routes.BOOT) {
@@ -77,6 +109,7 @@ fun AppNavGraph() {
                 onSelecionarTv = {
                     navController.navigate(Routes.TV) { popUpTo(Routes.MODO) { inclusive = true } }
                 },
+                onTrocarSetor = ::trocarSetor,
             )
         }
 
@@ -86,20 +119,38 @@ fun AppNavGraph() {
         ) { backStackEntry ->
             val finalidade = backStackEntry.arguments?.getString("finalidade") ?: Routes.FINALIDADE_OPERADOR
             val papel = if (finalidade == Routes.FINALIDADE_AVALIACAO) Papel.AVALIACAO else Papel.OPERADOR
-            IdentificarOperadorScreen(
-                papel = papel,
-                fotoBaseUrl = NetworkModule.currentHttpBaseUrl().trimEnd('/'),
-                onSelecionado = {
-                    val destino = if (papel == Papel.AVALIACAO) Routes.AVALIACAO else Routes.OPERADOR
-                    navController.navigate(destino) { popUpTo(Routes.MODO) { inclusive = true } }
-                },
-            )
+            SoftKioskHost(onExitToModeSelection = ::voltarAoMenuSelecao) {
+                IdentificarOperadorScreen(
+                    papel = papel,
+                    fotoBaseUrl = NetworkModule.currentHttpBaseUrl().trimEnd('/'),
+                    onSelecionado = {
+                        val destino = if (papel == Papel.AVALIACAO) Routes.AVALIACAO else Routes.OPERADOR
+                        navController.navigate(destino) { popUpTo(Routes.MODO) { inclusive = true } }
+                    },
+                )
+            }
         }
 
-        composable(Routes.CLIENTE) { ClienteScreen() }
-        composable(Routes.OPERADOR) { OperadorScreen() }
-        composable(Routes.AVALIACAO) { AvaliacaoScreen() }
-        composable(Routes.TV) { TvScreen() }
+        composable(Routes.CLIENTE) {
+            SoftKioskHost(onExitToModeSelection = ::voltarAoMenuSelecao) {
+                ClienteScreen()
+            }
+        }
+        composable(Routes.OPERADOR) {
+            SoftKioskHost(onExitToModeSelection = ::voltarAoMenuSelecao) {
+                OperadorScreen()
+            }
+        }
+        composable(Routes.AVALIACAO) {
+            SoftKioskHost(onExitToModeSelection = ::voltarAoMenuSelecao) {
+                AvaliacaoScreen()
+            }
+        }
+        composable(Routes.TV) {
+            SoftKioskHost(onExitToModeSelection = ::voltarAoMenuSelecao) {
+                TvScreen()
+            }
+        }
     }
 }
 

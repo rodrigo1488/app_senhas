@@ -79,6 +79,15 @@ class SessionRepository(private val context: Context) {
         AuthState.sessionToken = token
     }
 
+    /** Remove só o papel/operador, mantendo o login do setor (volta ao menu). */
+    suspend fun clearPapel() {
+        context.sessionDataStore.edit {
+            it.remove(Keys.PAPEL)
+            it.remove(Keys.OPERADOR_ID)
+            it.remove(Keys.OPERADOR_NOME)
+        }
+    }
+
     suspend fun logout() {
         context.sessionDataStore.edit {
             it.remove(Keys.SESSION_TOKEN)

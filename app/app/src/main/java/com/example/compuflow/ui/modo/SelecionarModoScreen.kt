@@ -53,6 +53,7 @@ fun SelecionarModoScreen(
     onSelecionarOperador: () -> Unit,
     onSelecionarAvaliacao: () -> Unit,
     onSelecionarTv: () -> Unit,
+    onTrocarSetor: () -> Unit = {},
     viewModel: SelecionarModoViewModel = viewModel(),
 ) {
     Box(
@@ -116,6 +117,16 @@ fun SelecionarModoScreen(
                     gradiente = GradienteAvaliacao,
                     enabled = !viewModel.isLoading,
                     onClick = onSelecionarAvaliacao,
+                )
+
+                Text(
+                    text = "Trocar setor",
+                    color = Color(0xFF666666),
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier
+                        .padding(top = 20.dp)
+                        .clickable(enabled = !viewModel.isLoading, onClick = onTrocarSetor),
                 )
 
                 if (viewModel.isLoading) {

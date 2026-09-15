@@ -14,8 +14,22 @@ from sqlalchemy import func
 from backend.auth import api_login_required
 from backend.extensions import db
 from backend.models import AtendimentoAtual, Finalizado, Impressora, Operador, Propaganda, Senha, Setor, Usuario
+from backend.services.admin_access import (
+    AdminAccessError,
+    assert_setor_permitido,
+    filtrar_setor_id,
+    is_admin,
+    query_setores_visiveis,
+    require_admin,
+    setor_ids_permitidos,
+    usuario_atual,
+)
 from backend.services.operador_pin_service import OperadorPinError, definir_pin
-from backend.services.usuario_service import autenticar
+from backend.services.usuario_service import (
+    autenticar,
+    atualizar_usuario,
+    criar_usuario,
+)
 from backend.utils import (
     allowed_file,
     delete_old_image,
@@ -58,6 +72,17 @@ def _avaliacao_numerica():
     return func.cast(func.nullif(Finalizado.avaliacao, ""), db.Float)
 
 
+def _access_error_response(exc: AdminAccessError):
+    return jsonify({"error": exc.message}), exc.status
+
+
+def _user_payload(usuario: Usuario) -> dict:
+    data = usuario.to_dict()
+    data["nome_empresa"] = usuario.nome_empresa or get_configuracao("nome_empresa", "") or ""
+    data["is_admin"] = is_admin(usuario)
+    return data
+
+
 # --- Auth (sessão Flask — opção B do plano) ---------------------------------
 
 
@@ -75,18 +100,7 @@ def login_json():
 
     session["user_id"] = usuario.id
     session.permanent = True
-    resp = make_response(
-        jsonify(
-            {
-                "ok": True,
-                "user": {
-                    "id": usuario.id,
-                    "email": usuario.email,
-                    "nome_empresa": usuario.nome_empresa or "",
-                },
-            }
-        )
-    )
+    resp = make_response(jsonify({"ok": True, "user": _user_payload(usuario)}))
     resp.set_cookie("user_id", str(usuario.id), max_age=60 * 60 * 24 * 365, httponly=True, samesite="Lax")
     resp.set_cookie(
         "nome_empresa",
@@ -110,17 +124,86 @@ def logout_json():
 @admin_api_bp.route("/me", methods=["GET"])
 @api_login_required
 def me():
-    user_id = session.get("user_id")
-    usuario = Usuario.query.get(user_id) if user_id else None
+    usuario = usuario_atual()
     if not usuario:
         return jsonify({"error": "Não autenticado"}), 401
-    return jsonify(
-        {
-            "id": usuario.id,
-            "email": usuario.email,
-            "nome_empresa": usuario.nome_empresa or get_configuracao("nome_empresa", "") or "",
-        }
-    )
+    return jsonify(_user_payload(usuario))
+
+
+# --- Usuários do painel (somente admin) -------------------------------------
+
+
+@admin_api_bp.route("/usuarios", methods=["GET"])
+@api_login_required
+@require_admin
+def list_usuarios():
+    itens = Usuario.query.order_by(Usuario.email.asc()).all()
+    return jsonify([u.to_dict() for u in itens])
+
+
+@admin_api_bp.route("/usuarios", methods=["POST"])
+@api_login_required
+@require_admin
+def create_usuario():
+    data = request.get_json(silent=True) or {}
+    try:
+        usuario = criar_usuario(
+            email=data.get("email") or "",
+            senha=data.get("senha") or "",
+            papel=data.get("papel") or "admin",
+            nome=data.get("nome"),
+            setor_ids=data.get("setor_ids") or [],
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(usuario.to_dict()), 201
+
+
+@admin_api_bp.route("/usuarios/<int:usuario_id>", methods=["PUT"])
+@api_login_required
+@require_admin
+def update_usuario(usuario_id: int):
+    usuario = Usuario.query.get_or_404(usuario_id)
+    data = request.get_json(silent=True) or {}
+    try:
+        atualizar_usuario(
+            usuario,
+            email=data.get("email") if "email" in data else None,
+            senha=data.get("senha") if data.get("senha") else None,
+            papel=data.get("papel") if "papel" in data else None,
+            nome=data.get("nome") if "nome" in data else None,
+            setor_ids=data.get("setor_ids") if "setor_ids" in data else None,
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(usuario.to_dict())
+
+
+@admin_api_bp.route("/usuarios/<int:usuario_id>", methods=["DELETE"])
+@api_login_required
+@require_admin
+def delete_usuario(usuario_id: int):
+    atual = usuario_atual()
+    if atual and atual.id == usuario_id:
+        return jsonify({"error": "Não é possível remover o próprio usuário"}), 400
+    usuario = Usuario.query.get_or_404(usuario_id)
+    if is_admin(usuario):
+        outros_admins = (
+            Usuario.query.filter(Usuario.id != usuario.id)
+            .filter(db.func.lower(Usuario.papel) == "admin")
+            .count()
+        )
+        # papel pode ser NULL legado
+        if outros_admins == 0:
+            total_admins = Usuario.query.filter(
+                (Usuario.papel == "admin") | (Usuario.papel.is_(None)) | (Usuario.papel == "")
+            ).count()
+            if total_admins <= 1:
+                return jsonify({"error": "É necessário manter ao menos um administrador"}), 400
+    usuario.setores = []
+    db.session.delete(usuario)
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 # --- Dashboard / Analytics --------------------------------------------------
@@ -147,10 +230,17 @@ def analytics():
     except ValueError:
         return jsonify({"error": "abandono_minutos inválido"}), 400
 
+    try:
+        setor_id = filtrar_setor_id(setor_id)
+        permitidos = setor_ids_permitidos()
+    except AdminAccessError as exc:
+        return _access_error_response(exc)
+
     payload = montar_analytics(
         from_s=request.args.get("from"),
         to_s=request.args.get("to"),
         setor_id=setor_id,
+        setor_ids=permitidos,
         operador_id=operador_id,
         abandono_minutos=abandono_minutos,
     )
@@ -171,7 +261,10 @@ def fila_ao_vivo():
     except ValueError:
         return jsonify({"error": "setor_id inválido"}), 400
     try:
+        assert_setor_permitido(setor_id)
         return jsonify(montar_fila_ao_vivo(setor_id))
+    except AdminAccessError as exc:
+        return _access_error_response(exc)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 404
 
@@ -189,6 +282,10 @@ def fila_ao_vivo_token():
         setor_id = int(setor_raw)
     except ValueError:
         return jsonify({"error": "setor_id inválido"}), 400
+    try:
+        assert_setor_permitido(setor_id)
+    except AdminAccessError as exc:
+        return _access_error_response(exc)
     if not Setor.query.get(setor_id):
         return jsonify({"error": "Setor não encontrado"}), 404
     token = create_session_token(setor_id, role="tv", ttl_seconds=60 * 60 * 8)
@@ -197,6 +294,7 @@ def fila_ao_vivo_token():
 
 @admin_api_bp.route("/fila-ao-vivo/config", methods=["PUT"])
 @api_login_required
+@require_admin
 def fila_ao_vivo_config():
     data = request.get_json(silent=True) or {}
     if "ignorar_finalizados_automaticos" in data:
@@ -222,8 +320,9 @@ def dashboard():
     inicio_mes = datetime(hoje.year, hoje.month, 1)
     fim_mes = datetime(hoje.year + 1, 1, 1) if hoje.month == 12 else datetime(hoje.year, hoje.month + 1, 1)
 
-    setores = Setor.query.order_by(Setor.nome).all()
+    setores = query_setores_visiveis().all()
     avaliacao_num = _avaliacao_numerica()
+    setor_ids = [s.id for s in setores]
 
     atendimentos_dia = (
         db.session.query(Setor.nome, func.count(Senha.id))
@@ -232,6 +331,10 @@ def dashboard():
         .group_by(Setor.id, Setor.nome)
         .all()
     )
+    if setor_ids:
+        atendimentos_dia = [(n, t) for n, t in atendimentos_dia if any(s.nome == n for s in setores)]
+    else:
+        atendimentos_dia = []
     atendimentos_mes = (
         db.session.query(Setor.nome, func.count(Senha.id))
         .join(Senha, Senha.setor_id == Setor.id)
@@ -329,7 +432,7 @@ def dashboard():
 @admin_api_bp.route("/setores", methods=["GET"])
 @api_login_required
 def list_setores():
-    setores = Setor.query.order_by(Setor.nome).all()
+    setores = query_setores_visiveis().all()
     return jsonify(
         [
             {
@@ -348,6 +451,7 @@ def list_setores():
 
 @admin_api_bp.route("/setores", methods=["POST"])
 @api_login_required
+@require_admin
 def create_setor():
     data = request.get_json(silent=True) or {}
     nome = (data.get("nome") or "").strip()
@@ -375,7 +479,16 @@ def create_setor():
 @api_login_required
 def update_setor(setor_id: int):
     setor = Setor.query.get_or_404(setor_id)
+    try:
+        assert_setor_permitido(setor_id)
+    except AdminAccessError as exc:
+        return _access_error_response(exc)
     data = request.get_json(silent=True) or {}
+    # Gerente só altera flags operacionais; admin altera tudo.
+    admin = is_admin()
+    if not admin:
+        allowed = {"propagandas_ativas", "layout_tv_web", "modo_identificacao_operador"}
+        data = {k: v for k, v in data.items() if k in allowed}
     if "nome" in data:
         nome = (data.get("nome") or "").strip()
         if not nome:
@@ -416,6 +529,7 @@ def update_setor(setor_id: int):
 
 @admin_api_bp.route("/setores/<int:setor_id>", methods=["DELETE"])
 @api_login_required
+@require_admin
 def delete_setor(setor_id: int):
     setor = Setor.query.get_or_404(setor_id)
     db.session.delete(setor)
@@ -435,6 +549,7 @@ def list_propagandas():
 
 @admin_api_bp.route("/propagandas", methods=["POST"])
 @api_login_required
+@require_admin
 def create_propaganda():
     file = request.files.get("arquivo") or request.files.get("imagem")
     if not file or not file.filename:
@@ -460,6 +575,7 @@ def create_propaganda():
 
 @admin_api_bp.route("/propagandas/setores", methods=["PUT"])
 @api_login_required
+@require_admin
 def update_propagandas_setores():
     data = request.get_json(silent=True) or {}
     propaganda_ids = data.get("propaganda_ids")
@@ -495,6 +611,7 @@ def update_propagandas_setores():
 
 @admin_api_bp.route("/propagandas/<int:propaganda_id>", methods=["PUT"])
 @api_login_required
+@require_admin
 def update_propaganda(propaganda_id: int):
     item = Propaganda.query.get_or_404(propaganda_id)
     data = request.get_json(silent=True) or {}
@@ -511,6 +628,7 @@ def update_propaganda(propaganda_id: int):
 
 @admin_api_bp.route("/propagandas/<int:propaganda_id>", methods=["DELETE"])
 @api_login_required
+@require_admin
 def delete_propaganda(propaganda_id: int):
     item = Propaganda.query.get_or_404(propaganda_id)
     delete_old_image(item.arquivo)
@@ -525,12 +643,21 @@ def delete_propaganda(propaganda_id: int):
 @admin_api_bp.route("/operadores", methods=["GET"])
 @api_login_required
 def list_operadores():
-    rows = (
+    q = (
         db.session.query(Operador, Setor.nome)
         .outerjoin(Setor, Operador.setor_id == Setor.id)
         .order_by(Operador.nome)
-        .all()
     )
+    try:
+        permitidos = setor_ids_permitidos()
+    except AdminAccessError as exc:
+        return _access_error_response(exc)
+    if permitidos is not None:
+        if not permitidos:
+            q = q.filter(False)
+        else:
+            q = q.filter(Operador.setor_id.in_(permitidos))
+    rows = q.all()
     avaliacao_num = _avaliacao_numerica()
     medias = {
         oid: (float(media) if media is not None else None, int(n or 0))
@@ -573,6 +700,10 @@ def create_operador():
     setor_id = request.form.get("setor_id")
     if not nome or not setor_id:
         return jsonify({"error": "Nome e setor são obrigatórios"}), 400
+    try:
+        assert_setor_permitido(int(setor_id))
+    except AdminAccessError as exc:
+        return _access_error_response(exc)
     setor = Setor.query.get(int(setor_id))
     if not setor:
         return jsonify({"error": "Setor não encontrado"}), 404
@@ -608,10 +739,19 @@ def create_operador():
 @api_login_required
 def update_operador(operador_id: int):
     op = Operador.query.get_or_404(operador_id)
+    try:
+        if op.setor_id:
+            assert_setor_permitido(op.setor_id)
+    except AdminAccessError as exc:
+        return _access_error_response(exc)
     nome = (request.form.get("nome") or "").strip()
     setor_id = request.form.get("setor_id")
     if not nome or not setor_id:
         return jsonify({"error": "Nome e setor são obrigatórios"}), 400
+    try:
+        assert_setor_permitido(int(setor_id))
+    except AdminAccessError as exc:
+        return _access_error_response(exc)
     novo_setor = Setor.query.get(int(setor_id))
     if not novo_setor:
         return jsonify({"error": "Setor não encontrado"}), 404
@@ -656,6 +796,11 @@ def update_operador(operador_id: int):
 @api_login_required
 def delete_operador(operador_id: int):
     op = Operador.query.get_or_404(operador_id)
+    try:
+        if op.setor_id:
+            assert_setor_permitido(op.setor_id)
+    except AdminAccessError as exc:
+        return _access_error_response(exc)
     delete_old_image(op.foto_perfil)
     db.session.delete(op)
     db.session.commit()
@@ -668,12 +813,21 @@ def delete_operador(operador_id: int):
 @admin_api_bp.route("/impressoras", methods=["GET"])
 @api_login_required
 def list_impressoras():
-    rows = (
+    q = (
         db.session.query(Impressora, Setor.nome)
         .outerjoin(Setor, Impressora.setor_id == Setor.id)
         .order_by(Impressora.nome)
-        .all()
     )
+    try:
+        permitidos = setor_ids_permitidos()
+    except AdminAccessError as exc:
+        return _access_error_response(exc)
+    if permitidos is not None:
+        if not permitidos:
+            q = q.filter(False)
+        else:
+            q = q.filter(Impressora.setor_id.in_(permitidos))
+    rows = q.all()
     return jsonify(
         [
             {
@@ -698,6 +852,10 @@ def create_impressora():
     setor_id = data.get("setor_id")
     if not nome or not ip or not setor_id:
         return jsonify({"error": "Nome, IP e setor são obrigatórios"}), 400
+    try:
+        assert_setor_permitido(int(setor_id))
+    except AdminAccessError as exc:
+        return _access_error_response(exc)
     porta = int(data.get("porta") or current_app.config["IMPRESSORA_PORTA"])
     imp = Impressora(nome=nome, ip=ip, porta=porta, setor_id=int(setor_id))
     db.session.add(imp)
@@ -709,6 +867,11 @@ def create_impressora():
 @api_login_required
 def delete_impressora(impressora_id: int):
     imp = Impressora.query.get_or_404(impressora_id)
+    try:
+        if imp.setor_id:
+            assert_setor_permitido(imp.setor_id)
+    except AdminAccessError as exc:
+        return _access_error_response(exc)
     db.session.delete(imp)
     db.session.commit()
     return jsonify({"ok": True})
@@ -719,6 +882,7 @@ def delete_impressora(impressora_id: int):
 
 @admin_api_bp.route("/configuracao", methods=["GET"])
 @api_login_required
+@require_admin
 def get_config():
     return jsonify(
         {
@@ -732,6 +896,7 @@ def get_config():
 
 @admin_api_bp.route("/configuracao/empresa", methods=["PUT"])
 @api_login_required
+@require_admin
 def put_empresa():
     data = request.get_json(silent=True) or {}
     nome = (data.get("nome_empresa") or "").strip()
@@ -741,6 +906,7 @@ def put_empresa():
 
 @admin_api_bp.route("/configuracao/ngrok", methods=["PUT"])
 @api_login_required
+@require_admin
 def put_ngrok():
     data = request.get_json(silent=True) or {}
     url = (data.get("ngrok_url") or "").strip()
@@ -750,6 +916,7 @@ def put_ngrok():
 
 @admin_api_bp.route("/configuracao/fila", methods=["PUT"])
 @api_login_required
+@require_admin
 def put_fila():
     data = request.get_json(silent=True) or {}
     proporcao = str(data.get("proporcao_normais", 2))

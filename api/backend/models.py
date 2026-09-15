@@ -150,20 +150,48 @@ class Configuracao(db.Model):
 
 
 class Usuario(db.Model):
-    """Usuário administrador do painel (`/login`, `/admin/*`).
+    """Usuário do painel administrativo (`/login`, `/admin/*`).
 
-    Substitui o login via Supabase (tabela `users` externa) por uma tabela
-    local — elimina a dependência de um serviço externo só para autenticar
-    o admin. Ver `backend/services/usuario_service.py` e
-    `backend/blueprints/auth_bp.py`.
+    Papéis:
+    - `admin`: acesso total
+    - `gerente`: vê apenas os setores vinculados em `usuario_setores`
     """
     __tablename__ = "usuarios"
 
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.Text, nullable=False, unique=True)
     senha_hash = db.Column(db.Text, nullable=False)
+    nome = db.Column(db.Text)
     nome_empresa = db.Column(db.Text)
+    papel = db.Column(db.String(20), nullable=False, default="admin")
     criado_em = db.Column(db.DateTime, default=datetime.now)
+
+    setores = db.relationship(
+        "Setor",
+        secondary="usuario_setores",
+        lazy="joined",
+    )
+
+    def to_dict(self, *, incluir_setores: bool = True):
+        data = {
+            "id": self.id,
+            "email": self.email,
+            "nome": self.nome or "",
+            "nome_empresa": self.nome_empresa or "",
+            "papel": (self.papel or "admin").strip().lower(),
+            "criado_em": self.criado_em.isoformat() if self.criado_em else None,
+        }
+        if incluir_setores:
+            data["setor_ids"] = [s.id for s in (self.setores or [])]
+            data["setores"] = [{"id": s.id, "nome": s.nome} for s in (self.setores or [])]
+        return data
+
+
+usuario_setores = db.Table(
+    "usuario_setores",
+    db.Column("usuario_id", db.Integer, db.ForeignKey("usuarios.id"), primary_key=True),
+    db.Column("setor_id", db.Integer, db.ForeignKey("setores.id"), primary_key=True),
+)
 
 
 class Propaganda(db.Model):
