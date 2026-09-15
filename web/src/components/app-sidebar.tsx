@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   Activity,
   Building2,
+  FileText,
   Grid3x3,
   ImageIcon,
   LayoutDashboard,
@@ -33,6 +34,7 @@ import { cn } from "@/lib/utils";
 
 const NAV_BASE = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/admin/relatorios", label: "Relatórios", icon: FileText },
   { href: "/admin/heatmap", label: "Mapa de calor", icon: Grid3x3 },
   { href: "/admin/fila-ao-vivo", label: "Fila ao Vivo", icon: Activity },
   { href: "/admin/operadores", label: "Operadores", icon: Users },

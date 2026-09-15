@@ -273,6 +273,7 @@ def criar_senha_route(session_payload):
         )
 
     emit_fila_atualizada(setor_id)
+    broadcast_posicao_fila(setor_id)
 
     return jsonify(senha.to_dict())
 

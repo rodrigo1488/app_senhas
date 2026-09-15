@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional
 
+from sqlalchemy import and_, or_
+
 from backend.extensions import db
 from backend.models import AtendimentoAtual, Finalizado, Operador, Senha, Setor
 from backend.utils import gerar_token_unico, get_configuracao
@@ -367,9 +369,21 @@ def posicao_na_fila(token_unico: str) -> dict:
         posicao = 0
     elif senha.status == "F":
         posicao = -1
+    elif senha.tipo == "preferencial":
+        posicao = Senha.query.filter(
+            Senha.setor_id == senha.setor_id,
+            Senha.status == "A",
+            Senha.tipo == "preferencial",
+            Senha.id < senha.id,
+        ).count()
     else:
         posicao = Senha.query.filter(
-            Senha.setor_id == senha.setor_id, Senha.status == "A", Senha.id < senha.id
+            Senha.setor_id == senha.setor_id,
+            Senha.status == "A",
+            or_(
+                Senha.tipo == "preferencial",
+                and_(Senha.tipo == senha.tipo, Senha.id < senha.id),
+            ),
         ).count()
 
     avaliacao_pendente = False

@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useState, type Dispatch, type SetStateAction } from "react";
-import { Bell, BellOff, Ticket } from "lucide-react";
+import { Bell, BellOff, CheckCircle2, Ticket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RatingStars } from "@/components/cliente/rating-stars";
@@ -17,7 +17,33 @@ import { cn } from "@/lib/utils";
 
 type Props = { token: string };
 
-type PushState = "idle" | "loading" | "on" | "denied" | "unsupported" | "missing-vapid";
+type PushState = "idle" | "loading" | "on" | "local-only" | "denied" | "unsupported";
+
+function normalizePosicao(data: Record<string, unknown>, token: string): SenhaPosicao {
+  const status = String(data.status || "A");
+  return {
+    token_unico: String(data.token_unico || token),
+    posicao:
+      typeof data.posicao === "number" ? data.posicao : status === "C" ? 0 : status === "F" ? -1 : 0,
+    senha: String(data.senha || ""),
+    status,
+    setor_nome: String(data.setor_nome || data.setor || "Fila"),
+    tem_pedido: Boolean(data.tem_pedido),
+    pedido: data.pedido == null ? null : String(data.pedido),
+    pedido_confirmado: Boolean(data.pedido_confirmado),
+    avaliacao_pendente:
+      typeof data.avaliacao_pendente === "boolean" ? data.avaliacao_pendente : undefined,
+  };
+}
+
+async function fetchPosicao(token: string): Promise<SenhaPosicao> {
+  const res = await fetch(`/api/verificar_senha/${encodeURIComponent(token)}`, {
+    cache: "no-store",
+  });
+  const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!res.ok) throw new Error(String(data.error || "Senha não encontrada"));
+  return normalizePosicao(data, token);
+}
 
 function applyPosicao(
   data: SenhaPosicao,
@@ -53,31 +79,32 @@ export function TicketTracker({ token }: Props) {
   const [avaliado, setAvaliado] = useState(false);
   const [avaliando, setAvaliando] = useState(false);
 
+  useEffect(() => {
+    if (!("Notification" in window)) {
+      setPushState("unsupported");
+      return;
+    }
+    if (Notification.permission === "denied") {
+      setPushState("denied");
+      return;
+    }
+    if (Notification.permission === "granted") {
+      setPushState("loading");
+      subscribePush(token)
+        .then((result) => setPushState(result === "granted" ? "on" : result))
+        .catch(() => setPushState("local-only"));
+    }
+  }, [token]);
+
   // Hidratação REST (funciona mesmo se o socket falhar no celular)
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`/api/verificar_senha/${encodeURIComponent(token)}`);
-        const data = await res.json().catch(() => ({}));
+        const data = await fetchPosicao(token);
         if (cancelled) return;
-        if (!res.ok) {
-          setError(data.error || "Senha não encontrada");
-          setLoading(false);
-          return;
-        }
         applyPosicao(
-          {
-            token_unico: data.token_unico || token,
-            posicao: typeof data.posicao === "number" ? data.posicao : data.status === "C" ? 0 : data.status === "F" ? -1 : 0,
-            senha: data.senha,
-            status: data.status,
-            setor_nome: data.setor_nome || data.setor || "Fila",
-            tem_pedido: Boolean(data.tem_pedido),
-            pedido: data.pedido ?? null,
-            pedido_confirmado: Boolean(data.pedido_confirmado),
-            avaliacao_pendente: data.avaliacao_pendente,
-          },
+          data,
           token,
           setPos,
           setChamada,
@@ -94,6 +121,20 @@ export function TicketTracker({ token }: Props) {
     return () => {
       cancelled = true;
     };
+  }, [token]);
+
+  // Segurança adicional ao tempo real: mantém a posição correta mesmo se o
+  // proxy, a rede móvel ou o navegador interromperem o Socket.IO.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      fetchPosicao(token)
+        .then((data) => {
+          applyPosicao(data, token, setPos, setChamada, setAvaliado, setPedidoText);
+          setError(null);
+        })
+        .catch(() => undefined);
+    }, 12_000);
+    return () => window.clearInterval(id);
   }, [token]);
 
   useEffect(() => {
@@ -121,6 +162,17 @@ export function TicketTracker({ token }: Props) {
               pedido_confirmado: false,
             },
       );
+      if ("Notification" in window && Notification.permission === "granted") {
+        try {
+          new Notification(`Senha ${data.senha}: sua vez!`, {
+            body: data.operador_nome
+              ? `Dirija-se ao atendimento com ${data.operador_nome}.`
+              : "Dirija-se ao atendimento.",
+          });
+        } catch {
+          /* Alguns navegadores móveis só exibem notificações via Service Worker. */
+        }
+      }
       setLoading(false);
     });
 
@@ -146,9 +198,13 @@ export function TicketTracker({ token }: Props) {
 
   async function ativarPush() {
     setPushState("loading");
-    const result = await subscribePush(token);
-    if (result === "granted") setPushState("on");
-    else setPushState(result);
+    try {
+      const result = await subscribePush(token);
+      if (result === "granted") setPushState("on");
+      else setPushState(result);
+    } catch {
+      setPushState("unsupported");
+    }
   }
 
   async function enviarPedido(e: FormEvent) {
@@ -167,6 +223,8 @@ export function TicketTracker({ token }: Props) {
         throw new Error(data.error || "Erro ao salvar pedido");
       }
       setPos((prev) => (prev ? { ...prev, tem_pedido: true, pedido: texto } : prev));
+      setPedidoMsg("Pedido enviado com sucesso. Aguarde a confirmação do atendente.");
+      setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao salvar pedido");
     } finally {
@@ -255,24 +313,37 @@ export function TicketTracker({ token }: Props) {
           <p className="text-muted-foreground">{subtitulo}</p>
         </div>
 
-        {pedidoMsg && !finalizado ? (
-          <p className="w-full rounded-xl border border-primary/30 bg-primary/10 px-4 py-3 text-sm">
-            {pedidoMsg}
+        {(pedidoMsg || pos?.tem_pedido) && !finalizado ? (
+          <p className="flex w-full items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-left text-sm text-emerald-800 dark:text-emerald-200">
+            <CheckCircle2 className="h-4 w-4 shrink-0" />
+            {pedidoMsg || "Pedido enviado. Aguarde a confirmação do atendente."}
           </p>
         ) : null}
 
         {pos && !finalizado && !chamado ? (
-          <div className="flex w-full flex-col gap-3">
+          <div className="flex w-full flex-col gap-3 rounded-2xl border bg-card/80 p-4 text-left shadow-sm">
+            {pushState === "idle" ? (
+              <div>
+                <p className="font-medium">Receba um aviso quando chegar sua vez</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Ative as notificações para não precisar acompanhar a tela o tempo todo.
+                </p>
+              </div>
+            ) : null}
             <Button
               type="button"
               variant={pushState === "on" ? "secondary" : "default"}
               className="w-full"
-              disabled={pushState === "loading" || pushState === "on"}
+              disabled={pushState === "loading" || pushState === "on" || pushState === "local-only"}
               onClick={ativarPush}
             >
               {pushState === "on" ? (
                 <>
                   <Bell className="h-4 w-4" /> Notificações ativas
+                </>
+              ) : pushState === "local-only" ? (
+                <>
+                  <Bell className="h-4 w-4" /> Avisos ativos nesta tela
                 </>
               ) : pushState === "loading" ? (
                 "Ativando…"
@@ -282,20 +353,23 @@ export function TicketTracker({ token }: Props) {
                 </>
               )}
             </Button>
-            {pushState === "denied" || pushState === "unsupported" || pushState === "missing-vapid" ? (
+            {pushState === "local-only" ? (
+              <p className="text-center text-xs text-muted-foreground">
+                Para avisos com a página fechada, configure as chaves VAPID no servidor.
+              </p>
+            ) : null}
+            {pushState === "denied" || pushState === "unsupported" ? (
               <p className="flex items-center justify-center gap-1 text-xs text-muted-foreground">
                 <BellOff className="h-3.5 w-3.5" />
                 {pushState === "denied"
                   ? "Permissão negada no navegador"
-                  : pushState === "missing-vapid"
-                    ? "Push não configurado no servidor"
-                    : "Este navegador não suporte push"}
+                  : "Este navegador não suporta notificações"}
               </p>
             ) : null}
           </div>
         ) : null}
 
-        {status === "A" && pos && !pos.pedido_confirmado ? (
+        {status === "A" && pos && !pos.tem_pedido && !pos.pedido_confirmado ? (
           <form onSubmit={enviarPedido} className="flex w-full flex-col gap-2 text-left">
             <label className="text-xs font-medium text-muted-foreground" htmlFor="pedido">
               Pedido (opcional)

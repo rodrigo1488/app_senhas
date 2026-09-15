@@ -7,7 +7,7 @@ from backend.auth import create_session_token, login_required
 from backend.models import Impressora, Operador, Senha, Setor
 from backend.services.fila_service import FilaError, criar_senha, estado_atendimento_atual, verificar_senha
 from backend.services.impressao_service import imprimir_senha_com_ip
-from backend.sockets.emitters import emit_fila_atualizada
+from backend.sockets.emitters import broadcast_posicao_fila, emit_fila_atualizada
 from backend.utils import gerar_qr_code_bytes, get_notification_url
 
 filas_bp = Blueprint("filas", __name__)
@@ -46,6 +46,7 @@ def retirar_senha(tipo):
         )
 
     emit_fila_atualizada(int(setor_id))
+    broadcast_posicao_fila(int(setor_id))
 
     resp = make_response(redirect(url_for("filas.render_senhas")))
     if impressora_ip:

@@ -135,6 +135,7 @@ def handle_cliente_criar_senha(data):
     join_room(room_ticket(senha.token_unico))
     emit_senha_criada(senha, to_sid=request.sid)
     emit_fila_atualizada(setor_id)
+    broadcast_posicao_fila(setor_id)
 
     impressora = Impressora.query.filter_by(setor_id=setor_id).first()
     if impressora:

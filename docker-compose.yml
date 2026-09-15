@@ -36,6 +36,7 @@ services:
       - "5000:5000"
     volumes:
       - uploads_data:/app/static/uploads
+      - api_instance:/app/instance
 
   web:
     build:
@@ -55,3 +56,4 @@ services:
 volumes:
   postgres_data:
   uploads_data:
+  api_instance:

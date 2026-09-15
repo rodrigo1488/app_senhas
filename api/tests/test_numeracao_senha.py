@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from backend import create_app
 from backend.extensions import db
 from backend.models import Senha, Setor
-from backend.services.fila_service import criar_senha
+from backend.services.fila_service import criar_senha, posicao_na_fila
 
 
 class NumeracaoSenhaTest(unittest.TestCase):
@@ -55,6 +55,22 @@ class NumeracaoSenhaTest(unittest.TestCase):
 
             hoje = criar_senha(self.setor_id, "normal")
             self.assertEqual("N1", hoje.senha)
+
+    def test_posicao_respeita_prioridade_e_atualiza_apos_chamada(self):
+        with self.app.app_context():
+            n1 = criar_senha(self.setor_id, "normal")
+            n2 = criar_senha(self.setor_id, "normal")
+            p1 = criar_senha(self.setor_id, "preferencial")
+            p2 = criar_senha(self.setor_id, "preferencial")
+
+            self.assertEqual(3, posicao_na_fila(n2.token_unico)["posicao"])
+            self.assertEqual(1, posicao_na_fila(p2.token_unico)["posicao"])
+
+            p1.status = "C"
+            db.session.commit()
+
+            self.assertEqual(2, posicao_na_fila(n2.token_unico)["posicao"])
+            self.assertEqual(0, posicao_na_fila(p2.token_unico)["posicao"])
 
 
 if __name__ == "__main__":

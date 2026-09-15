@@ -121,9 +121,9 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         JWT_ALGORITHM="HS256",
         SESSION_TOKEN_TTL_SECONDS=60 * 60 * 12,  # 12h para tokens de setor/app
         NOME_EMPRESA_PADRAO="TESTE",
-        VAPID_PUBLIC_KEY=os.getenv("VAPID_PUBLIC_KEY", "m8SlKTywMoMWfmtEYVdH7SMWFOQjGeMMvP7Q-d8FSwY"),
-        VAPID_PRIVATE_KEY=os.getenv("VAPID_PRIVATE_KEY", "OBrReW-zVxCF6JWKKRyQNNNkPbY-8plD2cFdajsJ-dk"),
-        VAPID_EMAIL=os.getenv("VAPID_EMAIL", "seu-email@exemplo.com"),
+        VAPID_PUBLIC_KEY=os.getenv("VAPID_PUBLIC_KEY", ""),
+        VAPID_PRIVATE_KEY=os.getenv("VAPID_PRIVATE_KEY", ""),
+        VAPID_EMAIL=os.getenv("VAPID_EMAIL", "admin@compuflow.local"),
         IMPRESSORA_PORTA=9100,
         PROPORCAO_NORMAIS=2,
         LIMITE_PREFERENCIAIS_ALERTA=3,
@@ -143,6 +143,9 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     socketio.init_app(app, cors_allowed_origins="*")
 
     with app.app_context():
+        from backend.services.push_service import ensure_vapid_keys
+
+        ensure_vapid_keys()
         _init_database(app)
 
     from backend.blueprints.auth_bp import auth_bp

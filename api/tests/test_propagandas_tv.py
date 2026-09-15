@@ -46,6 +46,13 @@ class PropagandasTvTest(unittest.TestCase):
             sess["user_id"] = self.admin_id
         return client
 
+    def test_vapid_public_key_is_available_without_manual_configuration(self):
+        response = self.app.test_client().get("/api/vapid-public-key")
+        self.assertEqual(200, response.status_code)
+        payload = response.get_json()
+        self.assertTrue(payload["configured"])
+        self.assertGreater(len(payload["publicKey"]), 40)
+
     def test_migration_creates_propaganda_table_and_setor_flag(self):
         with self.app.app_context():
             self.assertTrue(hasattr(Setor, "propagandas_ativas"))
@@ -132,9 +139,7 @@ class PropagandasTvTest(unittest.TestCase):
         self.assertEqual(15_000, payload["intervalo_ms"])
 
     def test_admin_vincula_varias_propagandas_a_varios_setores(self):
-        client = self.app.test_client()
-        with client.session_transaction() as sess:
-            sess["user_id"] = "admin-test"
+        client = self._admin_client()
 
         with self.app.app_context():
             outro = Setor(nome="Caixa", senha_setor="CAIXA", propagandas_ativas=True)

@@ -11,6 +11,7 @@ appsenhas.sqlite-wal
 api/appsenhas.sqlite
 api/appsenhas.sqlite-shm
 api/appsenhas.sqlite-wal
+api/instance/
 
 
 # Python

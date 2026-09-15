@@ -9,12 +9,21 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return out;
 }
 
+function sameApplicationServerKey(subscription: PushSubscription, expected: Uint8Array): boolean {
+  const current = subscription.options.applicationServerKey;
+  if (!current) return false;
+  const bytes = new Uint8Array(current);
+  return bytes.length === expected.length && bytes.every((value, index) => value === expected[index]);
+}
+
 export async function ensureServiceWorker(): Promise<ServiceWorkerRegistration | null> {
   if (typeof window === "undefined" || !("serviceWorker" in navigator)) return null;
   return navigator.serviceWorker.register("/sw.js");
 }
 
-export async function subscribePush(token: string): Promise<"granted" | "denied" | "unsupported" | "missing-vapid"> {
+export async function subscribePush(
+  token: string,
+): Promise<"granted" | "local-only" | "denied" | "unsupported"> {
   if (typeof window === "undefined" || !("Notification" in window) || !("PushManager" in window)) {
     return "unsupported";
   }
@@ -26,23 +35,29 @@ export async function subscribePush(token: string): Promise<"granted" | "denied"
   if (!reg) return "unsupported";
 
   const vapidRes = await fetch("/api/vapid-public-key");
-  if (!vapidRes.ok) return "missing-vapid";
+  if (!vapidRes.ok) return "local-only";
   const { publicKey } = (await vapidRes.json()) as { publicKey: string };
-  if (!publicKey) return "missing-vapid";
+  if (!publicKey) return "local-only";
 
+  const applicationServerKey = urlBase64ToUint8Array(publicKey);
   let subscription = await reg.pushManager.getSubscription();
+  if (subscription && !sameApplicationServerKey(subscription, applicationServerKey)) {
+    await subscription.unsubscribe();
+    subscription = null;
+  }
   if (!subscription) {
     subscription = await reg.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(publicKey) as BufferSource,
+      applicationServerKey: applicationServerKey as BufferSource,
     });
   }
 
-  await fetch(`/api/registrar_push/${encodeURIComponent(token)}`, {
+  const response = await fetch(`/api/registrar_push/${encodeURIComponent(token)}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ subscription }),
   });
+  if (!response.ok) return "local-only";
 
   return "granted";
 }

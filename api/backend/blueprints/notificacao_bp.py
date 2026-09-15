@@ -28,8 +28,8 @@ def notificacao(token):
 def api_vapid_public_key():
     key = get_vapid_public_key()
     if not key:
-        return jsonify({"error": "VAPID não configurado"}), 503
-    return jsonify({"publicKey": key})
+        return jsonify({"publicKey": None, "configured": False})
+    return jsonify({"publicKey": key, "configured": True})
 
 
 @notificacao_bp.route("/api/registrar_token/<token>", methods=["POST"])

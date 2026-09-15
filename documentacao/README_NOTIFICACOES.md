@@ -44,7 +44,10 @@ No Next, essas rotas (e `/socket.io`) são reescritas para a API Flask.
 
 ## Configuração VAPID
 
-No `.env` (ver `.env.example`):
+Na primeira inicialização, a API gera automaticamente o par VAPID e o mantém
+no volume Docker `api_instance`. Não é necessário preencher chaves no `.env`.
+
+Opcionalmente, é possível fornecer um par próprio (ver `.env.example`):
 
 ```bash
 VAPID_PUBLIC_KEY=...
@@ -52,6 +55,9 @@ VAPID_PRIVATE_KEY=...
 VAPID_EMAIL=seu-email@exemplo.com
 ADMIN_WEB_URL=http://localhost:3000
 ```
+
+Não remova o volume `api_instance` em produção: trocar o par invalida as
+subscriptions existentes e os clientes precisarão ativar as notificações novamente.
 
 Push no navegador exige **HTTPS** (ou `localhost`). Em rede local sem TLS, o Socket.IO continua funcionando; o push pode falhar até haver HTTPS/ngrok.
 

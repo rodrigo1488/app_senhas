@@ -35,6 +35,7 @@ self.addEventListener("push", (event) => {
       tag: data.tag,
       requireInteraction: Boolean(data.requireInteraction),
       data: data.data,
+      vibrate: data.requireInteraction ? [220, 80, 140, 80, 220] : [140, 70, 140],
     }),
   );
 });
@@ -45,7 +46,8 @@ self.addEventListener("notificationclick", (event) => {
   event.waitUntil(
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
       for (const client of clients) {
-        if ("focus" in client && client.url.includes(url)) {
+        if ("focus" in client) {
+          if ("navigate" in client) client.navigate(url);
           return client.focus();
         }
       }

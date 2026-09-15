@@ -7,6 +7,7 @@ from backend.extensions import db
 from backend.models import AtendimentoAtual, Finalizado, Operador, Senha, Setor
 from backend.services.fila_service import estado_atendimento_atual, serializar_fila
 from backend.services.operador_pin_service import OperadorPinError, definir_pin
+from backend.services.usuario_service import criar_ou_atualizar_admin
 from werkzeug.security import check_password_hash
 
 
@@ -25,6 +26,11 @@ class OperatorIdentificationTest(unittest.TestCase):
         with self.app.app_context():
             db.drop_all()
             db.create_all()
+            from backend import _migrate_usuario_papeis
+
+            _migrate_usuario_papeis()
+            admin = criar_ou_atualizar_admin("admin@test.local", "admin123")
+            self.admin_id = admin.id
             setor = Setor(
                 nome="Balcão",
                 senha_setor="SETOR",
@@ -106,7 +112,7 @@ class OperatorIdentificationTest(unittest.TestCase):
 
         client = self.app.test_client()
         with client.session_transaction() as session:
-            session["user_id"] = 1
+            session["user_id"] = self.admin_id
         response = client.put(
             f"/api/v1/admin/setores/{self.setor_id}",
             json={"modo_identificacao_operador": "pin"},
