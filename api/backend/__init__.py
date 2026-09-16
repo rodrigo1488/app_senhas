@@ -116,7 +116,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         ALLOWED_VIDEO_EXTENSIONS={"mp4"},
         MAX_FILE_SIZE=5 * 1024 * 1024,
         MAX_VIDEO_SIZE=80 * 1024 * 1024,
-        MAX_CONTENT_LENGTH=80 * 1024 * 1024,
+        MAX_CONTENT_LENGTH=400 * 1024 * 1024,
         DB_PATH=db_path,
         PERMANENT_SESSION_LIFETIME=60 * 60 * 24 * 365,
         SESSION_COOKIE_SAMESITE="Lax",
@@ -177,6 +177,10 @@ def create_app(config_overrides: dict | None = None) -> Flask:
 
     from backend.sockets import register_socket_handlers
     register_socket_handlers(socketio)
+
+    from backend.services.fila_service import iniciar_rotina_virada_dia
+
+    iniciar_rotina_virada_dia(app)
 
     return app
 

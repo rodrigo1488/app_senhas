@@ -7,7 +7,8 @@ FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1
+    PIP_NO_CACHE_DIR=1 \
+    TZ=America/Sao_Paulo
 
 WORKDIR /app
 
@@ -23,6 +24,9 @@ RUN apt-get update \
         zlib1g-dev \
         libpq-dev \
         fonts-dejavu-core \
+        tzdata \
+    && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
+    && echo $TZ > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .

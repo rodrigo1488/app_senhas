@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ImageIcon, MonitorPlay, Tv } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,12 +15,13 @@ function midiaTipo(item: Propaganda): "image" | "video" {
 export default function PropagandasPage() {
   const [itens, setItens] = useState<Propaganda[]>([]);
   const [tvs, setTvs] = useState<TvAdmin[]>([]);
-  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [arquivos, setArquivos] = useState<File[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [tvAtiva, setTvAtiva] = useState<TvAdmin | null>(null);
   const [midiasTv, setMidiasTv] = useState<Set<number>>(new Set());
   const [savingTv, setSavingTv] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function load() {
     const [midias, tvsResponse] = await Promise.all([
@@ -47,17 +48,20 @@ export default function PropagandasPage() {
 
   async function onUpload(e: FormEvent) {
     e.preventDefault();
-    if (!arquivo) {
-      setError("Selecione uma imagem ou um vídeo MP4");
+    if (!arquivos.length) {
+      setError("Selecione uma ou mais imagens ou vídeos MP4");
       return;
     }
     setLoading(true);
     setError(null);
     try {
       const form = new FormData();
-      form.set("arquivo", arquivo);
-      await apiFetch<Propaganda>("/api/v1/admin/propagandas", { method: "POST", body: form });
-      setArquivo(null);
+      for (const arquivo of arquivos) {
+        form.append("arquivo", arquivo);
+      }
+      await apiFetch("/api/v1/admin/propagandas", { method: "POST", body: form });
+      setArquivos([]);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao enviar");
@@ -144,16 +148,36 @@ export default function PropagandasPage() {
         <CardContent>
           <form className="grid gap-4" onSubmit={onUpload}>
             <div className="space-y-2">
-              <Label>Arquivo (PNG, JPG, WEBP, GIF até 5MB ou MP4 até 80MB)</Label>
+              <Label>Arquivos (PNG, JPG, WEBP, GIF até 5MB ou MP4 até 80MB cada)</Label>
               <Input
+                ref={fileInputRef}
                 type="file"
+                multiple
                 accept="image/png,image/jpeg,image/webp,image/gif,video/mp4"
-                onChange={(e) => setArquivo(e.target.files?.[0] || null)}
+                onChange={(e) => setArquivos(Array.from(e.target.files || []))}
               />
+              {arquivos.length > 0 && (
+                <p className="text-sm text-muted-foreground">
+                  {arquivos.length === 1
+                    ? arquivos[0].name
+                    : `${arquivos.length} arquivos selecionados`}
+                </p>
+              )}
+              {arquivos.length > 1 && (
+                <ul className="max-h-32 space-y-1 overflow-y-auto text-xs text-muted-foreground">
+                  {arquivos.map((arquivo) => (
+                    <li key={`${arquivo.name}-${arquivo.size}-${arquivo.lastModified}`}>{arquivo.name}</li>
+                  ))}
+                </ul>
+              )}
             </div>
             {error && <p className="text-sm text-destructive">{error}</p>}
-            <Button type="submit" disabled={loading || !arquivo} className="w-fit">
-              {loading ? "Enviando..." : "Adicionar à biblioteca"}
+            <Button type="submit" disabled={loading || !arquivos.length} className="w-fit">
+              {loading
+                ? "Enviando..."
+                : arquivos.length > 1
+                  ? `Adicionar ${arquivos.length} mídias`
+                  : "Adicionar à biblioteca"}
             </Button>
           </form>
         </CardContent>

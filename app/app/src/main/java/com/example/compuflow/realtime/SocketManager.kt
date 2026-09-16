@@ -78,6 +78,7 @@ object SocketManager {
             _events.tryEmit(
                 SocketEvent.TvConfigAtualizada(
                     propagandasAtivas = obj.optBoolean("propagandas_ativas", false),
+                    layoutTvWeb = obj.optString("layout_tv_web", "propaganda").ifBlank { "propaganda" },
                     imagens = obj.optJSONArray("imagens").toPropagandaList(),
                     intervaloMs = obj.optLong("intervalo_ms", 15_000L).coerceAtLeast(1_000L),
                 )
@@ -106,6 +107,7 @@ object SocketManager {
                 SocketEvent.SenhaChamada(
                     setorId = obj.optIntOrNull("setor_id"),
                     ticketToken = obj.optStringOrNull("ticket_token"),
+                    senhaId = obj.optIntOrNull("senha_id"),
                     senha = obj.optString("senha"),
                     tipo = obj.optStringOrNull("tipo"),
                     operadorId = obj.optIntOrNull("operador_id"),

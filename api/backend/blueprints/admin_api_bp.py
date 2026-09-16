@@ -575,6 +575,49 @@ def _vincular_propagandas(propagandas: list[Propaganda], setores: list[Setor]) -
     return sorted(ids_antes | {setor.id for setor in setores})
 
 
+def _arquivos_midia_do_request():
+    arquivos = []
+    for chave in ("arquivos", "arquivo", "imagem"):
+        for stored in request.files.getlist(chave):
+            if stored and stored.filename:
+                arquivos.append(stored)
+    vistos: set[int] = set()
+    unicos = []
+    for stored in arquivos:
+        chave = id(stored)
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+        unicos.append(stored)
+    return unicos
+
+
+def _processar_arquivo_midia(file, *, prefixo: str = "") -> tuple[str | None, str | None, str | None]:
+    nome = file.filename or "arquivo"
+    is_video = is_video_filename(nome)
+    if not is_video and not allowed_file(nome):
+        return None, None, f"{prefixo}Tipo de arquivo não permitido (imagem ou MP4)"
+
+    file.seek(0, 2)
+    tamanho = file.tell()
+    file.seek(0)
+    max_size = current_app.config["MAX_VIDEO_SIZE"] if is_video else current_app.config["MAX_FILE_SIZE"]
+    limite_label = "80MB" if is_video else "5MB"
+    if tamanho > max_size:
+        return None, None, f"{prefixo}Arquivo muito grande (máx. {limite_label})"
+
+    if is_video:
+        filename = save_propaganda_video(file)
+        if not filename:
+            return None, None, f"{prefixo}Não foi possível salvar o vídeo"
+        return filename, "video", None
+
+    filename = process_propaganda_image(file)
+    if not filename:
+        return None, None, f"{prefixo}Não foi possível processar a imagem"
+    return filename, "image", None
+
+
 @admin_api_bp.route("/propagandas", methods=["GET"])
 @api_login_required
 def list_propagandas():
@@ -586,32 +629,9 @@ def list_propagandas():
 @api_login_required
 @require_admin
 def create_propaganda():
-    file = request.files.get("arquivo") or request.files.get("imagem")
-    if not file or not file.filename:
+    arquivos = _arquivos_midia_do_request()
+    if not arquivos:
         return jsonify({"error": "Arquivo é obrigatório"}), 400
-
-    is_video = is_video_filename(file.filename)
-    if not is_video and not allowed_file(file.filename):
-        return jsonify({"error": "Tipo de arquivo não permitido (imagem ou MP4)"}), 400
-
-    file.seek(0, 2)
-    tamanho = file.tell()
-    file.seek(0)
-    max_size = current_app.config["MAX_VIDEO_SIZE"] if is_video else current_app.config["MAX_FILE_SIZE"]
-    limite_label = "80MB" if is_video else "5MB"
-    if tamanho > max_size:
-        return jsonify({"error": f"Arquivo muito grande (máx. {limite_label})"}), 400
-
-    if is_video:
-        filename = save_propaganda_video(file)
-        tipo = "video"
-        if not filename:
-            return jsonify({"error": "Não foi possível salvar o vídeo"}), 400
-    else:
-        filename = process_propaganda_image(file)
-        tipo = "image"
-        if not filename:
-            return jsonify({"error": "Não foi possível processar a imagem"}), 400
 
     setor_ids, setor_error = _parse_setor_ids(request.form.get("setor_ids"))
     if setor_error:
@@ -621,15 +641,31 @@ def create_propaganda():
     if setor_ids and len(setores) != len(setor_ids):
         return jsonify({"error": "Um ou mais setores não foram encontrados"}), 404
 
+    lote = len(arquivos) > 1
+    processados: list[tuple[str, str]] = []
+    for file in arquivos:
+        prefixo = f"{file.filename}: " if lote else ""
+        filename, tipo, erro = _processar_arquivo_midia(file, prefixo=prefixo)
+        if erro or not filename or not tipo:
+            return jsonify({"error": erro or "Não foi possível salvar o arquivo"}), 400
+        processados.append((filename, tipo))
+
     max_ordem = db.session.query(func.max(Propaganda.ordem)).scalar() or 0
-    item = Propaganda(arquivo=filename, tipo=tipo, ordem=max_ordem + 1, ativo=True)
+    itens: list[Propaganda] = []
+    for index, (filename, tipo) in enumerate(processados, start=1):
+        item = Propaganda(arquivo=filename, tipo=tipo, ordem=max_ordem + index, ativo=True)
+        itens.append(item)
+
     if setores:
-        _vincular_propagandas([item], setores)
-    db.session.add(item)
+        _vincular_propagandas(itens, setores)
+    db.session.add_all(itens)
     db.session.commit()
     if setores:
         notificar_tvs([setor.id for setor in setores])
-    return jsonify(item.to_dict()), 201
+
+    if len(itens) == 1:
+        return jsonify(itens[0].to_dict()), 201
+    return jsonify({"itens": [item.to_dict() for item in itens], "criadas": len(itens)}), 201
 
 
 @admin_api_bp.route("/propagandas/setores", methods=["PUT"])

@@ -10,6 +10,7 @@ from sqlalchemy import and_
 
 from backend.extensions import db
 from backend.models import Finalizado, Operador, Senha, Setor
+from backend.timezone import agora_sp
 from backend.utils import get_configuracao
 
 
@@ -19,7 +20,7 @@ DEFAULT_META_ESPERA_MIN = 10.0
 
 def _parse_dt(value: Optional[str], *, end_of_day: bool = False) -> datetime:
     if not value:
-        hoje = date.today()
+        hoje = agora_sp().date()
         if end_of_day:
             return datetime(hoje.year, hoje.month, hoje.day) + timedelta(days=1)
         return datetime(hoje.year, hoje.month, hoje.day)
@@ -107,7 +108,7 @@ def montar_analytics(
 ) -> dict[str, Any]:
     inicio = _parse_dt(from_s, end_of_day=False)
     fim = _parse_dt(to_s, end_of_day=True)
-    agora = datetime.now()
+    agora = agora_sp()
 
     if abandono_minutos is None:
         abandono_minutos = int(

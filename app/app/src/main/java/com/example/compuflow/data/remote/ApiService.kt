@@ -18,6 +18,7 @@ import com.example.compuflow.data.remote.dto.SenhaDto
 import com.example.compuflow.data.remote.dto.SetorLoginRequest
 import com.example.compuflow.data.remote.dto.SetorLoginResponse
 import com.example.compuflow.data.remote.dto.SuccessDto
+import com.example.compuflow.data.remote.dto.TvChamadasRecentesResponse
 import com.example.compuflow.data.remote.dto.TvConfigDto
 import retrofit2.http.Body
 import retrofit2.http.GET
@@ -53,6 +54,9 @@ interface ApiService {
 
     @GET("api/v1/setor/tv_config")
     suspend fun tvConfig(): TvConfigDto
+
+    @GET("api/v1/setor/tv_chamadas_recentes")
+    suspend fun tvChamadasRecentes(): TvChamadasRecentesResponse
 
     @GET("api/v1/setor/atendimento_atual")
     suspend fun atendimentoAtual(): AtendimentoAtualDto

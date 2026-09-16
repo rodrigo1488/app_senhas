@@ -14,18 +14,20 @@ manter a camada de serviço testável e livre de efeitos colaterais de rede.
 import threading
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import and_, or_
 
 from backend.extensions import db
 from backend.models import AtendimentoAtual, Finalizado, Operador, Senha, Setor
+from backend.timezone import agora_sp, inicio_fim_dia_sp, segundos_ate_proxima_meia_noite
 from backend.utils import gerar_token_unico, get_configuracao
 
 # Lock por setor para serializar "chamar próxima" e emissão de senhas
 # (evita duas senhas iguais sob concorrência no mesmo setor).
 _setor_locks: dict[int, threading.Lock] = defaultdict(threading.Lock)
+_encerrar_lock = threading.Lock()
 
 
 class FilaError(Exception):
@@ -47,13 +49,82 @@ class ChamadaResultado:
 
 
 def _inicio_fim_dia(agora: datetime) -> tuple[datetime, datetime]:
-    inicio = agora.replace(hour=0, minute=0, second=0, microsecond=0)
-    return inicio, inicio + timedelta(days=1)
+    return inicio_fim_dia_sp(agora)
+
+
+def encerrar_senhas_vencidas(agora: Optional[datetime] = None) -> list[int]:
+    """Finaliza senhas em aberto (aguardando ou em atendimento) de dias anteriores.
+
+    Usa o fuso de São Paulo. Senhas do dia corrente não são tocadas.
+    """
+    agora = agora or agora_sp()
+    inicio, _ = inicio_fim_dia_sp(agora)
+    with _encerrar_lock:
+        vencidas = (
+            Senha.query.filter(
+                Senha.status.in_(("A", "C")),
+                or_(Senha.data_hora < inicio, Senha.data_hora.is_(None)),
+            ).all()
+        )
+        if not vencidas:
+            return []
+
+        ids = [senha.id for senha in vencidas]
+        atendimentos = AtendimentoAtual.query.filter(AtendimentoAtual.senha_id.in_(ids)).all()
+        atendimento_por_senha = {atendimento.senha_id: atendimento for atendimento in atendimentos}
+        setor_ids = sorted({senha.setor_id for senha in vencidas if senha.setor_id})
+
+        for senha in vencidas:
+            senha.status = "F"
+            senha.finalizado_em = agora
+            atendimento = atendimento_por_senha.get(senha.id)
+            if atendimento:
+                db.session.add(
+                    Finalizado(
+                        senha_id=senha.id,
+                        operador_id=atendimento.operador_id,
+                        setor_id=atendimento.setor_id,
+                        avaliacao="",
+                        data_hora=agora,
+                    )
+                )
+                db.session.delete(atendimento)
+
+        db.session.commit()
+        return setor_ids
+
+
+def iniciar_rotina_virada_dia(app) -> None:
+    """No boot encerra leftovers e, à meia-noite de SP, fecha o dia de novo."""
+    if app.config.get("TESTING"):
+        return
+    from backend.extensions import socketio
+
+    socketio.start_background_task(_loop_virada_dia, app)
+
+
+def _loop_virada_dia(app) -> None:
+    from backend.extensions import socketio
+
+    while True:
+        with app.app_context():
+            try:
+                setor_ids = encerrar_senhas_vencidas()
+                if setor_ids:
+                    from backend.sockets.emitters import broadcast_posicao_fila, emit_fila_atualizada
+
+                    for setor_id in setor_ids:
+                        emit_fila_atualizada(setor_id)
+                        broadcast_posicao_fila(setor_id)
+            except Exception:
+                app.logger.exception("Falha ao encerrar senhas na virada do dia")
+            delay = segundos_ate_proxima_meia_noite()
+        socketio.sleep(delay + 2)
 
 
 def _proximo_codigo_senha(setor_id: int, tipo: str, agora: Optional[datetime] = None) -> str:
-    """Contagem crescente por setor/tipo a partir de 1; zera todo dia às 00:00."""
-    agora = agora or datetime.now()
+    """Contagem crescente por setor/tipo a partir de 1; zera todo dia às 00:00 (SP)."""
+    agora = agora or agora_sp()
     inicio, fim = _inicio_fim_dia(agora)
     prefixo = (tipo or "n")[:1].upper()
 
@@ -82,6 +153,7 @@ def _proximo_codigo_senha(setor_id: int, tipo: str, agora: Optional[datetime] = 
 
 def serializar_fila(setor_id: int, incluir_pedidos: bool = False) -> dict:
     """Monta a fila, incluindo pedidos somente para a tela Operador."""
+    encerrar_senhas_vencidas()
     pendentes = (
         Senha.query.filter_by(setor_id=setor_id, status="A")
         .order_by(Senha.tipo.desc(), Senha.id.asc())
@@ -205,7 +277,8 @@ def criar_senha(setor_id: int, tipo: str) -> Senha:
 
     lock = _setor_locks[setor_id]
     with lock:
-        agora = datetime.now()
+        encerrar_senhas_vencidas()
+        agora = agora_sp()
         codigo_senha = _proximo_codigo_senha(setor_id, tipo, agora)
         senha = Senha(
             senha=codigo_senha,
@@ -235,13 +308,14 @@ def chamar_proxima(setor_id: int, operador_id: int) -> ChamadaResultado:
 
     lock = _setor_locks[setor_id]
     with lock:
+        encerrar_senhas_vencidas()
         senha_anterior_finalizada = None
         ultimo_atendimento = (
             AtendimentoAtual.query.filter_by(setor_id=setor_id, operador_id=operador_id)
             .order_by(AtendimentoAtual.id.desc())
             .first()
         )
-        agora = datetime.now()
+        agora = agora_sp()
         if ultimo_atendimento:
             senha_anterior = Senha.query.get(ultimo_atendimento.senha_id)
             db.session.add(Finalizado(senha_id=ultimo_atendimento.senha_id, operador_id=operador_id, setor_id=setor_id, avaliacao=""))

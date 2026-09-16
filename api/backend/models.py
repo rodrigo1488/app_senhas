@@ -2,9 +2,8 @@
 (ver `migrate_db.py`), então nenhuma migração de dados é necessária: os nomes de
 tabela e coluna abaixo são idênticos aos criados pelo código antigo em `app.py`.
 """
-from datetime import datetime
-
 from backend.extensions import db
+from backend.timezone import agora_sp
 
 
 setor_propagandas = db.Table(
@@ -94,7 +93,7 @@ class Senha(db.Model):
     pedido = db.Column(db.Text)
     tem_pedido = db.Column(db.Boolean, default=False)
     pedido_confirmado = db.Column(db.Boolean, default=False)
-    data_hora = db.Column(db.DateTime, default=datetime.now)  # retirada
+    data_hora = db.Column(db.DateTime, default=agora_sp)  # retirada (horário de São Paulo)
     # Persistidos no ciclo de vida para analytics (espera = chamada_em - data_hora;
     # atendimento = finalizado_em - chamada_em). AtendimentoAtual é apagado ao
     # finalizar, então sem estes campos não há histórico de espera.
@@ -125,7 +124,7 @@ class AtendimentoAtual(db.Model):
     senha_id = db.Column(db.Integer, db.ForeignKey("senhas.id"), nullable=False)
     setor_id = db.Column(db.Integer, db.ForeignKey("setores.id"), nullable=False)
     operador_id = db.Column(db.Integer, db.ForeignKey("operadores.id"), nullable=False)
-    data_hora = db.Column(db.DateTime, default=datetime.now)
+    data_hora = db.Column(db.DateTime, default=agora_sp)
 
 
 class Finalizado(db.Model):
@@ -136,7 +135,7 @@ class Finalizado(db.Model):
     operador_id = db.Column(db.Integer, db.ForeignKey("operadores.id"), nullable=False)
     setor_id = db.Column(db.Integer, db.ForeignKey("setores.id"), nullable=False)
     avaliacao = db.Column(db.Text)
-    data_hora = db.Column(db.DateTime, default=datetime.now)
+    data_hora = db.Column(db.DateTime, default=agora_sp)
 
 
 class Configuracao(db.Model):
@@ -146,7 +145,7 @@ class Configuracao(db.Model):
     chave = db.Column(db.Text, nullable=False)
     valor = db.Column(db.Text)
     descricao = db.Column(db.Text)
-    data_atualizacao = db.Column(db.DateTime, default=datetime.now, onupdate=datetime.now)
+    data_atualizacao = db.Column(db.DateTime, default=agora_sp, onupdate=agora_sp)
 
 
 class Usuario(db.Model):
@@ -164,7 +163,7 @@ class Usuario(db.Model):
     nome = db.Column(db.Text)
     nome_empresa = db.Column(db.Text)
     papel = db.Column(db.String(20), nullable=False, default="admin")
-    criado_em = db.Column(db.DateTime, default=datetime.now)
+    criado_em = db.Column(db.DateTime, default=agora_sp)
 
     setores = db.relationship(
         "Setor",
@@ -204,7 +203,7 @@ class Propaganda(db.Model):
     tipo = db.Column(db.String(10), nullable=False, default="image")  # image | video
     ordem = db.Column(db.Integer, nullable=False, default=0)
     ativo = db.Column(db.Boolean, nullable=False, default=True)
-    criado_em = db.Column(db.DateTime, default=datetime.now)
+    criado_em = db.Column(db.DateTime, default=agora_sp)
     setores = db.relationship(
         "Setor",
         secondary=setor_propagandas,
@@ -253,10 +252,10 @@ class TvDispositivo(db.Model):
     nome = db.Column(db.Text, nullable=False)
     device_name = db.Column(db.Text)
     user_agent = db.Column(db.Text)
-    last_seen = db.Column(db.DateTime, default=datetime.now)
+    last_seen = db.Column(db.DateTime, default=agora_sp)
     is_online = db.Column(db.Boolean, nullable=False, default=False)
     setor_id = db.Column(db.Integer, db.ForeignKey("setores.id", ondelete="SET NULL"))
-    criado_em = db.Column(db.DateTime, default=datetime.now)
+    criado_em = db.Column(db.DateTime, default=agora_sp)
 
     setor = db.relationship("Setor", lazy="joined")
     propagandas = db.relationship(

@@ -323,6 +323,31 @@ class PropagandasTvTest(unittest.TestCase):
         )
         self.assertEqual(400, response.status_code)
 
+    @patch("backend.blueprints.admin_api_bp.process_propaganda_image", side_effect=["a.jpg", "b.jpg"])
+    @patch("backend.blueprints.admin_api_bp.save_propaganda_video", return_value="c.mp4")
+    def test_admin_upload_varias_midias_de_uma_vez(self, _mock_video, _mock_image):
+        client = self._admin_client()
+        response = client.post(
+            "/api/v1/admin/propagandas",
+            data={
+                "arquivo": [
+                    (io.BytesIO(b"img-a"), "a.png"),
+                    (io.BytesIO(b"img-b"), "b.png"),
+                    (io.BytesIO(b"vid"), "c.mp4"),
+                ]
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(201, response.status_code, response.get_json())
+        payload = response.get_json()
+        self.assertEqual(3, payload["criadas"])
+        self.assertEqual(["a.jpg", "b.jpg", "c.mp4"], [item["arquivo"] for item in payload["itens"]])
+        self.assertEqual(["image", "image", "video"], [item["tipo"] for item in payload["itens"]])
+
+        listed = client.get("/api/v1/admin/propagandas").get_json()
+        self.assertEqual(3, len(listed))
+        self.assertEqual([1, 2, 3], [item["ordem"] for item in listed])
+
     @patch("backend.blueprints.admin_api_bp.save_propaganda_video", return_value="promo.mp4")
     def test_admin_rejeita_video_grande(self, _mock_save):
         client = self._admin_client()

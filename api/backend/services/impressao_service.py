@@ -4,6 +4,7 @@ import io
 
 from flask import current_app
 
+from backend.timezone import agora_sp
 from backend.utils import gerar_imagem_senha, gerar_qr_code_notificacao, obter_nome_empresa
 
 
@@ -38,7 +39,7 @@ def imprimir_senha_com_ip(
     p = None
     try:
         p = Network(impressora_ip, current_app.config["IMPRESSORA_PORTA"])
-        agora = datetime.datetime.now()
+        agora = agora_sp()
 
         p.set(align="center", bold=True)
         p.text("=" * 32 + "\n")

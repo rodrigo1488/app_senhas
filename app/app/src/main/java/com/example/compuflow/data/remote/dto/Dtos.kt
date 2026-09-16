@@ -150,8 +150,27 @@ data class PropagandaImagemDto(
 @Serializable
 data class TvConfigDto(
     val propagandas_ativas: Boolean = false,
+    val layout_tv_web: String = "propaganda",
+    val setor_nome: String? = null,
     val imagens: List<PropagandaImagemDto> = emptyList(),
     val intervalo_ms: Long = 15_000,
+)
+
+@Serializable
+data class TvChamadaRecenteDto(
+    val senha_id: Int,
+    val senha: String,
+    val tipo: String = "normal",
+    val operador_id: Int? = null,
+    val operador_nome: String? = null,
+    val operador_foto: String? = null,
+    val chamada_em: String? = null,
+    val status: String = "finalizada",
+)
+
+@Serializable
+data class TvChamadasRecentesResponse(
+    val chamadas: List<TvChamadaRecenteDto> = emptyList(),
 )
 
 @Serializable

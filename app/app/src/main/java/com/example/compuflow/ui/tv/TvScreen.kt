@@ -1,7 +1,6 @@
 package com.example.compuflow.ui.tv
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,16 +10,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -37,23 +30,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
-import androidx.media3.common.MediaItem
-import androidx.media3.common.PlaybackException
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
-import androidx.media3.ui.AspectRatioFrameLayout
-import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
-import com.example.compuflow.data.remote.NetworkModule
 import com.example.compuflow.data.remote.dto.PropagandaImagemDto
-import com.example.compuflow.data.remote.dto.SenhaDto
 
-private val PreferencialPanel = Color(0xFF1A1A1A)
-private val PreferencialOnPanel = Color(0xFFF5F5F5)
+private val PreferencialPanel = Color(0xFF120B1E)
 private val NormalPanel = Color(0xFFE85D04)
-private val NormalOnPanel = Color(0xFFFFFFFF)
 
 @Composable
 fun TvScreen(viewModel: TvViewModel = viewModel()) {
@@ -67,34 +49,34 @@ fun TvScreen(viewModel: TvViewModel = viewModel()) {
         onDispose { soundPlayer.release() }
     }
 
-    Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
-        if (viewModel.showPropagandaLayout) {
-            val atual = viewModel.imagens.getOrNull(viewModel.imagemIndex)
-            PropagandaTvLayout(
+    val atual = viewModel.imagens.getOrNull(viewModel.imagemIndex)
+    val url = mediaUrl(atual?.arquivo)
+    val loop = viewModel.imagens.size <= 1
+
+    Surface(
+        color = if (viewModel.isFilaLayout) Color(0xFFE7E3DC) else Color.Black,
+        modifier = Modifier.fillMaxSize(),
+    ) {
+        if (viewModel.isFilaLayout) {
+            TvFlowLayout(
+                chamadas = viewModel.chamadas,
+                pendentes = viewModel.pendentes,
                 item = atual,
-                mediaUrl = mediaUrl(atual?.arquivo),
-                loop = viewModel.imagens.size <= 1,
+                mediaUrl = url,
+                loop = loop,
                 onEnded = viewModel::onMediaEnded,
-                preferencialSenha = viewModel.ultimaPreferencialSenha,
-                normalSenha = viewModel.ultimaNormalSenha,
             )
         } else {
-            Row(
-                modifier = Modifier.fillMaxSize().padding(32.dp),
-                horizontalArrangement = Arrangement.spacedBy(24.dp),
-            ) {
-                CurrentCallCard(
-                    senha = viewModel.ultimaChamadaSenha,
-                    operadorNome = viewModel.ultimaChamadaOperador,
-                    operadorFoto = viewModel.ultimaChamadaOperadorFoto,
-                    modifier = Modifier.weight(1.65f).fillMaxSize(),
-                )
-                QueueCard(
-                    pendentes = viewModel.pendentes,
-                    errorMessage = viewModel.errorMessage,
-                    modifier = Modifier.weight(1f).fillMaxSize(),
-                )
-            }
+            PropagandaTvLayout(
+                item = atual,
+                mediaUrl = url,
+                loop = loop,
+                onEnded = viewModel::onMediaEnded,
+                preferencialSenha = viewModel.ultimaPreferencialSenha,
+                preferencialFoto = viewModel.ultimaPreferencialFoto,
+                normalSenha = viewModel.ultimaNormalSenha,
+                normalFoto = viewModel.ultimaNormalFoto,
+            )
         }
     }
 }
@@ -106,32 +88,21 @@ private fun PropagandaTvLayout(
     loop: Boolean,
     onEnded: () -> Unit,
     preferencialSenha: String?,
+    preferencialFoto: String?,
     normalSenha: String?,
+    normalFoto: String?,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
-        Box(
+        TvMediaSlide(
+            item = item,
+            mediaUrl = mediaUrl,
+            loop = loop,
+            onEnded = onEnded,
+            emptyLabel = "Sem mídia de propaganda",
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.78f)
-                .background(Color.Black),
-            contentAlignment = Alignment.Center,
-        ) {
-            when {
-                mediaUrl == null -> Unit
-                item?.tipo == "video" -> MutedVideoPlayer(
-                    url = mediaUrl,
-                    loop = loop,
-                    onEnded = onEnded,
-                    modifier = Modifier.fillMaxSize(),
-                )
-                else -> AsyncImage(
-                    model = mediaUrl,
-                    contentDescription = "Propaganda",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-        }
+                .weight(0.78f),
+        )
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -140,15 +111,15 @@ private fun PropagandaTvLayout(
             TipoSenhaPanel(
                 titulo = "PREFERENCIAL",
                 senha = preferencialSenha,
+                foto = preferencialFoto,
                 background = PreferencialPanel,
-                foreground = PreferencialOnPanel,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
             TipoSenhaPanel(
                 titulo = "NORMAL",
                 senha = normalSenha,
+                foto = normalFoto,
                 background = NormalPanel,
-                foreground = NormalOnPanel,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
         }
@@ -159,215 +130,58 @@ private fun PropagandaTvLayout(
 private fun TipoSenhaPanel(
     titulo: String,
     senha: String?,
+    foto: String?,
     background: Color,
-    foreground: Color,
     modifier: Modifier,
 ) {
     Column(
-        modifier = modifier.background(background).padding(horizontal = 24.dp, vertical = 16.dp),
+        modifier = modifier.background(background).padding(horizontal = 24.dp, vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Text(
             text = titulo,
-            color = foreground.copy(alpha = 0.85f),
+            color = Color.White.copy(alpha = 0.90f),
             fontSize = 22.sp,
-            fontWeight = FontWeight.SemiBold,
-            letterSpacing = 2.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 3.sp,
         )
-        Text(
-            text = senha ?: "—",
-            color = foreground,
-            fontSize = if (senha == null) 48.sp else 72.sp,
-            fontWeight = FontWeight.Black,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 4.dp),
-        )
-    }
-}
-
-@Composable
-private fun CurrentCallCard(
-    senha: String?,
-    operadorNome: String?,
-    operadorFoto: String?,
-    modifier: Modifier,
-) {
-    Card(
-        modifier = modifier.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(24.dp)),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(36.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+        Row(
+            modifier = Modifier.padding(top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                val photoUrl = mediaUrl(foto)
+                if (photoUrl != null) {
+                    AsyncImage(
+                        model = photoUrl,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Icon(
+                        Icons.Filled.Person,
+                        contentDescription = null,
+                        tint = Color.White.copy(alpha = 0.80f),
+                        modifier = Modifier.size(36.dp),
+                    )
+                }
+            }
             Text(
-                text = "SENHA ATUAL",
-                color = MaterialTheme.colorScheme.primary,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.SemiBold,
-                letterSpacing = 3.sp,
-            )
-            Text(
-                text = senha ?: "Aguardando",
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = if (senha == null) 52.sp else 104.sp,
-                lineHeight = if (senha == null) 60.sp else 112.sp,
+                text = senha ?: "—",
+                color = Color.White,
+                fontSize = if (senha == null) 48.sp else 72.sp,
                 fontWeight = FontWeight.Black,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(vertical = 22.dp),
             )
-            if (operadorNome != null) {
-                OperatorCard(nome = operadorNome, foto = operadorFoto)
-            } else {
-                Text(
-                    text = "A próxima chamada aparecerá aqui",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 22.sp,
-                )
-            }
         }
     }
-}
-
-@Composable
-private fun OperatorCard(nome: String, foto: String?) {
-    Row(
-        modifier = Modifier
-            .clip(RoundedCornerShape(18.dp))
-            .background(MaterialTheme.colorScheme.secondary)
-            .padding(horizontal = 20.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier.size(64.dp).clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surface)
-                .border(2.dp, MaterialTheme.colorScheme.primary, CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            val photoUrl = mediaUrl(foto)
-            if (photoUrl != null) {
-                AsyncImage(
-                    model = photoUrl,
-                    contentDescription = "Foto de $nome",
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                Icon(
-                    Icons.Filled.Person,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(36.dp),
-                )
-            }
-        }
-        Column(modifier = Modifier.padding(start = 16.dp)) {
-            Text("DIRIJA-SE A", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-            Text(nome, color = MaterialTheme.colorScheme.onSurface, fontSize = 27.sp, fontWeight = FontWeight.Bold)
-        }
-    }
-}
-
-@Composable
-private fun QueueCard(pendentes: List<SenhaDto>, errorMessage: String?, modifier: Modifier) {
-    Card(
-        modifier = modifier.border(1.dp, MaterialTheme.colorScheme.outline, RoundedCornerShape(24.dp)),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-    ) {
-        Column(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-            Text("FILA DE ESPERA", color = MaterialTheme.colorScheme.onSurface, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            Text(
-                "${pendentes.size} ${if (pendentes.size == 1) "senha aguardando" else "senhas aguardando"}",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 18.sp,
-                modifier = Modifier.padding(top = 4.dp, bottom = 18.dp),
-            )
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                items(pendentes, key = { it.id }) { senha -> QueueRow(senha) }
-            }
-            errorMessage?.let {
-                Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 12.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun QueueRow(senha: SenhaDto) {
-    val preferential = senha.tipo == "preferencial"
-    Row(
-        modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp))
-            .background(MaterialTheme.colorScheme.secondary)
-            .padding(horizontal = 18.dp, vertical = 14.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(senha.senha, color = MaterialTheme.colorScheme.onSurface, fontSize = 27.sp, fontWeight = FontWeight.Bold)
-        Text(
-            text = if (preferential) "PREFERENCIAL" else "NORMAL",
-            color = if (preferential) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Bold,
-        )
-    }
-}
-
-private fun mediaUrl(path: String?): String? {
-    val value = path?.trim()?.takeIf { it.isNotEmpty() } ?: return null
-    if (value.startsWith("http://") || value.startsWith("https://")) return value
-    val normalized = value.trimStart('/').removePrefix("uploads/")
-    return "${NetworkModule.currentHttpBaseUrl().trimEnd('/')}/uploads/$normalized"
-}
-
-@Composable
-private fun MutedVideoPlayer(
-    url: String,
-    loop: Boolean,
-    onEnded: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    val context = LocalContext.current
-    val exoPlayer = remember(url, loop) {
-        ExoPlayer.Builder(context).build().apply {
-            setMediaItem(MediaItem.fromUri(url))
-            volume = 0f
-            repeatMode = if (loop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
-            playWhenReady = true
-            prepare()
-        }
-    }
-    DisposableEffect(exoPlayer) {
-        val listener = object : Player.Listener {
-            override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED && !loop) onEnded()
-            }
-
-            override fun onPlayerError(error: PlaybackException) {
-                onEnded()
-            }
-        }
-        exoPlayer.addListener(listener)
-        onDispose {
-            exoPlayer.removeListener(listener)
-            exoPlayer.release()
-        }
-    }
-    AndroidView(
-        factory = { ctx ->
-            PlayerView(ctx).apply {
-                useController = false
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-            }
-        },
-        update = { view -> view.player = exoPlayer },
-        modifier = modifier,
-    )
 }

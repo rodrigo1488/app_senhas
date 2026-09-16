@@ -8,6 +8,7 @@ from typing import Any, Optional
 from backend.extensions import db
 from backend.models import AtendimentoAtual, Finalizado, Operador, Senha, Setor
 from backend.services.fila_service import serializar_fila
+from backend.timezone import agora_sp
 from backend.utils import get_configuracao
 
 
@@ -99,7 +100,7 @@ def montar_fila_ao_vivo(setor_id: int) -> dict[str, Any]:
     if not setor:
         raise ValueError("Setor não encontrado")
 
-    agora = datetime.now()
+    agora = agora_sp()
     inicio_hora = agora - timedelta(hours=1)
     inicio_dia = datetime(agora.year, agora.month, agora.day)
     abandono_minutos = int(get_configuracao("abandono_minutos") or 30)

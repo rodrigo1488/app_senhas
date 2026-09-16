@@ -18,6 +18,7 @@ sealed class SocketEvent {
     data class SenhaChamada(
         val setorId: Int?,
         val ticketToken: String?,
+        val senhaId: Int?,
         val senha: String,
         val tipo: String?,
         val operadorId: Int?,
@@ -57,6 +58,7 @@ sealed class SocketEvent {
 
     data class TvConfigAtualizada(
         val propagandasAtivas: Boolean,
+        val layoutTvWeb: String,
         val imagens: List<PropagandaImagemDto>,
         val intervaloMs: Long,
     ) : SocketEvent()

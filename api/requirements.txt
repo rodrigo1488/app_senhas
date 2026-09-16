@@ -26,6 +26,9 @@ python-escpos==3.1
 # Variáveis de ambiente
 python-dotenv>=1.0.0
 
+# Fuso America/Sao_Paulo via zoneinfo (fallback se o SO não tiver tzdata)
+tzdata>=2025.1
+
 # QR Code
 qrcode==8.0
 
