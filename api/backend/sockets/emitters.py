@@ -136,15 +136,16 @@ def emit_tv_config_atualizada(setor_id: int, payload: dict) -> None:
 
 
 def emit_avaliacao_solicitada(setor_id: int, operador_id: int, operador_nome: str, operador_foto: str | None, senha_id: int, senha_codigo: str) -> None:
-    socketio.emit(
-        EV_AVALIACAO_SOLICITADA,
-        {
-            "setor_id": setor_id,
-            "operador_id": operador_id,
-            "operador_nome": operador_nome,
-            "operador_foto": operador_foto,
-            "senha_id": senha_id,
-            "senha": senha_codigo,
-        },
-        room=room_avaliacao(setor_id, operador_id),
-    )
+    payload = {
+        "setor_id": setor_id,
+        "operador_id": operador_id,
+        "operador_nome": operador_nome,
+        "operador_foto": operador_foto,
+        "senha_id": senha_id,
+        "senha": senha_codigo,
+    }
+    from backend.sockets.events import room_avaliacao_setor
+
+    # Tablet ligado a um operador específico (legado) + tablet do setor (app novo).
+    socketio.emit(EV_AVALIACAO_SOLICITADA, payload, room=room_avaliacao(setor_id, operador_id))
+    socketio.emit(EV_AVALIACAO_SOLICITADA, payload, room=room_avaliacao_setor(setor_id))

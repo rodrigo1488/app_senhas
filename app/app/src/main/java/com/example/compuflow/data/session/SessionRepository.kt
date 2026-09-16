@@ -26,6 +26,8 @@ class SessionRepository(private val context: Context) {
         val PAPEL = stringPreferencesKey("papel")
         val OPERADOR_ID = stringPreferencesKey("operador_id")
         val OPERADOR_NOME = stringPreferencesKey("operador_nome")
+        val DEVICE_ID = stringPreferencesKey("device_id")
+        val AVALIACAO_IDLE_MODO = stringPreferencesKey("avaliacao_idle_modo")
     }
 
     val serverUrlFlow: Flow<String?> = context.sessionDataStore.data.map { it[Keys.SERVER_URL] }
@@ -41,6 +43,23 @@ class SessionRepository(private val context: Context) {
     suspend fun getOperadorId(): Int? = operadorIdFlow.first()?.toIntOrNull()
     suspend fun getOperadorNome(): String? = operadorNomeFlow.first()
     suspend fun getSetorNome(): String? = setorNomeFlow.first()
+
+    /** ID estável deste aparelho — reusa a mesma TV de propagandas ao reconectar. */
+    suspend fun getOrCreateDeviceId(): String {
+        val existing = context.sessionDataStore.data.map { it[Keys.DEVICE_ID] }.first()
+        if (!existing.isNullOrBlank()) return existing
+        val created = java.util.UUID.randomUUID().toString()
+        context.sessionDataStore.edit { it[Keys.DEVICE_ID] = created }
+        return created
+    }
+
+    /** Idle da avaliação: "propaganda" (carrossel) ou "estatica" (1ª imagem / fundo). */
+    suspend fun getAvaliacaoIdleModo(): String =
+        context.sessionDataStore.data.map { it[Keys.AVALIACAO_IDLE_MODO] }.first() ?: "propaganda"
+
+    suspend fun saveAvaliacaoIdleModo(modo: String) {
+        context.sessionDataStore.edit { it[Keys.AVALIACAO_IDLE_MODO] = modo }
+    }
 
     suspend fun saveServerUrl(url: String) {
         context.sessionDataStore.edit { it[Keys.SERVER_URL] = url }

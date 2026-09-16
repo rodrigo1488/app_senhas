@@ -4,6 +4,7 @@ import android.util.Log
 import com.example.compuflow.data.remote.dto.AtendimentoDto
 import com.example.compuflow.data.remote.dto.PropagandaImagemDto
 import com.example.compuflow.data.remote.dto.SenhaDto
+import com.example.compuflow.data.remote.dto.StreamingQueueItemDto
 import io.socket.client.IO
 import io.socket.client.Socket
 import io.socket.emitter.Emitter
@@ -81,6 +82,15 @@ object SocketManager {
                     layoutTvWeb = obj.optString("layout_tv_web", "propaganda").ifBlank { "propaganda" },
                     imagens = obj.optJSONArray("imagens").toPropagandaList(),
                     intervaloMs = obj.optLong("intervalo_ms", 15_000L).coerceAtLeast(1_000L),
+                )
+            )
+        })
+
+        newSocket.on(SocketEvents.QUEUE_UPDATED, listener { args ->
+            val obj = args.jsonObjectOrNull(0) ?: return@listener
+            _events.tryEmit(
+                SocketEvent.QueueUpdated(
+                    queue = obj.optJSONArray("queue").toStreamingQueueList(),
                 )
             )
         })
@@ -253,6 +263,19 @@ private fun JSONArray?.toPropagandaList(): List<PropagandaImagemDto> {
             arquivo = obj.optString("arquivo"),
             ordem = obj.optInt("ordem"),
             tipo = obj.optString("tipo", "image").ifBlank { "image" },
+        )
+    }
+}
+
+private fun JSONArray?.toStreamingQueueList(): List<StreamingQueueItemDto> {
+    if (this == null) return emptyList()
+    return (0 until length()).map { i ->
+        val obj = optJSONObject(i) ?: JSONObject()
+        StreamingQueueItemDto(
+            path = obj.optString("path"),
+            type = obj.optString("type", "image").ifBlank { "image" },
+            order = obj.optInt("order"),
+            duration = obj.optLong("duration", 15_000L).coerceAtLeast(1_000L),
         )
     }
 }

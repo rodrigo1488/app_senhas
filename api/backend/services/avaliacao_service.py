@@ -17,11 +17,29 @@ def buscar_avaliacao_pendente(setor_id: int, operador_id: int) -> dict | None:
     )
     if not finalizado:
         return None
+    return _serializar_pendente(finalizado)
+
+
+def buscar_avaliacao_pendente_setor(setor_id: int) -> dict | None:
+    """Qualquer atendimento finalizado sem nota no setor (tablet de avaliação)."""
+    finalizado = (
+        Finalizado.query.filter_by(setor_id=setor_id)
+        .filter((Finalizado.avaliacao.is_(None)) | (Finalizado.avaliacao == ""))
+        .order_by(Finalizado.id.desc())
+        .first()
+    )
+    if not finalizado:
+        return None
+    return _serializar_pendente(finalizado)
+
+
+def _serializar_pendente(finalizado: Finalizado) -> dict:
     senha = Senha.query.get(finalizado.senha_id)
-    operador = Operador.query.get(operador_id)
+    operador = Operador.query.get(finalizado.operador_id)
     return {
         "senha_id": finalizado.senha_id,
         "senha": senha.senha if senha else None,
+        "operador_id": finalizado.operador_id,
         "operador_nome": operador.nome if operador else None,
         "operador_foto": operador.foto_perfil if operador else None,
     }

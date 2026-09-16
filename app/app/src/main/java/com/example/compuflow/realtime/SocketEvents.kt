@@ -16,6 +16,7 @@ object SocketEvents {
     const val AVALIACAO_SOLICITADA = "avaliacao:solicitada"
     const val AUTH_ERRO = "auth:erro"
     const val TV_CONFIG_ATUALIZADA = "tv:config_atualizada"
+    const val QUEUE_UPDATED = "queue_updated"
 
     // Cliente -> servidor
     const val OPERADOR_CHAMAR_PROXIMA = "operador:chamar_proxima"

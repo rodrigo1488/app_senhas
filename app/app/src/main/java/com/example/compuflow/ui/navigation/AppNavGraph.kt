@@ -27,6 +27,7 @@ import com.example.compuflow.ui.login.LoginScreen
 import com.example.compuflow.ui.modo.SelecionarModoScreen
 import com.example.compuflow.ui.operador.IdentificarOperadorScreen
 import com.example.compuflow.ui.operador.OperadorScreen
+import com.example.compuflow.ui.streaming.StreamingTvScreen
 import com.example.compuflow.ui.tv.TvScreen
 import kotlinx.coroutines.launch
 
@@ -104,10 +105,13 @@ fun AppNavGraph() {
                     navController.navigate(Routes.OPERADOR) { popUpTo(Routes.MODO) { inclusive = true } }
                 },
                 onSelecionarAvaliacao = {
-                    navController.navigate(Routes.identificarOperador(Routes.FINALIDADE_AVALIACAO))
+                    navController.navigate(Routes.AVALIACAO) { popUpTo(Routes.MODO) { inclusive = true } }
                 },
                 onSelecionarTv = {
                     navController.navigate(Routes.TV) { popUpTo(Routes.MODO) { inclusive = true } }
+                },
+                onSelecionarTvPropagandas = {
+                    navController.navigate(Routes.TV_STREAMING) { popUpTo(Routes.MODO) { inclusive = true } }
                 },
                 onTrocarSetor = ::trocarSetor,
             )
@@ -151,6 +155,11 @@ fun AppNavGraph() {
                 TvScreen()
             }
         }
+        composable(Routes.TV_STREAMING) {
+            SoftKioskHost(onExitToModeSelection = ::voltarAoMenuSelecao) {
+                StreamingTvScreen()
+            }
+        }
     }
 }
 
@@ -159,6 +168,7 @@ private fun rotaDoPapel(papel: Papel): String = when (papel) {
     Papel.OPERADOR -> Routes.OPERADOR
     Papel.AVALIACAO -> Routes.AVALIACAO
     Papel.TV -> Routes.TV
+    Papel.STREAMING -> Routes.TV_STREAMING
 }
 
 @Composable

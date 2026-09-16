@@ -17,6 +17,9 @@ import com.example.compuflow.data.remote.dto.SelecionarPapelResponse
 import com.example.compuflow.data.remote.dto.SenhaDto
 import com.example.compuflow.data.remote.dto.SetorLoginRequest
 import com.example.compuflow.data.remote.dto.SetorLoginResponse
+import com.example.compuflow.data.remote.dto.StreamingEntrarRequest
+import com.example.compuflow.data.remote.dto.StreamingEntrarResponse
+import com.example.compuflow.data.remote.dto.StreamingFilaResponse
 import com.example.compuflow.data.remote.dto.SuccessDto
 import com.example.compuflow.data.remote.dto.TvChamadasRecentesResponse
 import com.example.compuflow.data.remote.dto.TvConfigDto
@@ -57,6 +60,12 @@ interface ApiService {
 
     @GET("api/v1/setor/tv_chamadas_recentes")
     suspend fun tvChamadasRecentes(): TvChamadasRecentesResponse
+
+    @POST("api/v1/setor/tv_streaming/entrar")
+    suspend fun tvStreamingEntrar(@Body body: StreamingEntrarRequest): StreamingEntrarResponse
+
+    @GET("api/v1/setor/tv_streaming/fila")
+    suspend fun tvStreamingFila(): StreamingFilaResponse
 
     @GET("api/v1/setor/atendimento_atual")
     suspend fun atendimentoAtual(): AtendimentoAtualDto

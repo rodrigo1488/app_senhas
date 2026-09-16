@@ -137,6 +137,64 @@ def esta_online(chave: str) -> bool:
     return chave in connected_by_chave
 
 
+def chave_apk(device_id: str) -> str:
+    return f"apk:{(device_id or '').strip()}"
+
+
+def proximo_nome_streaming_setor(setor_nome: str) -> str:
+    """Primeira TV = nome do setor; seguintes = '2 Nome', '3 Nome', …"""
+    base = (setor_nome or "").strip() or "TV"
+    nomes = {
+        (d.nome or "").strip()
+        for d in TvDispositivo.query.filter_by(tipo="streaming").all()
+        if d.nome
+    }
+    if base not in nomes:
+        return base
+    n = 2
+    while f"{n} {base}" in nomes:
+        n += 1
+    return f"{n} {base}"
+
+
+def registrar_streaming_apk(
+    *,
+    device_id: str,
+    setor: Setor,
+    device_name: str = "Android",
+    user_agent: str = "",
+    sid: str | None = None,
+) -> TvDispositivo:
+    """Registra/reconecta TV de propagandas criada pelo app (sem /smart|/legacy)."""
+    chave = chave_apk(device_id)
+    if not device_id.strip():
+        raise ValueError("device_id é obrigatório")
+
+    dispositivo = TvDispositivo.query.filter_by(chave=chave).first()
+    if dispositivo:
+        dispositivo.tipo = "streaming"
+        dispositivo.setor_id = setor.id
+        dispositivo.device_name = device_name
+        dispositivo.user_agent = user_agent
+        dispositivo.last_seen = datetime.now()
+        dispositivo.is_online = True
+        db.session.commit()
+        marcar_online(chave, sid)
+        return dispositivo
+
+    nome = proximo_nome_streaming_setor(setor.nome)
+    dispositivo = registrar_streaming(
+        ip_address=chave,
+        device_name=device_name,
+        user_agent=user_agent,
+        nome=nome,
+        sid=sid,
+    )
+    dispositivo.setor_id = setor.id
+    db.session.commit()
+    return dispositivo
+
+
 def registrar_streaming(
     *,
     ip_address: str,

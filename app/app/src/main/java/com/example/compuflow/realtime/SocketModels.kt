@@ -3,6 +3,7 @@ package com.example.compuflow.realtime
 import com.example.compuflow.data.remote.dto.AtendimentoDto
 import com.example.compuflow.data.remote.dto.PropagandaImagemDto
 import com.example.compuflow.data.remote.dto.SenhaDto
+import com.example.compuflow.data.remote.dto.StreamingQueueItemDto
 
 /** Eventos recebidos do servidor, já convertidos para tipos Kotlin —
  * espelham `documentacao/REALTIME_PROTOCOL.md` §3. */
@@ -61,6 +62,10 @@ sealed class SocketEvent {
         val layoutTvWeb: String,
         val imagens: List<PropagandaImagemDto>,
         val intervaloMs: Long,
+    ) : SocketEvent()
+
+    data class QueueUpdated(
+        val queue: List<StreamingQueueItemDto>,
     ) : SocketEvent()
 
     data class AuthErro(val mensagem: String?) : SocketEvent()

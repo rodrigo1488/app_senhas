@@ -11,6 +11,7 @@ object Routes {
     const val OPERADOR = "operador"
     const val AVALIACAO = "avaliacao"
     const val TV = "tv"
+    const val TV_STREAMING = "tv_streaming"
 
     fun identificarOperador(finalidade: String) = "identificar_operador/$finalidade"
 

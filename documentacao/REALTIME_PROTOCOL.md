@@ -30,7 +30,8 @@ confirmação depois de receber um evento.
   `backend/sockets/handlers.py`) **no `connect`** e já coloca o socket nas rooms
   adequadas:
   - `session_token` → entra em `setor:<setor_id>` (e em
-    `avaliacao:<setor_id>:<operador_id>` se o papel for "avaliacao").
+    `avaliacao:<setor_id>` se o papel for "avaliacao"; e também
+    `avaliacao:<setor_id>:<operador_id>` quando o token traz operador).
   - `ticket_token` → entra em `ticket:<ticket_token>` e recebe imediatamente
     um `senha:posicao` com o estado atual daquela senha. É o mecanismo usado
     pela página pública `notificacao.html` (acessada via QR Code impresso na
@@ -48,7 +49,8 @@ confirmação depois de receber um evento.
 |---|---|---|
 | `setor:<setor_id>` | Operador, TV, Cliente (enquanto aguarda), Admin | Estado da fila do setor: lista de pendentes, atendimentos em curso, chamadas |
 | `ticket:<ticket_token>` | O cliente daquela senha específica (app ou navegador via QR) | Posição na fila, chamada, status do pedido, avaliação daquele ticket |
-| `avaliacao:<setor_id>:<operador_id>` | Tela de Avaliação daquele operador | Avisa quando uma nova avaliação está pendente para aquele operador |
+| `avaliacao:<setor_id>` | Tablet de Avaliação do setor (idle com mídia) | Qualquer atendimento finalizado pede nota |
+| `avaliacao:<setor_id>:<operador_id>` | Tela de Avaliação ligada a um operador (legado) | Avisa quando uma nova avaliação está pendente para aquele operador |
 
 Um mesmo socket pode estar em mais de uma room (ex.: operador está em
 `setor:<id>` e a TV também).
@@ -97,7 +99,7 @@ Emitido sempre que uma senha é criada, chamada ou finalizada.
 {"ticket_token": "uuid", "pedido": "2x café", "status": "preparando", "mensagem": "Pedido sendo preparado"}
 ```
 
-### `avaliacao:solicitada` (room `avaliacao:<setor_id>:<operador_id>`)
+### `avaliacao:solicitada` (rooms `avaliacao:<setor_id>` e `avaliacao:<setor_id>:<operador_id>`)
 ```json
 {"setor_id": 1, "operador_id": 3, "operador_nome": "Ana", "operador_foto": "uuid.jpg", "senha_id": 10, "senha": "N0001"}
 ```

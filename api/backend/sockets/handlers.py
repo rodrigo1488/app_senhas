@@ -86,8 +86,22 @@ def handle_connect(auth=None):
     session["setor_id"] = payload.get("setor_id")
     session["role"] = payload.get("role")
     session["operador_id"] = payload.get("operador_id")
+    session["tv_chave"] = payload.get("tv_chave")
 
     setor_id = payload.get("setor_id")
+    if payload.get("role") == "streaming":
+        tv_chave = payload.get("tv_chave")
+        if tv_chave:
+            from backend.models import TvDispositivo
+            from backend.services.streaming_service import fila_streaming, marcar_online
+
+            join_room(tv_chave)
+            marcar_online(tv_chave, request.sid)
+            dispositivo = TvDispositivo.query.filter_by(chave=tv_chave).first()
+            if dispositivo:
+                emit("queue_updated", {"queue": fila_streaming(dispositivo)})
+        return True
+
     if setor_id:
         if payload.get("role") == "operador":
             join_room(room_operadores(setor_id))
@@ -103,10 +117,13 @@ def handle_connect(auth=None):
     if payload.get("role") == "operador" and payload.get("operador_id"):
         join_room(room_operador(setor_id, payload["operador_id"]))
 
-    if payload.get("role") == "avaliacao" and payload.get("operador_id"):
-        from backend.sockets.events import room_avaliacao
+    if payload.get("role") == "avaliacao":
+        from backend.sockets.events import room_avaliacao, room_avaliacao_setor
 
-        join_room(room_avaliacao(setor_id, payload["operador_id"]))
+        if setor_id:
+            join_room(room_avaliacao_setor(setor_id))
+        if payload.get("operador_id") and setor_id:
+            join_room(room_avaliacao(setor_id, payload["operador_id"]))
 
     return True
 

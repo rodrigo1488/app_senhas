@@ -38,3 +38,8 @@ def room_operadores(setor_id: int) -> str:
 
 def room_avaliacao(setor_id: int, operador_id: int) -> str:
     return f"avaliacao:{setor_id}:{operador_id}"
+
+
+def room_avaliacao_setor(setor_id: int) -> str:
+    """Tablet de avaliação do setor (idle com mídia; recebe qualquer finalização)."""
+    return f"avaliacao:{setor_id}"

@@ -20,13 +20,11 @@ import androidx.compose.material.icons.filled.StarOutline
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -39,69 +37,155 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.compuflow.data.remote.NetworkModule
 import com.example.compuflow.ui.theme.AzulAvaliacaoCard
 import com.example.compuflow.ui.theme.CinzaEstrelaVazia
 import com.example.compuflow.ui.theme.DouradoEstrela
-import com.example.compuflow.ui.theme.IndigoApp
+import com.example.compuflow.ui.tv.TvMediaSlide
+import com.example.compuflow.ui.tv.mediaUrl
 
-/** Réplica visual de `templates/avaliacao.html`: card azulado com foto do
- * operador e as mesmas 5 estrelas douradas para avaliar o atendimento. */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AvaliacaoScreen(viewModel: AvaliacaoViewModel = viewModel()) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Avaliação de Atendimento", fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = IndigoApp, titleContentColor = Color.White),
-            )
-        },
-    ) { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        when {
+            viewModel.isLoading -> {
+                CircularProgressIndicator(
+                    color = Color.White,
+                    modifier = Modifier.align(Alignment.Center),
+                )
+            }
+            viewModel.fase == AvaliacaoFase.RATING -> {
+                RatingOverlay(viewModel)
+            }
+            viewModel.fase == AvaliacaoFase.THANKS -> {
+                ThanksOverlay()
+            }
+            else -> {
+                IdleMediaLayer(viewModel)
+            }
+        }
+    }
+}
+
+@Composable
+private fun IdleMediaLayer(viewModel: AvaliacaoViewModel) {
+    Box(modifier = Modifier.fillMaxSize()) {
+        val item = viewModel.currentIdleItem
+        TvMediaSlide(
+            item = item,
+            mediaUrl = mediaUrl(item?.arquivo),
+            loop = viewModel.idleModo == "estatica",
+            onEnded = { viewModel.onIdleMediaEnded() },
+            emptyLabel = "Aguardando avaliação…\nConfigure mídias do setor no admin",
+            modifier = Modifier.fillMaxSize(),
+        )
+
+        // Seletor discreto no rodapé (toques repetidos do kiosk ainda permitem sair).
+        Surface(
+            color = Color.Black.copy(alpha = 0.45f),
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth(),
         ) {
-            when {
-                viewModel.isLoading -> CircularProgressIndicator(color = IndigoApp)
-                viewModel.enviado -> {
-                    Icon(Icons.Filled.CheckCircle, contentDescription = null, tint = Color(0xFF28A745), modifier = Modifier.size(64.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = { viewModel.definirIdleModo("propaganda") }) {
                     Text(
-                        "Obrigado pela avaliação!",
-                        style = MaterialTheme.typography.headlineSmall,
-                        fontWeight = FontWeight.Bold,
+                        text = "Propagandas",
+                        color = if (viewModel.idleModo == "propaganda") Color.White else Color.White.copy(alpha = 0.5f),
+                        fontWeight = if (viewModel.idleModo == "propaganda") FontWeight.Bold else FontWeight.Normal,
+                    )
+                }
+                TextButton(onClick = { viewModel.definirIdleModo("estatica") }) {
+                    Text(
+                        text = "Imagem estática",
+                        color = if (viewModel.idleModo == "estatica") Color.White else Color.White.copy(alpha = 0.5f),
+                        fontWeight = if (viewModel.idleModo == "estatica") FontWeight.Bold else FontWeight.Normal,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RatingOverlay(viewModel: AvaliacaoViewModel) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xCC0B1220)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Card(
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = Color.White),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(28.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Text(
+                    text = "Como foi o atendimento da senha ${viewModel.senha ?: ""}?",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    color = Color(0xFF222222),
+                )
+                if (viewModel.operadorNome != null) {
+                    OperadorCardAvaliacao(
+                        nome = viewModel.operadorNome!!,
+                        foto = viewModel.operadorFoto,
+                    )
+                }
+                EstrelasAvaliacao(onSelecionar = { nota -> viewModel.enviarAvaliacao(nota) })
+                viewModel.errorMessage?.let {
+                    Text(
+                        it,
+                        color = MaterialTheme.colorScheme.error,
                         modifier = Modifier.padding(top = 16.dp),
-                    )
-                }
-                viewModel.senhaId == null -> {
-                    Text(
-                        "Nenhum atendimento pendente de avaliação.",
-                        style = MaterialTheme.typography.titleMedium,
                         textAlign = TextAlign.Center,
                     )
                 }
-                else -> {
-                    Text(
-                        text = "Como foi o atendimento da senha ${viewModel.senha ?: ""}?",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        textAlign = TextAlign.Center,
-                    )
-
-                    if (viewModel.operadorNome != null) {
-                        OperadorCardAvaliacao(nome = viewModel.operadorNome!!, foto = viewModel.operadorFoto)
-                    }
-
-                    EstrelasAvaliacao(onSelecionar = { nota -> viewModel.enviarAvaliacao(nota) })
-                }
             }
+        }
+    }
+}
 
-            viewModel.errorMessage?.let {
-                Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 16.dp))
-            }
+@Composable
+private fun ThanksOverlay() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xCC0B1220)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(
+                Icons.Filled.CheckCircle,
+                contentDescription = null,
+                tint = Color(0xFF28A745),
+                modifier = Modifier.size(88.dp),
+            )
+            Text(
+                "Obrigado pela avaliação!",
+                color = Color.White,
+                fontSize = 28.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.padding(top = 16.dp),
+            )
         }
     }
 }
@@ -127,7 +211,7 @@ private fun OperadorCardAvaliacao(nome: String, foto: String?) {
             ) {
                 if (foto != null) {
                     AsyncImage(
-                        model = "${NetworkModule.currentHttpBaseUrl()}uploads/$foto",
+                        model = "${NetworkModule.currentHttpBaseUrl().trimEnd('/')}/uploads/$foto",
                         contentDescription = nome,
                         modifier = Modifier.size(56.dp).clip(CircleShape),
                     )
@@ -158,7 +242,7 @@ private fun EstrelasAvaliacao(onSelecionar: (Int) -> Unit) {
                 contentDescription = "$nota estrelas",
                 tint = if (preenchida) DouradoEstrela else CinzaEstrelaVazia,
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(56.dp)
                     .padding(4.dp)
                     .clickable {
                         notaSelecionada = nota

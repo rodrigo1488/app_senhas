@@ -524,6 +524,50 @@ class PropagandasTvTest(unittest.TestCase):
         streaming_tv = next(tv for tv in listed if tv["tipo"] == "streaming")
         self.assertEqual([p2_id], streaming_tv["propaganda_ids"])
 
+    def test_apk_tv_streaming_nome_automatico_e_reconexao(self):
+        client = self.app.test_client()
+        generic = self._token("generic")
+
+        first = client.post(
+            "/api/v1/setor/tv_streaming/entrar",
+            headers={"Authorization": f"Bearer {generic}"},
+            json={"device_id": "tablet-a", "device_name": "Android"},
+        )
+        self.assertEqual(200, first.status_code, first.get_json())
+        body = first.get_json()
+        self.assertEqual("Balcão", body["dispositivo"]["nome"])
+        self.assertEqual("apk:tablet-a", body["dispositivo"]["chave"])
+        self.assertTrue(body["session_token"])
+
+        second_device = client.post(
+            "/api/v1/setor/tv_streaming/entrar",
+            headers={"Authorization": f"Bearer {generic}"},
+            json={"device_id": "tablet-b", "device_name": "Android"},
+        )
+        self.assertEqual(200, second_device.status_code, second_device.get_json())
+        self.assertEqual("2 Balcão", second_device.get_json()["dispositivo"]["nome"])
+
+        again = client.post(
+            "/api/v1/setor/tv_streaming/entrar",
+            headers={"Authorization": f"Bearer {generic}"},
+            json={"device_id": "tablet-a", "device_name": "Android"},
+        )
+        self.assertEqual(200, again.status_code, again.get_json())
+        self.assertEqual("Balcão", again.get_json()["dispositivo"]["nome"])
+        self.assertEqual(
+            first.get_json()["dispositivo"]["id"],
+            again.get_json()["dispositivo"]["id"],
+        )
+
+        streaming_token = again.get_json()["session_token"]
+        fila = client.get(
+            "/api/v1/setor/tv_streaming/fila",
+            headers={"Authorization": f"Bearer {streaming_token}"},
+        )
+        self.assertEqual(200, fila.status_code, fila.get_json())
+        self.assertEqual("Balcão", fila.get_json()["dispositivo"]["nome"])
+        self.assertEqual([], fila.get_json()["queue"])
+
 
 if __name__ == "__main__":
     unittest.main()

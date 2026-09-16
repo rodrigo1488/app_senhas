@@ -92,6 +92,7 @@ data class PosicaoDto(
 data class AvaliacaoPendenteDto(
     val senha_id: Int? = null,
     val senha: String? = null,
+    val operador_id: Int? = null,
     val operador_nome: String? = null,
     val operador_foto: String? = null,
 )
@@ -174,6 +175,47 @@ data class TvChamadasRecentesResponse(
 )
 
 @Serializable
+data class StreamingQueueItemDto(
+    val path: String,
+    val type: String = "image",
+    val order: Int = 0,
+    val duration: Long = 15_000,
+)
+
+@Serializable
+data class StreamingDispositivoDto(
+    val id: Int,
+    val tipo: String = "streaming",
+    val chave: String = "",
+    val nome: String = "",
+    val device_name: String = "",
+    val is_online: Boolean = false,
+    val setor_id: Int? = null,
+    val propaganda_ids: List<Int> = emptyList(),
+)
+
+@Serializable
+data class StreamingEntrarRequest(
+    val device_id: String,
+    val device_name: String = "Android",
+)
+
+@Serializable
+data class StreamingEntrarResponse(
+    val session_token: String,
+    val dispositivo: StreamingDispositivoDto,
+    val queue: List<StreamingQueueItemDto> = emptyList(),
+    val intervalo_ms: Long = 15_000,
+)
+
+@Serializable
+data class StreamingFilaResponse(
+    val dispositivo: StreamingDispositivoDto? = null,
+    val queue: List<StreamingQueueItemDto> = emptyList(),
+    val intervalo_ms: Long = 15_000,
+)
+
+@Serializable
 data class CriarSenhaRequest(val tipo: String)
 
 @Serializable
@@ -197,4 +239,5 @@ enum class Papel(val valor: String) {
     OPERADOR("operador"),
     AVALIACAO("avaliacao"),
     TV("tv"),
+    STREAMING("streaming"),
 }

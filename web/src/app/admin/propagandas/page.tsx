@@ -136,8 +136,9 @@ export default function PropagandasPage() {
       <div>
         <h1 className="text-2xl font-bold">Mídias e TVs</h1>
         <p className="text-muted-foreground">
-          Suba a biblioteca e clique na TV para escolher o que aparece nela. TVs de streaming
-          surgem sozinhas ao abrir <code>/smart</code> ou <code>/legacy</code>.
+          Suba a biblioteca e clique na TV para escolher o que aparece nela. TVs de
+          propagandas do app aparecem ao abrir <strong>TV DE PROPAGANDAS</strong> no
+          setor (<code>/smart</code> e <code>/legacy</code> continuam válidos).
         </p>
       </div>
 
@@ -192,7 +193,7 @@ export default function PropagandasPage() {
 
       <TvGroup
         title="TVs de streaming"
-        empty="Nenhuma TV de streaming conectada. Abra http://IP:5000/smart ou /legacy na TV para registrá-la."
+        empty="Nenhuma TV de streaming conectada. No app, entre no setor e abra TV DE PROPAGANDAS (ou use /smart|/legacy na TV antiga)."
         tvs={streaming}
         onSelect={abrirTv}
       />

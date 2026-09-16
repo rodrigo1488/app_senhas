@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.SupportAgent
@@ -39,6 +40,7 @@ import com.example.compuflow.ui.theme.FundoModoClaroInicio
 import com.example.compuflow.ui.theme.GradienteAvaliacao
 import com.example.compuflow.ui.theme.GradienteCliente
 import com.example.compuflow.ui.theme.GradienteOperador
+import com.example.compuflow.ui.theme.GradienteStreaming
 import com.example.compuflow.ui.theme.GradienteTv
 
 /**
@@ -53,6 +55,7 @@ fun SelecionarModoScreen(
     onSelecionarOperador: () -> Unit,
     onSelecionarAvaliacao: () -> Unit,
     onSelecionarTv: () -> Unit,
+    onSelecionarTvPropagandas: () -> Unit,
     onTrocarSetor: () -> Unit = {},
     viewModel: SelecionarModoViewModel = viewModel(),
 ) {
@@ -112,11 +115,18 @@ fun SelecionarModoScreen(
                     onClick = { viewModel.selecionarPapelSimples(Papel.TV, onSelecionarTv) },
                 )
                 ModoGradienteButton(
+                    label = "TV DE PROPAGANDAS",
+                    icon = Icons.Filled.Campaign,
+                    gradiente = GradienteStreaming,
+                    enabled = !viewModel.isLoading,
+                    onClick = { viewModel.entrarTvPropagandas(onSelecionarTvPropagandas) },
+                )
+                ModoGradienteButton(
                     label = "AVALIAÇÃO",
                     icon = Icons.Filled.EmojiEvents,
                     gradiente = GradienteAvaliacao,
                     enabled = !viewModel.isLoading,
-                    onClick = onSelecionarAvaliacao,
+                    onClick = { viewModel.selecionarPapelSimples(Papel.AVALIACAO, onSelecionarAvaliacao) },
                 )
 
                 Text(

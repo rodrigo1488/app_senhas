@@ -25,7 +25,12 @@ from backend.auth import (
 )
 from backend.models import AtendimentoAtual, Impressora, Operador, Senha, Setor
 from backend.services.tv_config_service import serializar_tv_config
-from backend.services.avaliacao_service import AvaliacaoError, buscar_avaliacao_pendente, registrar_avaliacao
+from backend.services.avaliacao_service import (
+    AvaliacaoError,
+    buscar_avaliacao_pendente,
+    buscar_avaliacao_pendente_setor,
+    registrar_avaliacao,
+)
 from backend.services.fila_service import (
     FilaError,
     chamar_novamente,
@@ -214,6 +219,96 @@ def setor_tv_chamadas_recentes(session_payload):
                 session_payload["setor_id"],
                 limite=8,
             )
+        }
+    )
+
+
+@api_bp.route("/setor/tv_streaming/entrar", methods=["POST"])
+@api_token_required
+def setor_tv_streaming_entrar(session_payload):
+    """Cria/reconecta TV de propagandas no app (substitui abrir /smart|/legacy).
+
+    Nome automático: nome do setor; se já existir, '2 Nome', '3 Nome', …
+    O mesmo `device_id` do aparelho reconecta a TV existente sem duplicar.
+    """
+    from backend.models import TvDispositivo
+    from backend.services.streaming_service import (
+        esta_online,
+        fila_streaming,
+        propaganda_ids_dispositivo,
+        registrar_streaming_apk,
+    )
+    from backend.services.tv_config_service import INTERVALO_IMAGEM_MS
+
+    data = request.get_json(silent=True) or {}
+    device_id = (data.get("device_id") or "").strip()
+    if not device_id:
+        return jsonify({"error": "device_id é obrigatório"}), 400
+
+    setor = Setor.query.get(session_payload["setor_id"])
+    if not setor:
+        return jsonify({"error": "Setor não encontrado"}), 404
+
+    try:
+        dispositivo = registrar_streaming_apk(
+            device_id=device_id,
+            setor=setor,
+            device_name=(data.get("device_name") or "Android").strip() or "Android",
+            user_agent=(data.get("user_agent") or request.headers.get("User-Agent", ""))[:500],
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    token = create_session_token(
+        setor.id,
+        role="streaming",
+        tv_chave=dispositivo.chave,
+        dispositivo_id=dispositivo.id,
+    )
+    return jsonify(
+        {
+            "session_token": token,
+            "dispositivo": dispositivo.to_admin_dict(
+                online=esta_online(dispositivo.chave),
+                propaganda_ids=propaganda_ids_dispositivo(dispositivo.id),
+            ),
+            "queue": fila_streaming(dispositivo),
+            "intervalo_ms": INTERVALO_IMAGEM_MS,
+        }
+    )
+
+
+@api_bp.route("/setor/tv_streaming/fila", methods=["GET"])
+@api_token_required
+def setor_tv_streaming_fila(session_payload):
+    """Hidrata a fila de mídia da TV de propagandas do app."""
+    from backend.models import TvDispositivo
+    from backend.services.streaming_service import fila_streaming, marcar_online
+    from backend.services.tv_config_service import INTERVALO_IMAGEM_MS
+
+    if session_payload.get("role") != "streaming":
+        return jsonify({"error": "Sessão de TV de propagandas obrigatória"}), 403
+
+    chave = session_payload.get("tv_chave")
+    dispositivo_id = session_payload.get("dispositivo_id")
+    dispositivo = None
+    if chave:
+        dispositivo = TvDispositivo.query.filter_by(chave=chave, tipo="streaming").first()
+    if not dispositivo and dispositivo_id:
+        dispositivo = TvDispositivo.query.filter_by(id=dispositivo_id, tipo="streaming").first()
+    if not dispositivo:
+        return jsonify({"error": "TV de streaming não encontrada"}), 404
+
+    marcar_online(dispositivo.chave, None)
+    return jsonify(
+        {
+            "dispositivo": {
+                "id": dispositivo.id,
+                "nome": dispositivo.nome,
+                "chave": dispositivo.chave,
+            },
+            "queue": fila_streaming(dispositivo),
+            "intervalo_ms": INTERVALO_IMAGEM_MS,
         }
     )
 
@@ -424,9 +519,10 @@ def confirmar_pedido_route(session_payload):
 @api_token_required
 def avaliacao_pendente_route(session_payload):
     operador_id = request.args.get("operador_id") or session_payload.get("operador_id")
-    if not operador_id:
-        return jsonify({"error": "operador_id é obrigatório"}), 400
-    pendente = buscar_avaliacao_pendente(session_payload["setor_id"], int(operador_id))
+    if operador_id:
+        pendente = buscar_avaliacao_pendente(session_payload["setor_id"], int(operador_id))
+    else:
+        pendente = buscar_avaliacao_pendente_setor(session_payload["setor_id"])
     return jsonify(pendente or {})
 
 

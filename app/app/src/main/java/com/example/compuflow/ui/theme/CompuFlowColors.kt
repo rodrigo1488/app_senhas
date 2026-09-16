@@ -38,6 +38,7 @@ val FundoModoClaroFim = Color(0xFFE0E7EF)
 val GradienteCliente = Brush.horizontalGradient(listOf(Color(0xFF2196F3), Color(0xFF21CBF3)))
 val GradienteOperador = Brush.horizontalGradient(listOf(Color(0xFF43E97B), Color(0xFF38F9D7)))
 val GradienteTv = Brush.horizontalGradient(listOf(Color(0xFFF7971E), Color(0xFFFFD200)))
+val GradienteStreaming = Brush.horizontalGradient(listOf(Color(0xFF7B2FF7), Color(0xFFF107A3)))
 val GradienteAvaliacao = Brush.horizontalGradient(listOf(Color(0xFFF85032), Color(0xFFE73827)))
 
 // Operador (fila/atendimento) — ver templates/senhas_pendentes.html

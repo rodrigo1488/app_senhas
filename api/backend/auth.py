@@ -80,11 +80,14 @@ def create_session_token(
     purpose: str | None = None,
     ttl_seconds: int | None = None,
     jti: str | None = None,
+    tv_chave: str | None = None,
+    dispositivo_id: int | None = None,
 ) -> str:
     """Gera um token de sessão para um setor/papel específico.
 
-    `role` é um dos: "cliente", "operador", "avaliacao", "tv". O backend usa
-    papel, operador e propósito para restringir endpoints e rooms.
+    `role` é um dos: "cliente", "operador", "avaliacao", "tv", "streaming",
+    "generic". O backend usa papel, operador e TV para restringir endpoints
+    e rooms.
     """
     now = int(time.time())
     payload = {
@@ -98,6 +101,10 @@ def create_session_token(
         payload["purpose"] = purpose
     if jti:
         payload["jti"] = jti
+    if tv_chave:
+        payload["tv_chave"] = tv_chave
+    if dispositivo_id is not None:
+        payload["dispositivo_id"] = dispositivo_id
     return jwt.encode(payload, current_app.config["SECRET_KEY"], algorithm=current_app.config["JWT_ALGORITHM"])
 
 
