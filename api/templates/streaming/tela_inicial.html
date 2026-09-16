@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Streaming - Seleção de Dispositivo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .device-card {
+            transition: all 0.3s ease-in-out;
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            position: relative;
+        }
+        
+        .device-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+            background: rgba(255, 255, 255, 1);
+        }
+        
+        .device-card.focused {
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+            background: rgba(255, 255, 255, 1);
+            border: 3px solid #667eea;
+        }
+        
+        .device-card.focused::before {
+            content: '';
+            position: absolute;
+            top: -8px;
+            left: -8px;
+            right: -8px;
+            bottom: -8px;
+            background: linear-gradient(45deg, #667eea, #764ba2, #f093fb, #f5576c);
+            border-radius: 2rem;
+            z-index: -1;
+            animation: borderGlow 2s ease-in-out infinite alternate;
+        }
+        
+        @keyframes borderGlow {
+            0% {
+                opacity: 0.7;
+                transform: scale(1);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1.05);
+            }
+        }
+        
+        .device-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            display: block;
+        }
+        
+        .smart-icon {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .legacy-icon {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transition: all 0.3s ease;
+        }
+        
+        .btn-primary:hover, .btn-primary.focused {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-secondary {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            transition: all 0.3s ease;
+        }
+        
+        .btn-secondary:hover, .btn-secondary.focused {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 25px rgba(240, 147, 251, 0.4);
+        }
+        
+        .floating-shapes {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            z-index: -1;
+        }
+        
+        .shape {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 50%;
+            animation: float 6s ease-in-out infinite;
+        }
+        
+        .shape:nth-child(1) {
+            width: 80px;
+            height: 80px;
+            top: 20%;
+            left: 10%;
+            animation-delay: 0s;
+        }
+        
+        .shape:nth-child(2) {
+            width: 120px;
+            height: 120px;
+            top: 60%;
+            right: 10%;
+            animation-delay: 2s;
+        }
+        
+        .shape:nth-child(3) {
+            width: 60px;
+            height: 60px;
+            bottom: 20%;
+            left: 20%;
+            animation-delay: 4s;
+        }
+        
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0px) rotate(0deg);
+            }
+            50% {
+                transform: translateY(-20px) rotate(180deg);
+            }
+        }
+        
+        .fade-in {
+            animation: fadeIn 1s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .remote-control-hint {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            z-index: 1000;
+        }
+        
+        .remote-control-hint .key {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 2px 6px;
+            border-radius: 4px;
+            margin: 0 2px;
+            font-weight: bold;
+        }
+        
+        .selection-indicator {
+            position: absolute;
+            top: -10px;
+            right: -10px;
+            background: #667eea;
+            color: white;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% {
+                transform: scale(1);
+                opacity: 1;
+            }
+            50% {
+                transform: scale(1.1);
+                opacity: 0.8;
+            }
+        }
+        
+        /* Estilo para TV - texto maior e mais visível */
+        @media (min-width: 1920px) {
+            .device-card {
+                padding: 2rem;
+            }
+            
+            .device-icon {
+                font-size: 5rem;
+            }
+            
+            h1 {
+                font-size: 4rem !important;
+            }
+            
+            h2 {
+                font-size: 2.5rem !important;
+            }
+            
+            p {
+                font-size: 1.2rem !important;
+            }
+            
+            .btn-primary, .btn-secondary {
+                font-size: 1.3rem !important;
+                padding: 1rem 2rem !important;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Floating Background Shapes -->
+    <div class="floating-shapes">
+        <div class="shape"></div>
+        <div class="shape"></div>
+        <div class="shape"></div>
+    </div>
+
+    <div class="min-h-screen flex items-center justify-center p-4">
+        <div class="max-w-4xl w-full fade-in">
+            <!-- Header -->
+            <div class="text-center mb-12">
+                <h1 class="text-5xl md:text-6xl font-bold text-white mb-4 drop-shadow-lg">
+                    Sistema de Streaming
+                </h1>
+                <p class="text-xl md:text-2xl text-white/90 drop-shadow-md">
+                    Selecione o tipo de dispositivo para continuar
+                </p>
+            </div>
+
+            <!-- Device Selection Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                <!-- Smart Device Card -->
+                <div class="device-card rounded-2xl p-8 text-center cursor-pointer group" 
+                     id="smart-card" 
+                     tabindex="0"
+                     data-url="/smart">
+                    <div class="selection-indicator" id="smart-indicator" style="display: none;">1</div>
+                    <div class="device-icon smart-icon group-hover:scale-110 transition-transform duration-300">
+                        📱
+                    </div>
+                    <h2 class="text-3xl font-bold text-gray-800 mb-4">Smart</h2>
+                    <p class="text-gray-600 mb-6 leading-relaxed">
+                        Para dispositivos modernos com suporte completo a WebSocket, 
+                        transições suaves e recursos avançados.
+                    </p>
+                    <div class="space-y-3 text-sm text-gray-500">
+                        <div class="flex items-center justify-center gap-2">
+                            <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                            <span>WebSocket em tempo real</span>
+                        </div>
+                        <div class="flex items-center justify-center gap-2">
+                            <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                            <span>Transições suaves</span>
+                        </div>
+                        <div class="flex items-center justify-center gap-2">
+                            <span class="w-2 h-2 bg-green-500 rounded-full"></span>
+                            <span>Controle avançado</span>
+                        </div>
+                    </div>
+                    <button class="btn-primary text-white font-bold py-4 px-8 rounded-xl mt-6 w-full text-lg">
+                        Selecionar Smart
+                    </button>
+                </div>
+
+                <!-- Legacy Device Card -->
+                <div class="device-card rounded-2xl p-8 text-center cursor-pointer group" 
+                     id="legacy-card" 
+                     tabindex="0"
+                     data-url="/legacy">
+                    <div class="selection-indicator" id="legacy-indicator" style="display: none;">2</div>
+                    <div class="device-icon legacy-icon group-hover:scale-110 transition-transform duration-300">
+                        📺
+                    </div>
+                    <h2 class="text-3xl font-bold text-gray-800 mb-4">Legacy</h2>
+                    <p class="text-gray-600 mb-6 leading-relaxed">
+                        Para dispositivos mais antigos, TV Box e Smart TVs com 
+                        compatibilidade garantida e performance otimizada.
+                    </p>
+                    <div class="space-y-3 text-sm text-gray-500">
+                        <div class="flex items-center justify-center gap-2">
+                            <span class="w-2 h-2 bg-blue-500 rounded-full"></span>
+                            <span>Compatibilidade máxima</span>
+                        </div>
+                        <div class="flex items-center justify-center gap-2">
+                            <span class="w-2 h-2 bg-blue-500 rounded-full"></span>
+                            <span>Polling automático</span>
+                        </div>
+                        <div class="flex items-center justify-center gap-2">
+                            <span class="w-2 h-2 bg-blue-500 rounded-full"></span>
+                            <span>Performance otimizada</span>
+                        </div>
+                    </div>
+                    <button class="btn-secondary text-white font-bold py-4 px-8 rounded-xl mt-6 w-full text-lg">
+                        Selecionar Legacy
+                    </button>
+                </div>
+            </div>
+
+            <!-- Footer Info -->
+            <div class="text-center mt-12">
+                <div class="bg-white/10 backdrop-blur-sm rounded-xl p-6 max-w-2xl mx-auto">
+                    <h3 class="text-xl font-semibold text-white mb-3">💡 Dica</h3>
+                    <p class="text-white/80 leading-relaxed">
+                        Se você não tem certeza qual tipo escolher, recomendamos começar com 
+                        <strong>Smart</strong>. Se encontrar problemas de compatibilidade, 
+                        você pode facilmente alternar para <strong>Legacy</strong>.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Remote Control Hint -->
+    <div class="remote-control-hint">
+        <div class="flex items-center gap-2">
+            <span>🎮 Controle:</span>
+            <span class="key">←</span>
+            <span class="key">→</span>
+            <span>Navegar</span>
+            <span class="key">OK</span>
+            <span>Selecionar</span>
+        </div>
+    </div>
+
+    <script>
+        class TVNavigation {
+            constructor() {
+                this.currentFocus = 0;
+                this.cards = [
+                    document.getElementById('smart-card'),
+                    document.getElementById('legacy-card')
+                ];
+                this.indicators = [
+                    document.getElementById('smart-indicator'),
+                    document.getElementById('legacy-indicator')
+                ];
+                
+                this.init();
+            }
+            
+            init() {
+                // Focar no primeiro card automaticamente
+                this.setFocus(0);
+                
+                // Adicionar listeners de teclado
+                document.addEventListener('keydown', this.handleKeyPress.bind(this));
+                
+                // Adicionar listeners de clique
+                this.cards.forEach((card, index) => {
+                    card.addEventListener('click', () => this.selectCard(index));
+                    card.addEventListener('keypress', (e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            this.selectCard(index);
+                        }
+                    });
+                });
+                
+                // Auto-focus após carregamento
+                setTimeout(() => {
+                    this.cards[0].focus();
+                }, 100);
+            }
+            
+            handleKeyPress(event) {
+                switch(event.key) {
+                    case 'ArrowLeft':
+                        event.preventDefault();
+                        this.navigateLeft();
+                        break;
+                    case 'ArrowRight':
+                        event.preventDefault();
+                        this.navigateRight();
+                        break;
+                    case 'ArrowUp':
+                        event.preventDefault();
+                        this.navigateUp();
+                        break;
+                    case 'ArrowDown':
+                        event.preventDefault();
+                        this.navigateDown();
+                        break;
+                    case 'Enter':
+                    case ' ':
+                        event.preventDefault();
+                        this.selectCurrentCard();
+                        break;
+                    case '1':
+                    case 'Digit1':
+                        event.preventDefault();
+                        this.selectCard(0);
+                        break;
+                    case '2':
+                    case 'Digit2':
+                        event.preventDefault();
+                        this.selectCard(1);
+                        break;
+                }
+            }
+            
+            navigateLeft() {
+                if (this.currentFocus > 0) {
+                    this.setFocus(this.currentFocus - 1);
+                } else {
+                    // Navegação circular
+                    this.setFocus(this.cards.length - 1);
+                }
+            }
+            
+            navigateRight() {
+                if (this.currentFocus < this.cards.length - 1) {
+                    this.setFocus(this.currentFocus + 1);
+                } else {
+                    // Navegação circular
+                    this.setFocus(0);
+                }
+            }
+            
+            navigateUp() {
+                // Em layout de 2 colunas, subir vai para o card da esquerda
+                this.setFocus(0);
+            }
+            
+            navigateDown() {
+                // Em layout de 2 colunas, descer vai para o card da direita
+                this.setFocus(1);
+            }
+            
+            setFocus(index) {
+                // Remover foco anterior
+                this.cards.forEach((card, i) => {
+                    card.classList.remove('focused');
+                    this.indicators[i].style.display = 'none';
+                });
+                
+                // Definir novo foco
+                this.currentFocus = index;
+                this.cards[index].classList.add('focused');
+                this.indicators[index].style.display = 'flex';
+                
+                // Focar no elemento para acessibilidade
+                this.cards[index].focus();
+                
+                // Scroll suave para o elemento se necessário
+                this.cards[index].scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center'
+                });
+            }
+            
+            selectCurrentCard() {
+                this.selectCard(this.currentFocus);
+            }
+            
+            selectCard(index) {
+                const card = this.cards[index];
+                const url = card.getAttribute('data-url');
+                
+                // Efeito visual de seleção
+                card.style.transform = 'scale(0.95)';
+                setTimeout(() => {
+                    card.style.transform = '';
+                    window.location.href = url;
+                }, 150);
+            }
+        }
+        
+        // Inicializar navegação quando a página carregar
+        document.addEventListener('DOMContentLoaded', () => {
+            const tvNav = new TVNavigation();
+            
+            // Esconder dica de teclado após 15 segundos
+            setTimeout(() => {
+                const hint = document.querySelector('.remote-control-hint');
+                if (hint) {
+                    hint.style.opacity = '0';
+                    hint.style.transform = 'translateY(20px)';
+                    setTimeout(() => hint.remove(), 500);
+                }
+            }, 15000);
+        });
+        
+        // Suporte para controles remotos específicos de TV
+        document.addEventListener('keydown', (e) => {
+            // Mapear teclas comuns de controles remotos
+            const keyMap = {
+                'MediaPlayPause': 'Enter',
+                'MediaSelect': 'Enter',
+                'MediaFastForward': 'ArrowRight',
+                'MediaRewind': 'ArrowLeft',
+                'MediaNextTrack': 'ArrowRight',
+                'MediaPreviousTrack': 'ArrowLeft'
+            };
+            
+            if (keyMap[e.code]) {
+                e.preventDefault();
+                const event = new KeyboardEvent('keydown', {
+                    key: keyMap[e.code],
+                    code: keyMap[e.code],
+                    bubbles: true
+                });
+                document.dispatchEvent(event);
+            }
+        });
+    </script>
+</body>
+</html>

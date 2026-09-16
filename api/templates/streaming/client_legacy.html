@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Streaming - Modo Legado</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: Arial, sans-serif;
+        }
+        .media-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+            position: relative;
+        }
+        .media-item {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        .status-bar {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            z-index: 1000;
+            font-size: 12px;
+        }
+        .offline-message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 0, 0, 0.9);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 1001;
+        }
+        
+        .logo-fixed {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000;
+            opacity: 0.7;
+            transition: opacity 0.3s ease;
+            max-width: 269px;
+            max-height: 134px;
+            object-fit: contain;
+        }
+        
+        .logo-fixed:hover {
+            opacity: 1;
+        }
+        .device-name-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+        .device-name-modal .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+        .device-name-modal input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            margin: 15px 0;
+        }
+        .device-name-modal button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .device-name-modal button:hover {
+            background: #0056b3;
+        }
+        .online { color: #28a745; font-weight: bold; }
+        .polling { color: #ffc107; font-weight: bold; }
+        .connecting { color: #007bff; font-weight: bold; }
+        .offline { color: #dc3545; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="media-container">
+        <div id="mediaContent">
+            <!-- Conteúdo de mídia será inserido aqui -->
+        </div>
+    </div>
+
+     <div class="status-bar">
+         <div>Status: <span id="connectionStatus">Iniciando...</span></div>
+     </div>
+
+    <div id="offlineMessage" class="offline-message" style="display: none;">
+        <h3>Desconectado do Servidor</h3>
+        <p>Tentando reconectar...</p>
+    </div>
+
+
+    <!-- Logo fixo no canto inferior esquerdo -->
+    <img src="/static/img/logo2.png" alt="Logo" class="logo-fixed" id="fixedLogo">
+
+    <div id="deviceNameModal" class="device-name-modal" style="display: none;">
+        <div class="modal-content">
+            <h2>Nome do Dispositivo</h2>
+            <p>Digite um nome para identificar este dispositivo:</p>
+            <input type="text" id="deviceNameInput" placeholder="Ex: TV Sala, TV Quarto, etc.">
+            <br>
+            <button onclick="setDeviceName()">Confirmar</button>
+        </div>
+    </div>
+
+    <script>
+        // Sistema de Streaming - Modo Legado para Android Antigo
+        if (window.legacyClientActive) {
+            console.log('Cliente legado já ativo. Abortando nova inicialização.');
+        }
+        window.legacyClientActive = true;
+        
+        var StreamingClient = {
+            // Configurações básicas
+            ipAddress: null,
+            deviceName: 'Dispositivo Legado',
+            deviceCustomName: null,
+            isConnected: false,
+            usePolling: true, // Sempre usar polling em modo legado
+            mediaQueue: [],
+            currentMedia: null,
+            currentTimeout: null,
+            isTransitioning: false,
+             connectionId: Math.random().toString(36).substr(2, 9),
+             pollingInterval: null,
+             nextMediaDueAt: null, // horário alvo para trocar de mídia
+            safetyInterval: null, // watchdog extra para garantir troca
+            videoActive: false,
+            
+            // Configurações de exibição
+            settings: {
+                imageDuration: 20000,
+                transitionDuration: 300,
+                autoplayVideos: true,
+                loopVideos: false,
+                preloadMedia: false // Desabilitar pré-carregamento em Android antigo
+            },
+
+            // Inicialização
+            init: function() {
+                console.log('Iniciando cliente legado...');
+                this.getClientIP();
+                this.getDeviceName();
+                this.loadSettings();
+                this.checkDeviceName();
+                this.updateStatus();
+                this.startPolling();
+                this.setupWatchdog();
+                this.startSafetyInterval();
+                
+                // Forçar primeira verificação de fila
+                var self = this;
+                setTimeout(function() {
+                    self.pollForUpdates();
+                }, 2000);
+                
+                console.log('Cliente legado inicializado');
+            },
+
+            // Obter IP do cliente (versão simplificada)
+            getClientIP: function() {
+                var self = this;
+                console.log('Obtendo IP do cliente...');
+                
+                // Estratégia 1: Gerar IP baseado no timestamp (usar IP estável no modo legado)
+                var timestamp = new Date().getTime();
+                var random = Math.floor(Math.random() * 1000);
+                this.ipAddress = 'legacy-' + timestamp + '-' + random;
+                
+                console.log('IP gerado:', this.ipAddress);
+                this.updateStatus();
+                
+                // NÃO sobrescrever o IP gerado em modo legado para evitar reinicializações
+                // this.getServerIP();
+            },
+
+            // Tentar obter IP do servidor
+            getServerIP: function() {
+                var self = this;
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', '/device_info', true);
+                xhr.timeout = 5000;
+                
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 200) {
+                            try {
+                                var data = JSON.parse(xhr.responseText);
+                                if (data.ip_address && data.ip_address !== '127.0.0.1') {
+                                    self.ipAddress = data.ip_address;
+                                    console.log('IP obtido do servidor:', self.ipAddress);
+                                    self.updateStatus();
+                                }
+                            } catch (e) {
+                                console.log('Erro ao processar resposta do servidor:', e);
+                            }
+                        } else {
+                            console.log('Erro ao obter IP do servidor:', xhr.status);
+                        }
+                    }
+                };
+                
+                xhr.ontimeout = function() {
+                    console.log('Timeout ao obter IP do servidor');
+                };
+                
+                xhr.onerror = function() {
+                    console.log('Erro de rede ao obter IP do servidor');
+                };
+                
+                xhr.send();
+            },
+
+            // Obter nome do dispositivo
+            getDeviceName: function() {
+                var userAgent = navigator.userAgent;
+                var deviceName = 'Dispositivo Legado';
+                
+                if (userAgent.indexOf('Android') !== -1) {
+                    deviceName = 'Android TV Box';
+                } else if (userAgent.indexOf('Linux') !== -1) {
+                    deviceName = 'Linux TV Box';
+                }
+                
+                this.deviceName = deviceName;
+                console.log('Dispositivo detectado:', deviceName);
+            },
+
+            // Carregar configurações
+            loadSettings: function() {
+                try {
+                    var saved = localStorage.getItem('streamingSettings');
+                    if (saved) {
+                        var parsedSettings = JSON.parse(saved);
+                        for (var key in parsedSettings) {
+                            this.settings[key] = parsedSettings[key];
+                        }
+                    }
+                } catch (e) {
+                    console.log('Erro ao carregar configurações:', e);
+                }
+            },
+
+            // Verificar nome personalizado do dispositivo
+            checkDeviceName: function() {
+                try {
+                    this.deviceCustomName = localStorage.getItem('deviceCustomName');
+                    if (!this.deviceCustomName) {
+                        this.showDeviceNameModal();
+                    }
+                } catch (e) {
+                    console.log('Erro ao verificar nome do dispositivo:', e);
+                }
+            },
+
+            // Mostrar modal para nome do dispositivo
+            showDeviceNameModal: function() {
+                document.getElementById('deviceNameModal').style.display = 'flex';
+            },
+
+            // Definir nome do dispositivo
+            setDeviceName: function() {
+                var input = document.getElementById('deviceNameInput');
+                var name = input.value.trim();
+                
+                if (name) {
+                    this.deviceCustomName = name;
+                    try {
+                        localStorage.setItem('deviceCustomName', name);
+                    } catch (e) {
+                        console.log('Erro ao salvar nome:', e);
+                    }
+                } else {
+                    this.deviceCustomName = this.deviceName;
+                }
+                
+                document.getElementById('deviceNameModal').style.display = 'none';
+                this.updateStatus();
+                this.registerClient();
+            },
+
+             // Atualizar status na tela
+             updateStatus: function() {
+                 var connectionStatus = document.getElementById('connectionStatus');
+                 
+                 if (connectionStatus) {
+                     if (this.isConnected) {
+                         connectionStatus.textContent = 'Conectado';
+                         connectionStatus.className = 'online';
+                     } else if (this.usePolling) {
+                         connectionStatus.textContent = 'Polling';
+                         connectionStatus.className = 'polling';
+                     } else {
+                         connectionStatus.textContent = 'Conectando...';
+                         connectionStatus.className = 'connecting';
+                     }
+                 }
+             },
+
+            // Iniciar polling
+            startPolling: function() {
+                console.log('Iniciando modo polling...');
+                this.usePolling = true;
+                this.registerClient();
+                this.startPollingInterval();
+            },
+
+            // Registrar cliente via polling
+            registerClient: function() {
+                var self = this;
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/register_poll', true);
+                xhr.setRequestHeader('Content-Type', 'application/json');
+                xhr.timeout = 10000;
+                
+                var data = {
+                    ip_address: this.ipAddress,
+                    device_name: this.deviceName,
+                    user_agent: navigator.userAgent,
+                    connection_id: this.connectionId,
+                    nome: this.deviceCustomName || this.deviceName,
+                    device_type: 'legacy',
+                    is_tv_box: true,
+                    is_smart_tv: false
+                };
+                
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 200) {
+                            try {
+                                var result = JSON.parse(xhr.responseText);
+                                console.log('Cliente registrado via polling:', result);
+                                self.isConnected = true;
+                                self.hideOfflineMessage();
+                                self.updateStatus();
+                                // Poll imediato para buscar fila e iniciar exibição
+                                setTimeout(function(){ self.pollForUpdates(); }, 200);
+                            } catch (e) {
+                                console.log('Erro ao processar resposta:', e);
+                            }
+                        } else {
+                            console.log('Erro no registro:', xhr.status);
+                        }
+                    }
+                };
+                
+                xhr.ontimeout = function() {
+                    console.log('Timeout no registro');
+                };
+                
+                xhr.onerror = function() {
+                    console.log('Erro de rede no registro');
+                };
+                
+                xhr.send(JSON.stringify(data));
+            },
+
+            // Iniciar intervalo de polling
+            startPollingInterval: function() {
+                var self = this;
+                
+                // Limpar intervalo anterior
+                if (this.pollingInterval) {
+                    clearInterval(this.pollingInterval);
+                }
+                
+                // Polling a cada 10 segundos (mais lento para Android antigo)
+                this.pollingInterval = setInterval(function() {
+                    console.log('[Polling] Executando polling em', new Date().toLocaleTimeString()); // LOG NOVO
+                    self.pollForUpdates();
+                }, 10000);
+                
+                // Timestamp da última atualização da fila
+                this.lastQueueUpdate = new Date().getTime(); // NOVO
+                
+                console.log('Polling iniciado a cada 10 segundos');
+            },
+
+            // Polling para atualizações
+            pollForUpdates: function() {
+                var self = this;
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', '/api/poll/' + this.ipAddress, true);
+                xhr.timeout = 10000;
+                
+                xhr.onreadystatechange = function() {
+                    if (xhr.readyState === 4) {
+                        if (xhr.status === 200) {
+                            try {
+                                var data = JSON.parse(xhr.responseText);
+                                if (data.status === 'ok') {
+                                    // Comparar por conjunto de paths (ignorar ordem) para não reiniciar à toa
+                                    var toPathSet = function(q){
+                                        var set = {};
+                                        (q || []).forEach(function(m){ if (m && m.path) { set[m.path] = true; } });
+                                        return set;
+                                    };
+                                    var newSet = toPathSet(data.queue);
+                                    var curSet = toPathSet(self.mediaQueue);
+                                    var sameContent = (function(){
+                                        var newKeys = Object.keys(newSet);
+                                        var curKeys = Object.keys(curSet);
+                                        if (newKeys.length !== curKeys.length) return false;
+                                        for (var i=0; i<newKeys.length; i++) {
+                                            if (!curSet[newKeys[i]]) return false;
+                                        }
+                                        return true;
+                                    })();
+                                    self.lastQueueUpdate = new Date().getTime();
+                                    
+                                    if (!sameContent) {
+                                        console.log('Fila atualizada via polling (conteúdo mudou):', data.queue);
+                                        self.mediaQueue = data.queue || [];
+                                        self.updateStatus();
+                                        
+                                        // Se estiver tocando vídeo, não interromper; aplicar fila e deixar terminar
+                                        if (self.videoActive && self.currentMedia && self.currentMedia.type === 'video') {
+                                            console.log('Vídeo em reprodução. Nova fila aplicada, aguardando término do vídeo.');
+                                        } else {
+                                            // Parar exibição atual se há nova fila (somente quando não é vídeo)
+                                             if (self.currentTimeout) {
+                                                 clearTimeout(self.currentTimeout);
+                                                 self.currentTimeout = null;
+                                             }
+                                            
+                                            // Iniciar nova exibição
+                                            if (self.mediaQueue.length > 0) {
+                                                console.log('Iniciando nova exibição com', self.mediaQueue.length, 'itens');
+                                                self.startMediaDisplay();
+                                            }
+                                        }
+                                    } else {
+                                        // Conteúdo igual (ignorando ordem): se algum timer sumiu, continuar
+                                        if (self.mediaQueue.length > 0 && !self.currentTimeout) {
+                                            // Não interromper vídeos
+                                            if (!(self.videoActive && self.currentMedia && self.currentMedia.type === 'video')) {
+                                                console.log('Fila igual (conteúdo). Timer ausente. Continuando exibição.');
+                                                self.displayNextMedia();
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Atualizar configurações se mudaram
+                                    if (data.global_settings) {
+                                        self.updateSettingsFromServer(data.global_settings);
+                                    }
+                                }
+                            } catch (e) {
+                                console.log('Erro ao processar polling:', e);
+                            }
+                        } else {
+                            console.log('Erro no polling:', xhr.status);
+                        }
+                    }
+                };
+                
+                xhr.ontimeout = function() {
+                    console.log('Timeout no polling');
+                };
+                
+                xhr.onerror = function() {
+                    console.log('Erro de rede no polling');
+                };
+                
+                xhr.send();
+            },
+
+            // Atualizar configurações do servidor
+            updateSettingsFromServer: function(globalSettings) {
+                if (globalSettings.imageDuration) {
+                    this.settings.imageDuration = parseInt(globalSettings.imageDuration);
+                }
+                if (globalSettings.transitionDuration) {
+                    this.settings.transitionDuration = parseInt(globalSettings.transitionDuration);
+                }
+                if (globalSettings.autoplayVideos) {
+                    this.settings.autoplayVideos = globalSettings.autoplayVideos === 'true';
+                }
+                if (globalSettings.loopVideos) {
+                    this.settings.loopVideos = globalSettings.loopVideos === 'true';
+                }
+                
+                console.log('Configurações atualizadas via polling:', this.settings);
+            },
+
+            // Mostrar mensagem offline
+            showOfflineMessage: function() {
+                document.getElementById('offlineMessage').style.display = 'block';
+            },
+
+            // Ocultar mensagem offline
+            hideOfflineMessage: function() {
+                document.getElementById('offlineMessage').style.display = 'none';
+            },
+
+            // Configurar watchdog
+            setupWatchdog: function() {
+                var self = this;
+                // Verificar conexão a cada 60 segundos
+                setInterval(function() {
+                    var now = new Date().getTime();
+                    if (!self.isConnected) {
+                        console.log('Watchdog: Tentando reconectar...');
+                        self.registerClient();
+                    }
+                    // Watchdog polling travado
+                    if (self.lastQueueUpdate && (now - self.lastQueueUpdate > 120000)) { // 2 minutos
+                        console.log('Watchdog: Polling travado há mais de 2 minutos. Reiniciando polling...');
+                        self.startPollingInterval();
+                        self.lastQueueUpdate = now;
+                    }
+                }, 60000);
+            },
+
+            // Iniciar exibição de mídia
+            startMediaDisplay: function() {
+                if (this.mediaQueue.length === 0) {
+                    console.log('Nenhuma mídia na fila');
+                    return;
+                }
+                
+                console.log('Iniciando exibição de mídia com', this.mediaQueue.length, 'itens:');
+                for (var i = 0; i < this.mediaQueue.length; i++) {
+                    console.log('  ' + (i+1) + '. ' + this.mediaQueue[i].path + ' (' + this.mediaQueue[i].type + ')');
+                }
+                
+                this.displayNextMedia();
+            },
+
+            // Exibir próxima mídia
+            displayNextMedia: function() {
+                 if (this.mediaQueue.length === 0) {
+                     console.log('Fila vazia, parando exibição');
+                     this.currentMedia = null;
+                     this.nextMediaDueAt = null;
+                     return;
+                 }
+                
+                var mediaItem = this.mediaQueue.shift();
+                
+                // Evitar repetir a mesma mídia se possível
+                if (this.currentMedia && this.currentMedia.path === mediaItem.path && this.mediaQueue.length > 0) {
+                    var candidate = this.mediaQueue.shift();
+                    this.mediaQueue.push(mediaItem); // re-insere o repetido mais ao fim
+                    mediaItem = candidate;
+                }
+                
+                this.currentMedia = mediaItem;
+                
+                console.log('Exibindo mídia:', mediaItem.path);
+                this.showMedia(mediaItem);
+                
+                // Re-enfileirar para manter loop contínuo
+                this.mediaQueue.push(mediaItem);
+                
+                // Se for imagem: agendar próxima pelo tempo
+                if (mediaItem.type === 'image') {
+                    var duration = (typeof mediaItem.duration === 'number' && mediaItem.duration > 0)
+                        ? mediaItem.duration
+                        : this.settings.imageDuration;
+                    
+                    var self = this;
+                    if (this.currentTimeout) {
+                        clearTimeout(this.currentTimeout);
+                    }
+                    this.nextMediaDueAt = new Date().getTime() + duration;
+                    this.currentTimeout = setTimeout(function() {
+                        self.displayNextMedia();
+                    }, duration);
+                } else {
+                     // Vídeo: não usar timeout nem contador; deixar onended cuidar
+                     if (this.currentTimeout) {
+                         clearTimeout(this.currentTimeout);
+                         this.currentTimeout = null;
+                     }
+                     this.nextMediaDueAt = null;
+                }
+            },
+
+            // Mostrar mídia
+            showMedia: function(mediaItem) {
+                var self = this;
+                var mediaContent = document.getElementById('mediaContent');
+                var mediaPath = mediaItem.path;
+                
+                console.log('Carregando mídia:', mediaPath, 'Tipo:', mediaItem.type);
+                
+                // Limpar conteúdo anterior
+                mediaContent.innerHTML = '';
+                
+                if (mediaItem.type === 'video') {
+                    var video = document.createElement('video');
+                    video.src = mediaPath;
+                    video.style.width = '100%';
+                    video.style.height = '100%';
+                    video.style.objectFit = 'contain';
+                    video.autoplay = this.settings.autoplayVideos;
+                    video.loop = this.settings.loopVideos;
+                    video.muted = true;
+                    video.controls = false;
+                    
+                     // Marcar vídeo ativo e garantir que nenhum timeout/contador interfira
+                     this.videoActive = true;
+                     if (this.currentTimeout) {
+                         clearTimeout(this.currentTimeout);
+                         this.currentTimeout = null;
+                     }
+                     this.nextMediaDueAt = null;
+                    
+                    video.onended = function() {
+                        self.videoActive = false;
+                        if (!self.settings.loopVideos) {
+                            self.displayNextMedia();
+                        }
+                    };
+                    
+                    video.onerror = function() {
+                        console.log('Erro ao carregar vídeo:', mediaPath);
+                        self.videoActive = false;
+                        setTimeout(function() { self.displayNextMedia(); }, 1000); // Fallback com delay
+                    };
+                    
+                    mediaContent.appendChild(video);
+                } else {
+                    this.videoActive = false;
+                    var img = document.createElement('img');
+                    img.src = mediaPath;
+                    img.style.width = '100%';
+                    img.style.height = '100%';
+                    img.style.objectFit = 'contain';
+                    img.className = 'media-item';
+                    
+                    img.onload = function() {
+                        console.log('Imagem carregada com sucesso:', mediaPath);
+                    };
+                    
+                    img.onerror = function() {
+                        console.log('Erro ao carregar imagem:', mediaPath);
+                        setTimeout(function() { self.displayNextMedia(); }, 1000); // Fallback com delay
+                    };
+                    
+                     mediaContent.appendChild(img);
+                 }
+                }
+            },
+
+
+            // Watchdog adicional para garantir troca mesmo com throttling de timers
+            startSafetyInterval: function() {
+                var self = this;
+                if (this.safetyInterval) {
+                    clearInterval(this.safetyInterval);
+                }
+                this.safetyInterval = setInterval(function() {
+                    var now = new Date().getTime();
+                    if (self.nextMediaDueAt && now - self.nextMediaDueAt > 500) { // 0.5s de tolerância
+                        console.log('SafetyInterval: Forçando troca de mídia (timeout possivelmente atrasado)');
+                        if (self.currentTimeout) {
+                            clearTimeout(self.currentTimeout);
+                            self.currentTimeout = null;
+                        }
+                        self.displayNextMedia();
+                    }
+                }, 1000);
+            },
+
+            // Parar contagem regressiva
+            stopCountdown: function() {
+                // Método removido - não mais necessário
+            },
+
+            // Limpar recursos
+            cleanup: function() {
+                if (this.currentTimeout) {
+                    clearTimeout(this.currentTimeout);
+                    this.currentTimeout = null;
+                }
+                
+                if (this.pollingInterval) {
+                    clearInterval(this.pollingInterval);
+                    this.pollingInterval = null;
+                }
+                if (this.safetyInterval) {
+                    clearInterval(this.safetyInterval);
+                    this.safetyInterval = null;
+                }
+                
+                console.log('Recursos limpos');
+            }
+        };
+
+        // Função global para definir nome do dispositivo
+        function setDeviceName() {
+            StreamingClient.setDeviceName();
+        }
+
+        // Inicializar quando a página carregar
+        window.onload = function() {
+            StreamingClient.init();
+        };
+
+        // Limpar recursos quando a página for fechada
+        window.onbeforeunload = function() {
+            StreamingClient.cleanup();
+            window.legacyClientActive = false;
+        };
+    </script>
+</body>
+</html> 

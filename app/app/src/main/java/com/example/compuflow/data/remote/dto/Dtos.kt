@@ -144,6 +144,7 @@ data class PropagandaImagemDto(
     val id: Int,
     val arquivo: String,
     val ordem: Int = 0,
+    val tipo: String = "image",
 )
 
 @Serializable

@@ -36,6 +36,7 @@ export type TvPropagandaImagem = {
   id: number;
   arquivo: string;
   ordem?: number;
+  tipo?: "image" | "video";
 };
 
 export type TvConfig = {

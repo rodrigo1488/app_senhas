@@ -6,8 +6,9 @@ from unittest.mock import patch
 from backend import create_app
 from backend.auth import create_session_token
 from backend.extensions import db
-from backend.models import AtendimentoAtual, Finalizado, Operador, Propaganda, Senha, Setor
+from backend.models import AtendimentoAtual, Finalizado, Operador, Propaganda, Senha, Setor, TvDispositivo
 from backend.services.fila_service import listar_chamadas_recentes
+from backend.services.streaming_service import chave_by_sid, connected_by_chave
 from backend.services.usuario_service import criar_ou_atualizar_admin
 
 
@@ -23,6 +24,8 @@ class PropagandasTvTest(unittest.TestCase):
         )
 
     def setUp(self):
+        connected_by_chave.clear()
+        chave_by_sid.clear()
         with self.app.app_context():
             db.drop_all()
             db.create_all()
@@ -136,6 +139,7 @@ class PropagandasTvTest(unittest.TestCase):
         self.assertTrue(payload["propagandas_ativas"])
         arquivos = [i["arquivo"] for i in payload["imagens"]]
         self.assertEqual(["a.jpg", "c.jpg"], arquivos)
+        self.assertTrue(all(i.get("tipo") == "image" for i in payload["imagens"]))
         self.assertEqual(15_000, payload["intervalo_ms"])
 
     def test_admin_vincula_varias_propagandas_a_varios_setores(self):
@@ -159,6 +163,10 @@ class PropagandasTvTest(unittest.TestCase):
         )
         self.assertEqual(200, response.status_code)
         self.assertEqual(2, response.get_json()["atualizadas"])
+
+        with self.app.app_context():
+            setor = db.session.get(Setor, self.setor_id)
+            self.assertTrue(setor.propagandas_ativas)
 
         listed = client.get("/api/v1/admin/propagandas").get_json()
         vinculadas = [item for item in listed if item["id"] in propaganda_ids]
@@ -286,11 +294,210 @@ class PropagandasTvTest(unittest.TestCase):
         self.assertEqual(201, response.status_code, response.get_json())
         payload = response.get_json()
         self.assertEqual("promo_tv.jpg", payload["arquivo"])
+        self.assertEqual("image", payload["tipo"])
         self.assertTrue(payload["ativo"])
 
         listed = client.get("/api/v1/admin/propagandas")
         self.assertEqual(200, listed.status_code)
         self.assertEqual(1, len(listed.get_json()))
+
+    @patch("backend.blueprints.admin_api_bp.save_propaganda_video", return_value="promo.mp4")
+    def test_admin_upload_video_mp4(self, _mock_save):
+        client = self._admin_client()
+        response = client.post(
+            "/api/v1/admin/propagandas",
+            data={"arquivo": (io.BytesIO(b"fake-mp4"), "promo.mp4")},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(201, response.status_code, response.get_json())
+        payload = response.get_json()
+        self.assertEqual("promo.mp4", payload["arquivo"])
+        self.assertEqual("video", payload["tipo"])
+
+    def test_admin_rejeita_video_nao_mp4(self):
+        client = self._admin_client()
+        response = client.post(
+            "/api/v1/admin/propagandas",
+            data={"arquivo": (io.BytesIO(b"fake-avi"), "promo.avi")},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(400, response.status_code)
+
+    @patch("backend.blueprints.admin_api_bp.save_propaganda_video", return_value="promo.mp4")
+    def test_admin_rejeita_video_grande(self, _mock_save):
+        client = self._admin_client()
+        with self.app.app_context():
+            original = self.app.config["MAX_VIDEO_SIZE"]
+            self.app.config["MAX_VIDEO_SIZE"] = 8
+        try:
+            response = client.post(
+                "/api/v1/admin/propagandas",
+                data={"arquivo": (io.BytesIO(b"0123456789"), "promo.mp4")},
+                content_type="multipart/form-data",
+            )
+        finally:
+            with self.app.app_context():
+                self.app.config["MAX_VIDEO_SIZE"] = original
+        self.assertEqual(400, response.status_code)
+
+    @patch("backend.blueprints.admin_api_bp.save_propaganda_video", return_value="promo.mp4")
+    def test_admin_upload_video_direciona_tvs_e_liga_propagandas(self, _mock_save):
+        client = self._admin_client()
+        response = client.post(
+            "/api/v1/admin/propagandas",
+            data={
+                "arquivo": (io.BytesIO(b"fake-mp4"), "promo.mp4"),
+                "setor_ids": f"[{self.setor_id}]",
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(201, response.status_code, response.get_json())
+        payload = response.get_json()
+        self.assertEqual([self.setor_id], payload["setor_ids"])
+
+        with self.app.app_context():
+            setor = db.session.get(Setor, self.setor_id)
+            self.assertTrue(setor.propagandas_ativas)
+
+        tv = self.app.test_client().get(
+            "/api/v1/setor/tv_config",
+            headers={"Authorization": f"Bearer {self._token()}"},
+        )
+        self.assertEqual(200, tv.status_code)
+        imagens = tv.get_json()["imagens"]
+        self.assertEqual(1, len(imagens))
+        self.assertEqual("video", imagens[0]["tipo"])
+        self.assertEqual("promo.mp4", imagens[0]["arquivo"])
+
+    def test_streaming_paginas_de_compatibilidade(self):
+        client = self.app.test_client()
+        self.assertEqual(200, client.get("/smart").status_code)
+        self.assertEqual(200, client.get("/legacy").status_code)
+        self.assertEqual(200, client.get("/stream").status_code)
+        health = client.get("/check_health")
+        self.assertEqual(200, health.status_code)
+        self.assertEqual("ok", health.get_json()["status"])
+        device = client.get("/device_info")
+        self.assertEqual(200, device.status_code)
+        self.assertIn("ip_address", device.get_json())
+        settings = client.get("/api/global_settings")
+        self.assertEqual(200, settings.status_code)
+        self.assertIn("imageDuration", settings.get_json()["settings"])
+
+    def test_streaming_register_poll_assign_e_poll(self):
+        client = self.app.test_client()
+        with self.app.app_context():
+            p1 = Propaganda(arquivo="a.jpg", tipo="image", ordem=1, ativo=True)
+            p2 = Propaganda(arquivo="b.mp4", tipo="video", ordem=2, ativo=True)
+            db.session.add_all([p1, p2])
+            db.session.commit()
+
+        register = client.post(
+            "/api/register_poll",
+            json={"ip_address": "10.0.0.8", "device_name": "TV Sala", "nome": "TV Sala"},
+        )
+        self.assertEqual(200, register.status_code, register.get_json())
+        self.assertEqual("ok", register.get_json()["status"])
+
+        with self.app.app_context():
+            dispositivo = TvDispositivo.query.filter_by(chave="10.0.0.8").first()
+            self.assertIsNotNone(dispositivo)
+            self.assertEqual("streaming", dispositivo.tipo)
+            self.assertEqual("TV Sala", dispositivo.nome)
+
+        media = client.get("/api/media")
+        self.assertEqual(200, media.status_code)
+        paths = [item["path"] for item in media.get_json()["files"]]
+        self.assertEqual(["/media/a.jpg", "/media/b.mp4"], paths)
+
+        assign = client.post(
+            "/api/assign",
+            json={
+                "ip_address": "10.0.0.8",
+                "media_list": [
+                    {"path": "/media/a.jpg", "type": "image"},
+                    {"path": "/media/b.mp4", "type": "video"},
+                ],
+            },
+        )
+        self.assertEqual(200, assign.status_code, assign.get_json())
+
+        poll = client.get("/api/poll/10.0.0.8")
+        self.assertEqual(200, poll.status_code)
+        queue = poll.get_json()["queue"]
+        self.assertEqual(["/media/a.jpg", "/media/b.mp4"], [item["path"] for item in queue])
+        self.assertEqual(["image", "video"], [item["type"] for item in queue])
+
+        clients = client.get("/api/clients").get_json()
+        self.assertEqual(1, len(clients))
+        self.assertTrue(clients[0]["is_online"])
+        self.assertEqual("TV Sala", clients[0]["nome"])
+
+    def test_admin_lista_tvs_e_envia_midias_por_tv_e_setor(self):
+        admin = self._admin_client()
+        public = self.app.test_client()
+
+        with self.app.app_context():
+            p1 = Propaganda(arquivo="sala.jpg", tipo="image", ordem=1, ativo=True)
+            p2 = Propaganda(arquivo="promo.mp4", tipo="video", ordem=2, ativo=True)
+            db.session.add_all([p1, p2])
+            db.session.commit()
+            p1_id, p2_id = p1.id, p2.id
+
+        listed = admin.get("/api/v1/admin/tvs").get_json()
+        setores = [tv for tv in listed if tv["tipo"] == "setor"]
+        streaming = [tv for tv in listed if tv["tipo"] == "streaming"]
+        self.assertEqual(1, len(setores))
+        self.assertEqual("Balcão", setores[0]["nome"])
+        self.assertEqual([], streaming)
+
+        public.post(
+            "/api/register_poll",
+            json={"ip_address": "10.1.0.4", "nome": "TV Recepção"},
+        )
+
+        listed = admin.get("/api/v1/admin/tvs").get_json()
+        streaming = [tv for tv in listed if tv["tipo"] == "streaming"]
+        self.assertEqual(1, len(streaming))
+        self.assertEqual("TV Recepção", streaming[0]["nome"])
+        tv_id = streaming[0]["id"]
+
+        enviar_streaming = admin.put(
+            "/api/v1/admin/tvs/midias",
+            json={"tipo": "streaming", "id": tv_id, "propaganda_ids": [p2_id]},
+        )
+        self.assertEqual(200, enviar_streaming.status_code, enviar_streaming.get_json())
+        self.assertEqual([p2_id], enviar_streaming.get_json()["propaganda_ids"])
+
+        poll = public.get("/api/poll/10.1.0.4").get_json()
+        self.assertEqual(["/media/promo.mp4"], [item["path"] for item in poll["queue"]])
+        self.assertEqual("video", poll["queue"][0]["type"])
+
+        enviar_setor = admin.put(
+            "/api/v1/admin/tvs/midias",
+            json={"tipo": "setor", "id": self.setor_id, "propaganda_ids": [p1_id]},
+        )
+        self.assertEqual(200, enviar_setor.status_code, enviar_setor.get_json())
+
+        tv_config = public.get(
+            "/api/v1/setor/tv_config",
+            headers={"Authorization": f"Bearer {self._token()}"},
+        )
+        self.assertEqual(200, tv_config.status_code)
+        payload = tv_config.get_json()
+        self.assertTrue(payload["propagandas_ativas"])
+        self.assertEqual(["sala.jpg"], [item["arquivo"] for item in payload["imagens"]])
+
+        with self.app.app_context():
+            dispositivo = TvDispositivo.query.filter_by(chave=f"setor:{self.setor_id}").first()
+            self.assertIsNotNone(dispositivo)
+            self.assertEqual("setor", dispositivo.tipo)
+
+        listed = admin.get("/api/v1/admin/tvs").get_json()
+        setor_tv = next(tv for tv in listed if tv["tipo"] == "setor")
+        self.assertEqual([p1_id], setor_tv["propaganda_ids"])
+        streaming_tv = next(tv for tv in listed if tv["tipo"] == "streaming")
+        self.assertEqual([p2_id], streaming_tv["propaganda_ids"])
 
 
 if __name__ == "__main__":

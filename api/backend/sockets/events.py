@@ -10,6 +10,7 @@ EV_SENHA_POSICAO = "senha:posicao"
 EV_PEDIDO_STATUS = "pedido:status"
 EV_AVALIACAO_SOLICITADA = "avaliacao:solicitada"
 EV_AUTH_ERRO = "auth:erro"
+EV_TV_CONFIG_ATUALIZADA = "tv:config_atualizada"
 
 # Eventos cliente -> servidor
 EV_OPERADOR_CHAMAR_PROXIMA = "operador:chamar_proxima"

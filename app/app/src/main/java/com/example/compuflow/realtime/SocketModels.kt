@@ -1,6 +1,7 @@
 package com.example.compuflow.realtime
 
 import com.example.compuflow.data.remote.dto.AtendimentoDto
+import com.example.compuflow.data.remote.dto.PropagandaImagemDto
 import com.example.compuflow.data.remote.dto.SenhaDto
 
 /** Eventos recebidos do servidor, já convertidos para tipos Kotlin —
@@ -52,6 +53,12 @@ sealed class SocketEvent {
         val operadorFoto: String?,
         val senhaId: Int,
         val senha: String,
+    ) : SocketEvent()
+
+    data class TvConfigAtualizada(
+        val propagandasAtivas: Boolean,
+        val imagens: List<PropagandaImagemDto>,
+        val intervaloMs: Long,
     ) : SocketEvent()
 
     data class AuthErro(val mensagem: String?) : SocketEvent()

@@ -8,10 +8,10 @@ import { uploadsUrl, type TvRecentCall, type TvSenha } from "@/lib/tv-api";
 type Props = {
   chamadas: TvRecentCall[];
   pendentes: TvSenha[];
-  currentImage: string | null;
+  media: ReactNode;
 };
 
-export function TvFlowLayout({ chamadas, pendentes, currentImage }: Props) {
+export function TvFlowLayout({ chamadas, pendentes, media }: Props) {
   const atual = chamadas[0] ?? null;
   const anteriores = chamadas.slice(1, 4);
   const proximas = pendentes.slice(0, 5);
@@ -20,20 +20,7 @@ export function TvFlowLayout({ chamadas, pendentes, currentImage }: Props) {
   return (
     <div className="grid h-full w-full grid-cols-[minmax(0,2.15fr)_minmax(22rem,1fr)] gap-[clamp(0.75rem,1.25vw,1.25rem)] bg-[#e7e3dc] p-[clamp(0.75rem,1.25vw,1.25rem)] text-[#1b1b1b]">
       <section className="relative min-h-0 overflow-hidden rounded-[clamp(1.5rem,2.5vw,2.75rem)] bg-[#d9d6cf]">
-        {currentImage ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={currentImage} alt="Propaganda" className="h-full w-full object-cover" />
-        ) : (
-          <div className="flex h-full flex-col items-center justify-center bg-[#d8d5ce] px-12 text-center">
-            <div className="mb-6 h-px w-24 bg-black/25" />
-            <p className="text-[clamp(1.4rem,2.5vw,2.6rem)] font-medium tracking-[-0.03em] text-black/45">
-              Espaço de mídia
-            </p>
-            <p className="mt-2 text-[clamp(0.75rem,1vw,1rem)] text-black/35">
-              Ative e cadastre propagandas no painel administrativo
-            </p>
-          </div>
-        )}
+        {media}
         <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-black/10" />
       </section>
 

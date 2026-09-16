@@ -1,0 +1,1420 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Streaming</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+        }
+        .media-container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #000;
+            position: relative;
+        }
+        .media-item {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+        }
+        .status-bar {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            font-family: monospace;
+            z-index: 1000;
+        }
+        .offline-message {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(255, 0, 0, 0.9);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            z-index: 1001;
+        }
+        
+        .logo-fixed {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            z-index: 1000;
+            opacity: 0.7;
+            transition: opacity 0.3s ease;
+            max-width: 269px;
+            max-height: 134px;
+            object-fit: contain;
+        }
+        
+        .logo-fixed:hover {
+            opacity: 1;
+        }
+        
+        /* Estilos para status de conexão */
+        .online {
+            color: #10b981 !important;
+            font-weight: bold;
+        }
+        
+        .polling {
+            color: #f59e0b !important;
+            font-weight: bold;
+        }
+        
+        .connecting {
+            color: #3b82f6 !important;
+            font-weight: bold;
+        }
+        
+        .offline {
+            color: #ef4444 !important;
+            font-weight: bold;
+        }
+        .device-name-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+        }
+        .device-name-modal .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            text-align: center;
+            max-width: 400px;
+            width: 90%;
+        }
+        .device-name-modal input {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            margin: 15px 0;
+            box-sizing: border-box;
+        }
+        .device-name-modal button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        .device-name-modal button:hover {
+            background: #0056b3;
+        }
+        .fade-in {
+            animation: fadeIn 0.3s ease-in;
+        }
+        .fade-out {
+            animation: fadeOut 0.3s ease-out;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    
+
+         <div class="status-bar" id="statusBar">
+         <div>Status: <span id="connectionStatus">Conectando...</span></div>
+     </div>
+
+    <div class="offline-message" id="offlineMessage" style="display: none;">
+        <h2>Modo Offline</h2>
+        <p>Sem conexão com o servidor</p>
+        <p>Tentando reconectar...</p>
+    </div>
+
+
+    <!-- Logo fixo no canto inferior esquerdo -->
+    <img src="/static/img/logo2.png" alt="Logo" class="logo-fixed" id="fixedLogo">
+
+    <div class="device-name-modal" id="deviceNameModal" style="display: none;">
+        <div class="modal-content">
+            <h2 style="margin-bottom: 20px; color: #333;">Nome do Dispositivo</h2>
+            <p style="color: #666; margin-bottom: 20px;">Digite um nome para identificar este dispositivo:</p>
+            <input type="text" id="deviceNameInput" placeholder="Ex: TV Sala, Monitor Recepção, etc." maxlength="50">
+            <div style="margin-top: 20px;">
+                <button>Confirmar</button>
+                <button style="background: #6c757d;">Usar Padrão</button>
+            </div>
+        </div>
+    </div>
+
+         <div class="media-container" id="mediaContainer">
+         <div class="text-white text-center">
+             <h1 class="text-4xl mb-4">Sistema de Streaming</h1>
+             <p class="text-xl">Aguardando conteúdo...</p>
+         </div>
+     </div>
+
+    <script>
+        // Sistema de bloqueio global para evitar múltiplas instâncias
+        if (window.streamingClientActive) {
+            console.log('Cliente já ativo em outra aba/janela, redirecionando...');
+            // Se já existe um cliente ativo, não inicializar outro
+            throw new Error('Cliente já ativo');
+        }
+        
+        // Marcar como ativo
+        window.streamingClientActive = true;
+        
+        // Limpar quando a página for fechada
+        window.addEventListener('beforeunload', () => {
+            window.streamingClientActive = false;
+        });
+        
+        class StreamingClient {
+            constructor() {
+                // Verificar se já existe uma instância
+                if (window.streamingClientInstance) {
+                    console.log('Cliente já existe, retornando instância existente');
+                    return window.streamingClientInstance;
+                }
+                
+                this.socket = null;
+                this.ipAddress = null;
+                this.deviceName = null;
+                this.mediaQueue = [];
+                this.currentIndex = 0;
+                this.isConnected = false;
+                this.reconnectAttempts = 0;
+                this.maxReconnectAttempts = 10;
+                this.reconnectInterval = 5000; // 5 segundos
+                this.currentTimeout = null; // Para controlar timing das imagens
+                this.isTransitioning = false; // Para evitar transições simultâneas
+                this.isInitializing = false; // Para evitar inicializações múltiplas
+                this.connectionId = Math.random().toString(36).substr(2, 9); // ID único para esta conexão
+                this.deviceCustomName = null; // Nome personalizado do dispositivo
+                
+                // Configurações para fallback de polling
+                this.usePolling = false; // Usar polling em vez de WebSocket
+                this.pollingInterval = null; // Intervalo de polling
+                this.pollingAttempts = 0; // Tentativas de polling
+                this.maxPollingAttempts = 5; // Máximo de tentativas de polling
+                
+                // Configurações de exibição
+                this.settings = {
+                    imageDuration: 25000, // 25 segundos
+                    transitionDuration: 300, // 0.3 segundo (mais rápido)
+                    autoplayVideos: true,
+                    loopVideos: false,
+                    preloadMedia: true
+                };
+                
+                this.preloadedMedia = new Map(); // Cache para mídias pré-carregadas
+                
+                // Armazenar instância global
+                window.streamingClientInstance = this;
+                
+                console.log(`Iniciando cliente com ID: ${this.connectionId}`);
+                this.init();
+            }
+
+            async getLocalIP() {
+                return new Promise((resolve) => {
+                    let ipFound = false;
+                    
+                    // Verificar se WebRTC é suportado
+                    const RTCPeerConnection = window.RTCPeerConnection || 
+                                            window.mozRTCPeerConnection || 
+                                            window.webkitRTCPeerConnection ||
+                                            window.msRTCPeerConnection;
+                    
+                    if (!RTCPeerConnection) {
+                        console.log('WebRTC não suportado neste dispositivo');
+                        resolve(null);
+                        return;
+                    }
+                    
+                    try {
+                        // Configuração mais compatível para TV Box e Smart TVs
+                        const pc = new RTCPeerConnection({
+                            iceServers: [],
+                            iceCandidatePoolSize: 0
+                        });
+                        
+                        // Timeout mais longo para dispositivos lentos
+                        const timeout = setTimeout(() => {
+                            if (!ipFound) {
+                                console.log('Timeout ao obter IP via WebRTC');
+                                pc.close();
+                                resolve(null);
+                            }
+                        }, 5000); // 5 segundos para dispositivos lentos
+                        
+                        pc.createDataChannel('', {reliable: false});
+                        
+                        pc.createOffer()
+                            .then(offer => {
+                                return pc.setLocalDescription(offer);
+                            })
+                            .catch(error => {
+                                console.log('Erro ao criar offer WebRTC:', error);
+                                clearTimeout(timeout);
+                                pc.close();
+                                resolve(null);
+                            });
+                        
+                        pc.onicecandidate = (event) => {
+                            if (!event || !event.candidate) {
+                                if (!ipFound) {
+                                    clearTimeout(timeout);
+                                    pc.close();
+                                    resolve(null);
+                                }
+                                return;
+                            }
+                            
+                            const ipRegex = /([0-9]{1,3}(\.[0-9]{1,3}){3})/;
+                            const ipMatch = ipRegex.exec(event.candidate.candidate);
+                            
+                            if (ipMatch) {
+                                ipFound = true;
+                                clearTimeout(timeout);
+                                console.log('IP local encontrado via WebRTC:', ipMatch[1]);
+                                pc.onicecandidate = null;
+                                pc.close();
+                                resolve(ipMatch[1]);
+                            }
+                        };
+                        
+                        pc.onerror = (error) => {
+                            console.log('Erro WebRTC:', error);
+                            clearTimeout(timeout);
+                            pc.close();
+                            resolve(null);
+                        };
+                        
+                    } catch (error) {
+                        console.log('Erro ao inicializar WebRTC:', error);
+                        resolve(null);
+                    }
+                });
+            }
+
+            async getClientIP() {
+                try {
+                    const deviceInfo = this.getDeviceNameFallback();
+                    const isTvDevice = deviceInfo.isTvBox || deviceInfo.isSmartTv;
+                    
+                    console.log('Detectado dispositivo:', deviceInfo.deviceType, 'TV Device:', isTvDevice);
+                    
+                    // 1. Tenta pegar IP local via WebRTC (pode falhar em TV Box/Smart TV)
+                    if (!isTvDevice) {
+                        try {
+                            let ip = await this.getLocalIP();
+                            if (ip && (ip.startsWith('192.168.') || ip.startsWith('10.') || ip.startsWith('172.'))) {
+                                console.log('IP local detectado via WebRTC:', ip);
+                                return ip;
+                            }
+                        } catch (e) {
+                            console.log('WebRTC falhou:', e);
+                        }
+                    }
+                    
+                    // 2. Para TV Box e Smart TV, usar estratégia mais robusta
+                    if (isTvDevice) {
+                        console.log('Usando estratégia específica para TV Box/Smart TV');
+                        
+                        // Tentar obter IP do servidor primeiro
+                        try {
+                            const response = await fetch('/device_info', { timeout: 5000 });
+                            const serverInfo = await response.json();
+                            if (serverInfo.ip_address && serverInfo.ip_address !== '127.0.0.1') {
+                                console.log('IP obtido do servidor:', serverInfo.ip_address);
+                                return serverInfo.ip_address;
+                            }
+                        } catch (e) {
+                            console.log('Erro ao obter IP do servidor:', e);
+                        }
+                    }
+                    
+                    // 3. Se servidor está na rede local, gerar IP similar
+                    const serverIP = window.location.hostname;
+                    if (serverIP.startsWith('192.168.') || serverIP.startsWith('10.') || serverIP.startsWith('172.') || serverIP === 'localhost') {
+                        const baseIP = serverIP === 'localhost' ? '192.168.1' : serverIP.substring(0, serverIP.lastIndexOf('.'));
+                        const localIP = `${baseIP}.${Math.floor(Math.random() * 254) + 1}`;
+                        console.log('IP local gerado baseado no servidor:', localIP);
+                        return localIP;
+                    }
+                    
+                    // 4. Fallback: tenta pegar IP público (pode ser bloqueado em TV Box)
+                    if (!isTvDevice) {
+                        try {
+                            const res = await fetch('https://api.ipify.org?format=json', {
+                                timeout: 5000
+                            });
+                            const data = await res.json();
+                            if (data.ip) {
+                                console.log('IP público detectado:', data.ip);
+                                const uniqueId = Math.random().toString(36).substr(2, 6);
+                                const uniqueIP = `${data.ip}-${uniqueId}`;
+                                console.log('IP único gerado:', uniqueIP);
+                                return uniqueIP;
+                            }
+                        } catch (e) {
+                            console.log('Falha ao obter IP público:', e);
+                        }
+                    }
+                    
+                    // 5. Fallback final: gera IP único baseado no tipo de dispositivo
+                    const devicePrefix = isTvDevice ? 'tv' : 'dev';
+                    const fakeIP = `192.168.${Math.floor(Math.random() * 255) + 1}.${Math.floor(Math.random() * 254) + 1}`;
+                    const uniqueId = Math.random().toString(36).substr(2, 6);
+                    const finalIP = `${fakeIP}-${devicePrefix}-${uniqueId}`;
+                    console.log('IP único gerado para', deviceInfo.deviceType, ':', finalIP);
+                    return finalIP;
+                    
+                } catch (error) {
+                    console.error('Erro crítico ao obter IP:', error);
+                    // Fallback de emergência
+                    const emergencyIP = `emergency-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+                    console.log('Usando IP de emergência:', emergencyIP);
+                    return emergencyIP;
+                }
+            }
+
+            async getDeviceInfo() {
+                try {
+                    const response = await fetch('/device_info');
+                    const deviceInfo = await response.json();
+                    return deviceInfo;
+                } catch (error) {
+                    console.log('Erro ao obter informações do dispositivo:', error);
+                    return this.getDeviceNameFallback();
+                }
+            }
+
+            getDeviceNameFallback() {
+                const userAgent = navigator.userAgent;
+                let deviceName = 'Dispositivo Desconhecido';
+                let deviceType = 'unknown';
+                let isTvBox = false;
+                let isSmartTv = false;
+                
+                const userAgentLower = userAgent.toLowerCase();
+                
+                // Detectar TV Box
+                const tvBoxIndicators = [
+                    'androidtv', 'android tv', 'tv box', 'mi box', 'fire tv', 'firetv',
+                    'chromecast', 'roku', 'apple tv', 'appletv', 'nvidia shield',
+                    'amlogic', 'rockchip', 'allwinner', 'tvbox', 'tv-box'
+                ];
+                
+                // Detectar Smart TV
+                const smartTvIndicators = [
+                    'smart tv', 'smarttv', 'samsung tv', 'lg tv', 'sony tv', 'philips tv',
+                    'panasonic tv', 'sharp tv', 'tcl tv', 'hisense tv', 'vizio tv',
+                    'webos', 'tizen', 'android tv', 'fire tv'
+                ];
+                
+                for (const indicator of tvBoxIndicators) {
+                    if (userAgentLower.includes(indicator)) {
+                        deviceType = 'tv_box';
+                        isTvBox = true;
+                        deviceName = 'TV Box';
+                        break;
+                    }
+                }
+                
+                for (const indicator of smartTvIndicators) {
+                    if (userAgentLower.includes(indicator)) {
+                        deviceType = 'smart_tv';
+                        isSmartTv = true;
+                        deviceName = 'Smart TV';
+                        break;
+                    }
+                }
+                
+                // Detectar outros dispositivos
+                if (!isTvBox && !isSmartTv) {
+                    if (userAgent.includes('Windows')) {
+                        deviceName = 'Windows PC';
+                        deviceType = 'windows';
+                    } else if (userAgent.includes('Mac')) {
+                        deviceName = 'Mac';
+                        deviceType = 'mac';
+                    } else if (userAgent.includes('Linux')) {
+                        deviceName = 'Linux PC';
+                        deviceType = 'linux';
+                    } else if (userAgent.includes('Android')) {
+                        deviceName = 'Android';
+                        deviceType = 'android';
+                    } else if (userAgent.includes('iPhone') || userAgent.includes('iPad')) {
+                        deviceName = 'iOS';
+                        deviceType = 'ios';
+                    }
+                }
+                
+                return {
+                    deviceName: deviceName,
+                    deviceType: deviceType,
+                    isTvBox: isTvBox,
+                    isSmartTv: isSmartTv,
+                    userAgent: userAgent
+                };
+            }
+
+            getDeviceName() {
+                return this.getDeviceNameFallback().deviceName;
+            }
+
+            async init() {
+                if (this.isInitializing) {
+                    console.log('Inicialização já em andamento, aguardando...');
+                    return;
+                }
+                
+                this.isInitializing = true;
+                console.log('Inicializando cliente...');
+                
+                try {
+                    // Garantir que temos um IP válido primeiro
+                    this.ipAddress = await this.getClientIP();
+                    if (!this.ipAddress) {
+                        console.error('❌ Não foi possível obter IP, usando IP de emergência');
+                        this.ipAddress = `emergency-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
+                    }
+                    
+                    console.log('✅ IP definido:', this.ipAddress);
+                    
+                    // Obter informações do dispositivo
+                    let deviceInfo;
+                    try {
+                        deviceInfo = await this.getDeviceInfo();
+                    } catch (error) {
+                        console.log('Erro ao obter device info, usando fallback:', error);
+                        deviceInfo = this.getDeviceNameFallback();
+                    }
+                    this.deviceInfo = deviceInfo;
+                    
+                    this.deviceName = deviceInfo.deviceName || this.getDeviceName();
+                    
+                    console.log('Dispositivo:', this.deviceName);
+                    console.log('Tipo de dispositivo:', deviceInfo.deviceType);
+                    console.log('É TV Box:', deviceInfo.isTvBox);
+                    console.log('É Smart TV:', deviceInfo.isSmartTv);
+                    
+                    // Carregar configurações
+                    try {
+                        await this.loadSettings();
+                    } catch (error) {
+                        console.log('Erro ao carregar configurações, usando padrão:', error);
+                    }
+                    
+                    // Verificar se já tem nome personalizado salvo
+                    this.deviceCustomName = localStorage.getItem('deviceCustomName');
+                    
+                    if (!this.deviceCustomName) {
+                        // Primeira vez - perguntar nome do dispositivo
+                        try {
+                            await this.askDeviceName();
+                        } catch (error) {
+                            console.log('Erro ao perguntar nome, usando padrão:', error);
+                            this.deviceCustomName = this.deviceName;
+                        }
+                    }
+                    
+                    this.updateStatus();
+                    
+                    // Tentar conectar imediatamente
+                    await this.tryConnect();
+                    
+                    this.setupWatchdog();
+                    console.log('✅ Cliente inicializado com sucesso');
+                } catch (error) {
+                    console.error('❌ Erro na inicialização:', error);
+                    // Mesmo com erro, tentar conectar
+                    await this.tryConnect();
+                } finally {
+                    this.isInitializing = false;
+                }
+            }
+
+            async tryConnect() {
+                console.log('🔄 Tentando conectar...');
+                
+                // Tentar WebSocket primeiro
+                this.connectWebSocket();
+                
+                // Se WebSocket falhar após 5 segundos, tentar polling
+                setTimeout(async () => {
+                    if (!this.isConnected && !this.usePolling) {
+                        console.log('⚠️ WebSocket não conectou, tentando polling...');
+                        await this.startPolling();
+                    }
+                }, 5000); // 5 segundos
+                
+                // Se ainda não conectou após 15 segundos, forçar polling
+                setTimeout(async () => {
+                    if (!this.isConnected && !this.usePolling) {
+                        console.log('🚨 Forçando modo polling...');
+                        await this.startPolling();
+                    }
+                }, 15000); // 15 segundos
+            }
+
+            connectWebSocket() {
+                // Evitar múltiplas conexões simultâneas
+                if (this.socket && this.socket.connected) {
+                    console.log('WebSocket já conectado, ignorando nova conexão');
+                    return;
+                }
+                
+                // Se já existe um socket, desconectar primeiro
+                if (this.socket) {
+                    console.log('Desconectando socket anterior...');
+                    this.socket.disconnect();
+                    this.socket = null;
+                }
+                
+                try {
+                    console.log('Conectando WebSocket...');
+                    
+                    // Configurações específicas para TV Box e Smart TVs
+                    const deviceInfo = this.deviceInfo || this.getDeviceNameFallback();
+                    const isTvDevice = deviceInfo.isTvBox || deviceInfo.isSmartTv;
+                    
+                    const socketOptions = {
+                        timeout: isTvDevice ? 30000 : 20000, // Timeout maior para TV devices
+                        forceNew: true,
+                        reconnection: true,
+                        reconnectionAttempts: isTvDevice ? 15 : 10, // Mais tentativas para TV devices
+                        reconnectionDelay: isTvDevice ? 2000 : 1000, // Delay maior para TV devices
+                        reconnectionDelayMax: isTvDevice ? 10000 : 5000,
+                        maxReconnectionAttempts: isTvDevice ? 15 : 10
+                    };
+                    
+                    console.log('Configurações WebSocket para', deviceInfo.deviceType, ':', socketOptions);
+                    this.socket = io(socketOptions);
+                    
+                    this.socket.on('connect', () => {
+                        console.log('Conectado ao servidor WebSocket');
+                        this.isConnected = true;
+                        this.reconnectAttempts = 0;
+                        this.hideOfflineMessage();
+                        this.registerClient();
+                        this.updateStatus();
+                    });
+
+                    this.socket.on('disconnect', (reason) => {
+                        console.log('Desconectado do servidor. Motivo:', reason);
+                        this.isConnected = false;
+                        this.showOfflineMessage();
+                        this.updateStatus();
+                        
+                        // Só tentar reconectar se não foi uma desconexão intencional
+                        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                            this.scheduleReconnect();
+                        }
+                    });
+                    
+                    this.socket.on('connect_error', (error) => {
+                        console.log('Erro na conexão WebSocket:', error);
+                        this.isConnected = false;
+                        this.showOfflineMessage();
+                        this.updateStatus();
+                        
+                        // Se WebSocket falhar, tentar polling
+                        if (this.pollingAttempts < this.maxPollingAttempts) {
+                            console.log('WebSocket falhou, tentando polling...');
+                            this.startPolling();
+                        }
+                    });
+                    
+                    this.socket.on('reconnect', (attemptNumber) => {
+                        console.log('Reconectado após', attemptNumber, 'tentativas');
+                        this.isConnected = true;
+                        this.hideOfflineMessage();
+                        this.updateStatus();
+                    });
+                    
+                    this.socket.on('reconnect_error', (error) => {
+                        console.log('Erro na reconexão:', error);
+                        
+                        // Se reconexão falhar, tentar polling
+                        if (this.pollingAttempts < this.maxPollingAttempts) {
+                            console.log('Reconexão falhou, tentando polling...');
+                            this.startPolling();
+                        }
+                    });
+
+                    this.socket.on('queue_updated', (data) => {
+                        console.log('=== FILA ATUALIZADA VIA WEBSOCKET ===');
+                        console.log('Dados recebidos:', data);
+                        console.log('Fila anterior:', this.mediaQueue);
+                        this.mediaQueue = data.queue || [];
+                        console.log('Nova fila:', this.mediaQueue);
+                        console.log('Quantidade de itens na fila:', this.mediaQueue.length);
+                        
+                        // Limpar timeout atual se existir
+                        if (this.currentTimeout) {
+                            clearTimeout(this.currentTimeout);
+                            this.currentTimeout = null;
+                        }
+                        
+                        // Resetar estado de transição se necessário
+                        if (this.isTransitioning) {
+                            console.log('Resetando estado de transição');
+                            this.isTransitioning = false;
+                        }
+                        
+                        this.currentIndex = 0;
+                        this.updateStatus();
+                        
+                        // Aguardar um pouco antes de iniciar exibição para evitar conflitos
+                        setTimeout(() => {
+                            this.displayCurrentMedia();
+                        }, 50);
+                        
+                        // Pré-carregar mídias em background (não bloquear)
+                        setTimeout(() => {
+                            this.preloadQueue();
+                        }, 100);
+                        
+                        console.log('=== FIM DA ATUALIZAÇÃO ===');
+                    });
+
+                    this.socket.on('error', (data) => {
+                        console.error('Erro do servidor:', data);
+                    });
+
+                    this.socket.on('global_settings_updated', (data) => {
+                        console.log('=== CONFIGURAÇÕES GLOBAIS ATUALIZADAS ===');
+                        console.log('Dados recebidos:', data);
+                        console.log('Configurações anteriores:', this.settings);
+                        
+                        const newSettings = data.settings;
+                        
+                        // Atualizar configurações locais
+                        this.settings = { ...this.settings, ...newSettings };
+                        
+                        // Salvar no localStorage
+                        localStorage.setItem('streamingSettings', JSON.stringify(this.settings));
+                        
+                        console.log('Novas configurações aplicadas:', this.settings);
+                        console.log('imageDuration atual:', this.settings.imageDuration, 'ms');
+                        
+                        // Aplicar mudanças imediatamente se necessário
+                        if (newSettings.imageDuration) {
+                            console.log('Nova duração de imagem recebida:', newSettings.imageDuration, 'ms');
+                            
+                             if (this.currentTimeout) {
+                                 console.log('Recalculando timeout para nova duração de imagem');
+                                 clearTimeout(this.currentTimeout);
+                                 this.currentTimeout = null;
+                             }
+                            
+                            const currentMedia = this.mediaQueue[this.currentIndex];
+                            if (currentMedia && currentMedia.type === 'image') {
+                                console.log('Agendando próxima mídia com nova duração');
+                                this.scheduleNextMedia(currentMedia);
+                            } else {
+                                console.log('Nenhuma mídia atual ou não é imagem');
+                            }
+                        }
+                        
+                        // Se a duração da transição mudou, aplicar imediatamente
+                        if (newSettings.transitionDuration) {
+                            console.log('Nova duração de transição aplicada:', newSettings.transitionDuration);
+                        }
+                        
+                        console.log('=== CONFIGURAÇÕES APLICADAS COM SUCESSO ===');
+                    });
+
+                } catch (error) {
+                    console.error('Erro ao conectar:', error);
+                    this.scheduleReconnect();
+                }
+            }
+
+            registerClient() {
+                if (this.socket && this.isConnected && this.ipAddress) {
+                    const deviceInfo = this.deviceInfo || this.getDeviceNameFallback();
+                    
+                    console.log(`Registrando cliente com IP: ${this.ipAddress} (ID: ${this.connectionId})`);
+                    console.log('=== DADOS DO REGISTRO ===');
+                    console.log('deviceCustomName:', this.deviceCustomName);
+                    console.log('deviceName:', this.deviceName);
+                    console.log('deviceType:', deviceInfo.deviceType);
+                    console.log('isTvBox:', deviceInfo.isTvBox);
+                    console.log('isSmartTv:', deviceInfo.isSmartTv);
+                    console.log('nome que será enviado:', this.deviceCustomName || this.deviceName);
+                    console.log('=== FIM DOS DADOS ===');
+                    
+                    this.socket.emit('register', {
+                        ip_address: this.ipAddress,
+                        device_name: this.deviceName,
+                        user_agent: navigator.userAgent,
+                        connection_id: this.connectionId,
+                        nome: this.deviceCustomName || this.deviceName,
+                        device_type: deviceInfo.deviceType,
+                        is_tv_box: deviceInfo.isTvBox,
+                        is_smart_tv: deviceInfo.isSmartTv
+                    });
+                } else {
+                    console.log('Não foi possível registrar cliente:', {
+                        socket: !!this.socket,
+                        connected: this.isConnected,
+                        ipAddress: this.ipAddress,
+                        connectionId: this.connectionId
+                    });
+                }
+            }
+
+            scheduleReconnect() {
+                if (this.reconnectAttempts < this.maxReconnectAttempts) {
+                    this.reconnectAttempts++;
+                    console.log(`Tentativa de reconexão ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
+                    
+                    setTimeout(() => {
+                        this.connectWebSocket();
+                    }, this.reconnectInterval);
+                } else {
+                    console.error('Máximo de tentativas de reconexão atingido');
+                    // Tentar polling como último recurso
+                    this.startPolling();
+                }
+            }
+
+            async startPolling() {
+                if (this.usePolling) {
+                    console.log('Polling já ativo, ignorando...');
+                    return;
+                }
+                
+                console.log('🔄 Iniciando modo polling...');
+                this.usePolling = true;
+                this.pollingAttempts = 0;
+                
+                // Registrar via polling primeiro
+                await this.registerClientPolling();
+                
+                // Iniciar polling periódico
+                this.startPollingInterval();
+            }
+
+            async registerClientPolling() {
+                try {
+                    const deviceInfo = this.deviceInfo || this.getDeviceNameFallback();
+                    
+                    const response = await fetch('/api/register_poll', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            ip_address: this.ipAddress,
+                            device_name: this.deviceName,
+                            user_agent: navigator.userAgent,
+                            connection_id: this.connectionId,
+                            nome: this.deviceCustomName || this.deviceName,
+                            device_type: deviceInfo.deviceType,
+                            is_tv_box: deviceInfo.isTvBox,
+                            is_smart_tv: deviceInfo.isSmartTv
+                        })
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log('✅ Cliente registrado via polling:', data);
+                        this.isConnected = true;
+                        this.hideOfflineMessage();
+                        this.updateStatus();
+                    } else {
+                        console.error('❌ Erro ao registrar via polling:', response.status);
+                    }
+                } catch (error) {
+                    console.error('❌ Erro ao registrar via polling:', error);
+                }
+            }
+
+            startPollingInterval() {
+                // Limpar intervalo anterior se existir
+                if (this.pollingInterval) {
+                    clearInterval(this.pollingInterval);
+                }
+                
+                // Polling a cada 5 segundos
+                this.pollingInterval = setInterval(async () => {
+                    await this.pollForUpdates();
+                }, 5000);
+                
+                console.log('📡 Polling iniciado a cada 5 segundos');
+            }
+
+            async pollForUpdates() {
+                try {
+                    const response = await fetch(`/api/poll/${this.ipAddress}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        
+                        if (data.status === 'ok') {
+                            // Atualizar fila se mudou
+                            if (JSON.stringify(data.queue) !== JSON.stringify(this.mediaQueue)) {
+                                console.log('📋 Fila atualizada via polling:', data.queue);
+                                this.mediaQueue = data.queue || [];
+                                this.updateStatus();
+                                
+                                // Se não há mídia sendo exibida, iniciar
+                                if (this.mediaQueue.length > 0 && !this.currentMedia) {
+                                    this.startMediaDisplay();
+                                }
+                            }
+                            
+                            // Atualizar configurações se mudaram
+                            if (data.global_settings) {
+                                this.updateSettingsFromServer(data.global_settings);
+                            }
+                        }
+                    } else {
+                        console.log('❌ Erro no polling:', response.status);
+                    }
+                } catch (error) {
+                    console.error('❌ Erro no polling:', error);
+                }
+            }
+
+            updateSettingsFromServer(globalSettings) {
+                if (globalSettings.imageDuration) {
+                    this.settings.imageDuration = parseInt(globalSettings.imageDuration);
+                }
+                if (globalSettings.transitionDuration) {
+                    this.settings.transitionDuration = parseInt(globalSettings.transitionDuration);
+                }
+                if (globalSettings.autoplayVideos) {
+                    this.settings.autoplayVideos = globalSettings.autoplayVideos === 'true';
+                }
+                if (globalSettings.loopVideos) {
+                    this.settings.loopVideos = globalSettings.loopVideos === 'true';
+                }
+                if (globalSettings.preloadMedia) {
+                    this.settings.preloadMedia = globalSettings.preloadMedia === 'true';
+                }
+                
+                console.log('⚙️ Configurações atualizadas via polling:', this.settings);
+            }
+
+            cleanup() {
+                console.log('Limpando recursos do cliente...');
+                
+                // Limpar timeout atual
+                if (this.currentTimeout) {
+                    clearTimeout(this.currentTimeout);
+                    this.currentTimeout = null;
+                }
+                
+                
+                // Desconectar socket
+                if (this.socket) {
+                    this.socket.disconnect();
+                    this.socket = null;
+                }
+                
+                // Limpar polling
+                if (this.pollingInterval) {
+                    clearInterval(this.pollingInterval);
+                    this.pollingInterval = null;
+                }
+                
+                // Limpar cache de mídias pré-carregadas
+                this.preloadedMedia.clear();
+                
+                console.log('Recursos limpos');
+            }
+
+            setupWatchdog() {
+                // Verificar conexão a cada 30 segundos
+                setInterval(() => {
+                    if (!this.isConnected && this.reconnectAttempts < this.maxReconnectAttempts) {
+                        console.log('Watchdog: Tentando reconectar...');
+                        this.connectWebSocket();
+                    }
+                }, 30000);
+
+                // Sincronizar configurações a cada 3 minutos (180 segundos)
+                setInterval(() => {
+                    if (this.isConnected) {
+                        console.log('Watchdog: Sincronizando configurações...');
+                        this.syncQueue();
+                    }
+                }, 180000); // 3 minutos
+            }
+
+            async syncQueue() {
+                if (!this.ipAddress) {
+                    console.log('IP ainda não disponível para sincronização');
+                    return;
+                }
+                
+                // Esta função agora é usada apenas para sincronizar configurações
+                // Não interfere mais com a exibição de mídia
+                try {
+                    console.log('Sincronizando configurações para IP:', this.ipAddress);
+                    const response = await fetch(`/api/sync/${this.ipAddress}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        console.log('Configurações sincronizadas:', data);
+                        
+                        // Apenas atualizar a fila se não há mídia sendo exibida
+                        if (this.mediaQueue.length === 0) {
+                            this.mediaQueue = data.queue || [];
+                            this.updateStatus();
+                            
+                            if (this.mediaQueue.length > 0) {
+                                // Só iniciar exibição se não há nada sendo exibido
+                                setTimeout(() => {
+                                    this.displayCurrentMedia();
+                                }, 100);
+                            }
+                        }
+                    } else {
+                        console.error('Erro na resposta da API:', response.status, response.statusText);
+                    }
+                } catch (error) {
+                    console.error('Erro ao sincronizar configurações:', error);
+                }
+            }
+
+            displayCurrentMedia() {
+                if (this.isTransitioning) {
+                    console.log('Transição em andamento, aguardando...');
+                    return;
+                }
+
+                const container = document.getElementById('mediaContainer');
+                
+                if (this.mediaQueue.length === 0) {
+                    container.innerHTML = `
+                        <div class="text-white text-center">
+                            <h1 class="text-4xl mb-4">Sistema de Streaming</h1>
+                            <p class="text-xl">Aguardando conteúdo...</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                const currentMedia = this.mediaQueue[this.currentIndex];
+                if (!currentMedia) return;
+
+                console.log('Exibindo mídia:', currentMedia);
+                
+                // Limpar timeout anterior se existir
+                if (this.currentTimeout) {
+                    clearTimeout(this.currentTimeout);
+                    this.currentTimeout = null;
+                }
+
+                this.isTransitioning = true;
+                
+                // Verificar se é primeira exibição ou se não há mídia atual
+                const hasCurrentMedia = container.querySelector('.media-item') !== null;
+                const hasWelcomeMessage = container.querySelector('.text-white') !== null;
+                
+                if (!hasCurrentMedia || hasWelcomeMessage) {
+                    // Primeira exibição - mostrar imediatamente sem fade out
+                    console.log('Primeira exibição - mostrando imediatamente');
+                    container.innerHTML = '';
+                    const mediaElement = this.createMediaElement(currentMedia);
+                    container.appendChild(mediaElement);
+                    container.classList.add('fade-in');
+                    
+                    // Remover classe fade-in após animação
+                    setTimeout(() => {
+                        container.classList.remove('fade-in');
+                        this.isTransitioning = false;
+                        this.scheduleNextMedia(currentMedia);
+                    }, this.settings.transitionDuration);
+                } else {
+                    // Transições normais - fazer fade out primeiro
+                    console.log('Transição normal - fazendo fade out');
+                    container.classList.add('fade-out');
+                    
+                    setTimeout(() => {
+                        container.innerHTML = '';
+                        const mediaElement = this.createMediaElement(currentMedia);
+                        container.appendChild(mediaElement);
+                        container.classList.remove('fade-out');
+                        container.classList.add('fade-in');
+                        
+                        // Remover classe fade-in após animação
+                        setTimeout(() => {
+                            container.classList.remove('fade-in');
+                            this.isTransitioning = false;
+                            this.scheduleNextMedia(currentMedia);
+                        }, this.settings.transitionDuration);
+                    }, this.settings.transitionDuration);
+                }
+            }
+
+            createMediaElement(media) {
+                console.log('Criando elemento de mídia:', media);
+                const element = document.createElement(media.type === 'video' ? 'video' : 'img');
+                element.className = 'media-item';
+                
+                // Para imagens, usar loading="eager" para carregamento imediato
+                if (media.type === 'image') {
+                    element.loading = 'eager';
+                    element.decoding = 'sync';
+                }
+                
+                element.src = media.path;
+                
+                // Adicionar eventos de carregamento para debug
+                element.addEventListener('load', () => {
+                    console.log('Mídia carregada com sucesso:', media.path);
+                });
+                
+                element.addEventListener('error', (error) => {
+                    console.error('Erro ao carregar mídia:', media.path, error);
+                    // Se falhar ao carregar, avançar para próxima após um delay
+                    setTimeout(() => {
+                        if (!this.isTransitioning) {
+                            this.nextMedia();
+                        }
+                    }, 1000); // Aumentar tempo de espera para evitar loops
+                });
+                
+                if (media.type === 'video') {
+                    element.autoplay = this.settings.autoplayVideos;
+                    element.muted = true;
+                    element.loop = this.settings.loopVideos;
+                    element.controls = false;
+                    
+                    element.addEventListener('ended', () => {
+                        if (!this.settings.loopVideos && !this.isTransitioning) {
+                            this.nextMedia();
+                        }
+                    });
+                }
+                
+                return element;
+            }
+
+            nextMedia() {
+                if (this.mediaQueue.length === 0) return;
+                
+                // Evitar chamadas simultâneas
+                if (this.isTransitioning) {
+                    console.log('Transição em andamento, ignorando nextMedia');
+                    return;
+                }
+                
+                this.currentIndex = (this.currentIndex + 1) % this.mediaQueue.length;
+                console.log(`Avançando para índice ${this.currentIndex}`);
+                this.displayCurrentMedia();
+            }
+
+            scheduleNextMedia(currentMedia) {
+                if (currentMedia.type === 'image') {
+                    // Usar duração específica da mídia ou configuração padrão
+                    let duration = this.settings.imageDuration;
+                    if (typeof currentMedia.duration === 'number' && currentMedia.duration > 0) {
+                        duration = currentMedia.duration;
+                    }
+                    console.log('=== AGENDANDO PRÓXIMA MÍDIA ===');
+                    console.log('Mídia atual:', currentMedia);
+                    console.log('Duração da mídia:', currentMedia.duration);
+                    console.log('Configuração global:', this.settings.imageDuration);
+                    console.log('Duração usada:', duration);
+                    
+                    // Para primeira imagem, usar tempo mínimo de 2 segundos
+                    const actualDuration = this.currentIndex === 0 ? Math.max(2000, duration) : duration;
+                    console.log('Duração final:', actualDuration, '(índice:', this.currentIndex, ')');
+                    
+                    if (this.currentTimeout) {
+                        clearTimeout(this.currentTimeout);
+                        this.currentTimeout = null;
+                        console.log('Timeout anterior limpo');
+                    }
+                    
+                    this.currentTimeout = setTimeout(() => {
+                        console.log('=== TIMEOUT EXECUTADO ===');
+                        console.log('Chamando nextMedia...');
+                        this.nextMedia();
+                    }, actualDuration);
+                    
+                    console.log('Timeout agendado para', actualDuration);
+                    console.log('=== FIM DO AGENDAMENTO ===');
+                }
+                // Para vídeos, o evento 'ended' já cuida da transição
+            }
+
+             updateStatus() {
+                 const connectionStatus = document.getElementById('connectionStatus');
+                 
+                 if (connectionStatus) {
+                     if (this.isConnected) {
+                         connectionStatus.textContent = '✅ Conectado';
+                         connectionStatus.className = 'online';
+                     } else if (this.usePolling) {
+                         connectionStatus.textContent = '📡 Polling';
+                         connectionStatus.className = 'polling';
+                     } else {
+                         connectionStatus.textContent = '🔄 Conectando...';
+                         connectionStatus.className = 'connecting';
+                     }
+                 }
+                 
+                 console.log('Status atualizado:', {
+                     isConnected: this.isConnected,
+                     usePolling: this.usePolling,
+                     ipAddress: this.ipAddress
+                 });
+             }
+
+            showOfflineMessage() {
+                document.getElementById('offlineMessage').style.display = 'block';
+            }
+
+            hideOfflineMessage() {
+                document.getElementById('offlineMessage').style.display = 'none';
+            }
+
+
+            // Métodos de configuração
+            async loadSettings() {
+                console.log('=== CARREGANDO CONFIGURAÇÕES ===');
+                console.log('Configurações iniciais:', this.settings);
+                
+                const saved = localStorage.getItem('streamingSettings');
+                if (saved) {
+                    const parsedSettings = JSON.parse(saved);
+                    console.log('Configurações do localStorage:', parsedSettings);
+                    this.settings = { ...this.settings, ...parsedSettings };
+                    console.log('Configurações após localStorage:', this.settings);
+                }
+                
+                // Tentar carregar configurações globais do servidor
+                try {
+                    console.log('Carregando configurações globais do servidor...');
+                    const response = await fetch('/api/global_settings');
+                    if (response.ok) {
+                        const globalSettings = await response.json();
+                        console.log('Configurações globais recebidas:', globalSettings);
+                        if (globalSettings.settings) {
+                            console.log('Configurações antes do merge:', this.settings);
+                            this.settings = { ...this.settings, ...globalSettings.settings };
+                            console.log('Configurações após merge:', this.settings);
+                            localStorage.setItem('streamingSettings', JSON.stringify(this.settings));
+                            console.log('Configurações salvas no localStorage');
+                        }
+                    } else {
+                        console.log('Erro na resposta do servidor:', response.status);
+                    }
+                } catch (error) {
+                    console.log('Não foi possível carregar configurações globais:', error);
+                }
+                
+                console.log('=== CONFIGURAÇÕES FINAIS ===');
+                console.log('imageDuration:', this.settings.imageDuration, 'ms');
+                console.log('transitionDuration:', this.settings.transitionDuration, 'ms');
+                console.log('=== FIM DO CARREGAMENTO ===');
+            }
+
+            // Pré-carregamento de mídias
+            preloadMedia(mediaPath) {
+                if (!this.settings.preloadMedia) return;
+                
+                if (this.preloadedMedia.has(mediaPath)) {
+                    return this.preloadedMedia.get(mediaPath);
+                }
+                
+                console.log('Pré-carregando:', mediaPath);
+                const element = document.createElement('img');
+                element.src = mediaPath;
+                
+                const promise = new Promise((resolve, reject) => {
+                    element.onload = () => {
+                        console.log('Mídia pré-carregada:', mediaPath);
+                        resolve(element);
+                    };
+                    element.onerror = () => {
+                        console.error('Erro ao pré-carregar:', mediaPath);
+                        reject(new Error(`Falha ao carregar ${mediaPath}`));
+                    };
+                });
+                
+                this.preloadedMedia.set(mediaPath, promise);
+                return promise;
+            }
+
+            preloadQueue() {
+                if (!this.settings.preloadMedia) return;
+                
+                console.log('Iniciando pré-carregamento da fila...');
+                // Pré-carregar apenas as próximas 3 imagens para não bloquear
+                const imagesToPreload = this.mediaQueue
+                    .filter(media => media.type === 'image')
+                    .slice(0, 3);
+                
+                imagesToPreload.forEach((media, index) => {
+                    setTimeout(() => {
+                        this.preloadMedia(media.path);
+                    }, index * 50); // Reduzir delay para carregamento mais rápido
+                });
+            }
+
+            async askDeviceName() {
+                return new Promise(resolve => {
+                    const modal = document.getElementById('deviceNameModal');
+                    const deviceNameInput = document.getElementById('deviceNameInput');
+                    const confirmButton = modal.querySelector('button:first-of-type');
+                    const useDefaultButton = modal.querySelector('button:last-of-type');
+
+                    deviceNameInput.value = ''; // Limpar input ao abrir
+
+                     modal.style.display = 'block';
+                     this.isTransitioning = true; // Desabilita transições durante o modal
+                     this.currentTimeout = null; // Limpar timeout do modal
+
+                    const handleConfirm = () => {
+                        const name = deviceNameInput.value.trim();
+                        if (name) {
+                            this.deviceCustomName = name;
+                            localStorage.setItem('deviceCustomName', this.deviceCustomName);
+                            modal.style.display = 'none';
+                            this.isTransitioning = false;
+                            this.updateStatus();
+                            cleanupListeners();
+                            resolve();
+                        } else {
+                            alert('Por favor, digite um nome para o dispositivo.');
+                        }
+                    };
+
+                    const handleUseDefault = () => {
+                        this.deviceCustomName = this.getDeviceName();
+                        localStorage.setItem('deviceCustomName', this.deviceCustomName);
+                        modal.style.display = 'none';
+                        this.isTransitioning = false;
+                        this.updateStatus();
+                        cleanupListeners();
+                        resolve();
+                    };
+
+                    confirmButton.addEventListener('click', handleConfirm);
+                    useDefaultButton.addEventListener('click', handleUseDefault);
+
+                    // Adicionar evento de Enter no input
+                    const handleKeyPress = (event) => {
+                        if (event.key === 'Enter') {
+                            handleConfirm();
+                        }
+                    };
+                    deviceNameInput.addEventListener('keypress', handleKeyPress);
+
+                    const cleanupListeners = () => {
+                        confirmButton.removeEventListener('click', handleConfirm);
+                        useDefaultButton.removeEventListener('click', handleUseDefault);
+                        deviceNameInput.removeEventListener('keypress', handleKeyPress);
+                        modal.removeEventListener('click', handleModalClick);
+                    };
+
+                    const handleModalClick = (event) => {
+                        if (event.target === modal) {
+                            modal.style.display = 'none';
+                            this.isTransitioning = false;
+                            if (!this.deviceCustomName) {
+                                this.deviceCustomName = this.getDeviceName();
+                                localStorage.setItem('deviceCustomName', this.deviceCustomName);
+                                this.updateStatus();
+                            }
+                            cleanupListeners();
+                            resolve();
+                        }
+                    };
+                    modal.addEventListener('click', handleModalClick);
+                });
+            }
+
+        }
+
+        // Inicializar cliente quando a página carregar
+        document.addEventListener('DOMContentLoaded', () => {
+            try {
+                if (!window.streamingClient) {
+                    window.streamingClient = new StreamingClient();
+                }
+            } catch (error) {
+                console.log('Erro ao inicializar cliente:', error.message);
+                if (error.message === 'Cliente já ativo') {
+                    // Se já existe um cliente ativo, mostrar mensagem
+                    document.body.innerHTML = `
+                        <div style="display: flex; justify-content: center; align-items: center; height: 100vh; background: #000; color: white; font-family: Arial, sans-serif;">
+                            <div style="text-align: center;">
+                                <h1>Sistema de Streaming</h1>
+                                <p>Cliente já está ativo em outra aba/janela.</p>
+                                <p>Feche outras abas e recarregue esta página.</p>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+        });
+
+        // Limpar recursos quando a página for fechada
+        window.addEventListener('beforeunload', () => {
+            if (window.streamingClient) {
+                window.streamingClient.cleanup();
+                window.streamingClient = null;
+                window.streamingClientInstance = null;
+            }
+            window.streamingClientActive = false;
+        });
+
+        // Solicitar fullscreen quando a página carregar
+        document.addEventListener('click', () => {
+            if (document.documentElement.requestFullscreen) {
+                document.documentElement.requestFullscreen();
+            } else if (document.documentElement.webkitRequestFullscreen) {
+                document.documentElement.webkitRequestFullscreen();
+            } else if (document.documentElement.msRequestFullscreen) {
+                document.documentElement.msRequestFullscreen();
+            }
+        });
+
+
+    </script>
+</body>
+</html> 

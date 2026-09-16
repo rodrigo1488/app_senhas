@@ -39,7 +39,7 @@ const NAV_BASE = [
   { href: "/admin/fila-ao-vivo", label: "Fila ao Vivo", icon: Activity },
   { href: "/admin/operadores", label: "Operadores", icon: Users },
   { href: "/admin/setores", label: "Setores", icon: Building2 },
-  { href: "/admin/propagandas", label: "Propagandas", icon: ImageIcon, adminOnly: true },
+  { href: "/admin/propagandas", label: "Mídias", icon: ImageIcon, adminOnly: true },
   { href: "/admin/impressoras", label: "Impressoras", icon: Printer },
   { href: "/admin/usuarios", label: "Usuários", icon: UserCog, adminOnly: true },
   { href: "/admin/configuracoes", label: "Configurações", icon: Settings, adminOnly: true },

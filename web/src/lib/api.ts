@@ -60,13 +60,28 @@ export type Setor = {
   layout_tv_web: "propaganda" | "fila";
 };
 
+export type PropagandaTipo = "image" | "video";
+
 export type Propaganda = {
   id: number;
   arquivo: string;
+  tipo: PropagandaTipo;
   ordem: number;
   ativo: boolean;
   criado_em: string | null;
   setor_ids: number[];
+};
+
+export type TvAdmin = {
+  id: number;
+  tipo: "setor" | "streaming";
+  chave: string;
+  nome: string;
+  device_name?: string;
+  is_online: boolean;
+  setor_id?: number | null;
+  propaganda_ids: number[];
+  layout_tv_web?: "propaganda" | "fila";
 };
 
 export type Operador = {

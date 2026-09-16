@@ -6,6 +6,7 @@ Mantém a mesma autenticação por sessão Flask do admin Jinja legado
 """
 from __future__ import annotations
 
+import json
 from datetime import date, datetime, timedelta
 
 from flask import Blueprint, current_app, jsonify, make_response, request, session
@@ -14,6 +15,7 @@ from sqlalchemy import func
 from backend.auth import api_login_required
 from backend.extensions import db
 from backend.models import AtendimentoAtual, Finalizado, Impressora, Operador, Propaganda, Senha, Setor, Usuario
+from backend.services.streaming_service import atribuir_midias_tv, listar_tvs_admin
 from backend.services.admin_access import (
     AdminAccessError,
     assert_setor_permitido,
@@ -35,10 +37,16 @@ from backend.utils import (
     delete_old_image,
     get_configuracao,
     get_ngrok_url,
+    is_video_filename,
     process_image,
     process_propaganda_image,
+    save_propaganda_video,
     set_configuracao,
     set_ngrok_url,
+)
+from backend.services.tv_config_service import (
+    ativar_propagandas_nos_setores,
+    notificar_tvs,
 )
 
 admin_api_bp = Blueprint("admin_api", __name__, url_prefix="/api/v1/admin")
@@ -514,6 +522,7 @@ def update_setor(setor_id: int):
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
     db.session.commit()
+    notificar_tvs([setor.id])
     return jsonify(
         {
             "id": setor.id,
@@ -540,6 +549,32 @@ def delete_setor(setor_id: int):
 # --- Propagandas (galeria global para TV) ------------------------------------
 
 
+def _parse_setor_ids(raw) -> tuple[list[int] | None, str | None]:
+    if raw is None or raw == "":
+        return [], None
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (TypeError, ValueError):
+            return None, "setor_ids inválido"
+    if not isinstance(raw, list):
+        return None, "setor_ids deve ser uma lista"
+    try:
+        return sorted({int(setor_id) for setor_id in raw}), None
+    except (TypeError, ValueError):
+        return None, "IDs de setores inválidos"
+
+
+def _vincular_propagandas(propagandas: list[Propaganda], setores: list[Setor]) -> list[int]:
+    ids_antes: set[int] = set()
+    for propaganda in propagandas:
+        ids_antes.update(setor.id for setor in propaganda.setores)
+        propaganda.setores = setores
+    if setores:
+        ativar_propagandas_nos_setores(setores)
+    return sorted(ids_antes | {setor.id for setor in setores})
+
+
 @admin_api_bp.route("/propagandas", methods=["GET"])
 @api_login_required
 def list_propagandas():
@@ -553,23 +588,47 @@ def list_propagandas():
 def create_propaganda():
     file = request.files.get("arquivo") or request.files.get("imagem")
     if not file or not file.filename:
-        return jsonify({"error": "Imagem é obrigatória"}), 400
-    if not allowed_file(file.filename):
-        return jsonify({"error": "Tipo de arquivo não permitido"}), 400
+        return jsonify({"error": "Arquivo é obrigatório"}), 400
+
+    is_video = is_video_filename(file.filename)
+    if not is_video and not allowed_file(file.filename):
+        return jsonify({"error": "Tipo de arquivo não permitido (imagem ou MP4)"}), 400
+
     file.seek(0, 2)
     tamanho = file.tell()
     file.seek(0)
-    if tamanho > current_app.config["MAX_FILE_SIZE"]:
-        return jsonify({"error": "Arquivo muito grande (máx. 5MB)"}), 400
+    max_size = current_app.config["MAX_VIDEO_SIZE"] if is_video else current_app.config["MAX_FILE_SIZE"]
+    limite_label = "80MB" if is_video else "5MB"
+    if tamanho > max_size:
+        return jsonify({"error": f"Arquivo muito grande (máx. {limite_label})"}), 400
 
-    filename = process_propaganda_image(file)
-    if not filename:
-        return jsonify({"error": "Não foi possível processar a imagem"}), 400
+    if is_video:
+        filename = save_propaganda_video(file)
+        tipo = "video"
+        if not filename:
+            return jsonify({"error": "Não foi possível salvar o vídeo"}), 400
+    else:
+        filename = process_propaganda_image(file)
+        tipo = "image"
+        if not filename:
+            return jsonify({"error": "Não foi possível processar a imagem"}), 400
+
+    setor_ids, setor_error = _parse_setor_ids(request.form.get("setor_ids"))
+    if setor_error:
+        return jsonify({"error": setor_error}), 400
+
+    setores = Setor.query.filter(Setor.id.in_(setor_ids)).all() if setor_ids else []
+    if setor_ids and len(setores) != len(setor_ids):
+        return jsonify({"error": "Um ou mais setores não foram encontrados"}), 404
 
     max_ordem = db.session.query(func.max(Propaganda.ordem)).scalar() or 0
-    item = Propaganda(arquivo=filename, ordem=max_ordem + 1, ativo=True)
+    item = Propaganda(arquivo=filename, tipo=tipo, ordem=max_ordem + 1, ativo=True)
+    if setores:
+        _vincular_propagandas([item], setores)
     db.session.add(item)
     db.session.commit()
+    if setores:
+        notificar_tvs([setor.id for setor in setores])
     return jsonify(item.to_dict()), 201
 
 
@@ -579,28 +638,27 @@ def create_propaganda():
 def update_propagandas_setores():
     data = request.get_json(silent=True) or {}
     propaganda_ids = data.get("propaganda_ids")
-    setor_ids = data.get("setor_ids")
+    setor_ids, setor_error = _parse_setor_ids(data.get("setor_ids"))
     if not isinstance(propaganda_ids, list) or not propaganda_ids:
         return jsonify({"error": "Selecione ao menos uma mídia"}), 400
-    if not isinstance(setor_ids, list):
-        return jsonify({"error": "setor_ids deve ser uma lista"}), 400
+    if setor_error:
+        return jsonify({"error": setor_error}), 400
 
     try:
         propaganda_ids = sorted({int(item_id) for item_id in propaganda_ids})
-        setor_ids = sorted({int(setor_id) for setor_id in setor_ids})
     except (TypeError, ValueError):
-        return jsonify({"error": "IDs de mídias ou setores inválidos"}), 400
+        return jsonify({"error": "IDs de mídias inválidos"}), 400
 
     propagandas = Propaganda.query.filter(Propaganda.id.in_(propaganda_ids)).all()
     setores = Setor.query.filter(Setor.id.in_(setor_ids)).all() if setor_ids else []
     if len(propagandas) != len(propaganda_ids):
         return jsonify({"error": "Uma ou mais mídias não foram encontradas"}), 404
-    if len(setores) != len(setor_ids):
+    if setor_ids and len(setores) != len(setor_ids):
         return jsonify({"error": "Um ou mais setores não foram encontrados"}), 404
 
-    for propaganda in propagandas:
-        propaganda.setores = setores
+    afetados = _vincular_propagandas(propagandas, setores)
     db.session.commit()
+    notificar_tvs(afetados)
     return jsonify(
         {
             "atualizadas": len(propagandas),
@@ -623,6 +681,7 @@ def update_propaganda(propaganda_id: int):
     if "ativo" in data:
         item.ativo = bool(data.get("ativo"))
     db.session.commit()
+    notificar_tvs([setor.id for setor in item.setores])
     return jsonify(item.to_dict())
 
 
@@ -631,10 +690,39 @@ def update_propaganda(propaganda_id: int):
 @require_admin
 def delete_propaganda(propaganda_id: int):
     item = Propaganda.query.get_or_404(propaganda_id)
+    setor_ids = [setor.id for setor in item.setores]
     delete_old_image(item.arquivo)
     db.session.delete(item)
     db.session.commit()
+    notificar_tvs(setor_ids)
     return jsonify({"ok": True})
+
+
+@admin_api_bp.route("/tvs", methods=["GET"])
+@api_login_required
+def list_tvs():
+    return jsonify(listar_tvs_admin())
+
+
+@admin_api_bp.route("/tvs/midias", methods=["PUT"])
+@api_login_required
+@require_admin
+def update_tv_midias():
+    data = request.get_json(silent=True) or {}
+    tipo = (data.get("tipo") or "").strip().lower()
+    if tipo not in {"setor", "streaming"}:
+        return jsonify({"error": "tipo deve ser setor ou streaming"}), 400
+    try:
+        alvo_id = int(data.get("id"))
+        propaganda_ids = [int(item_id) for item_id in (data.get("propaganda_ids") or [])]
+    except (TypeError, ValueError):
+        return jsonify({"error": "IDs inválidos"}), 400
+    try:
+        result = atribuir_midias_tv(tipo=tipo, alvo_id=alvo_id, propaganda_ids=propaganda_ids)
+    except ValueError as exc:
+        status = 404 if "não encontrad" in str(exc) else 400
+        return jsonify({"error": str(exc)}), status
+    return jsonify(result)
 
 
 # --- Operadores -------------------------------------------------------------

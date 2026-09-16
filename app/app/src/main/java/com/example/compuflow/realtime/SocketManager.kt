@@ -2,6 +2,7 @@ package com.example.compuflow.realtime
 
 import android.util.Log
 import com.example.compuflow.data.remote.dto.AtendimentoDto
+import com.example.compuflow.data.remote.dto.PropagandaImagemDto
 import com.example.compuflow.data.remote.dto.SenhaDto
 import io.socket.client.IO
 import io.socket.client.Socket
@@ -70,6 +71,17 @@ object SocketManager {
         newSocket.on(SocketEvents.AUTH_ERRO, listener { args ->
             val obj = args.jsonObjectOrNull(0)
             _events.tryEmit(SocketEvent.AuthErro(obj?.optStringOrNull("mensagem")))
+        })
+
+        newSocket.on(SocketEvents.TV_CONFIG_ATUALIZADA, listener { args ->
+            val obj = args.jsonObjectOrNull(0) ?: return@listener
+            _events.tryEmit(
+                SocketEvent.TvConfigAtualizada(
+                    propagandasAtivas = obj.optBoolean("propagandas_ativas", false),
+                    imagens = obj.optJSONArray("imagens").toPropagandaList(),
+                    intervaloMs = obj.optLong("intervalo_ms", 15_000L).coerceAtLeast(1_000L),
+                )
+            )
         })
 
         newSocket.on(SocketEvents.FILA_ATUALIZADA, listener { args ->
@@ -228,6 +240,19 @@ private fun JSONObject?.toSenhaDto(): SenhaDto {
         pedido = obj.optStringOrNull("pedido"),
         pedido_confirmado = obj.optBoolean("pedido_confirmado", false),
     )
+}
+
+private fun JSONArray?.toPropagandaList(): List<PropagandaImagemDto> {
+    if (this == null) return emptyList()
+    return (0 until length()).map { i ->
+        val obj = optJSONObject(i) ?: JSONObject()
+        PropagandaImagemDto(
+            id = obj.optInt("id"),
+            arquivo = obj.optString("arquivo"),
+            ordem = obj.optInt("ordem"),
+            tipo = obj.optString("tipo", "image").ifBlank { "image" },
+        )
+    }
 }
 
 private fun JSONArray?.toSenhaList(): List<SenhaDto> {

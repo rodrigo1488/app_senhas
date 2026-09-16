@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { TvFlowLayout } from "@/components/tv/tv-flow-layout";
+import { TvMediaSlide } from "@/components/tv/tv-media-slide";
 import { cn } from "@/lib/utils";
 import {
   clearTvToken,
@@ -51,6 +52,8 @@ export function TvPanel({ initialCodigo }: Props) {
 
   const lastCallRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const imagens = useMemo(() => config?.imagens ?? [], [config?.imagens]);
 
@@ -113,6 +116,26 @@ export function TvPanel({ initialCodigo }: Props) {
       audioRef.current?.pause();
       audioRef.current = null;
     };
+  }, []);
+
+  useEffect(() => {
+    const syncFullscreen = () => setIsFullscreen(tvIsFullscreen());
+    document.addEventListener("fullscreenchange", syncFullscreen);
+    document.addEventListener("webkitfullscreenchange", syncFullscreen);
+    return () => {
+      document.removeEventListener("fullscreenchange", syncFullscreen);
+      document.removeEventListener("webkitfullscreenchange", syncFullscreen);
+    };
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    if (tvIsFullscreen()) {
+      void exitTvFullscreen();
+      return;
+    }
+    void enterTvFullscreen(panel);
   }, []);
 
   useEffect(() => {
@@ -188,6 +211,11 @@ export function TvPanel({ initialCodigo }: Props) {
       });
     });
 
+    socket.on("tv:config_atualizada", (next: TvConfig) => {
+      setConfig(next);
+      setImagemIndex((i) => (next.imagens.length ? i % next.imagens.length : 0));
+    });
+
     socket.on("auth:erro", (payload: { mensagem?: string }) => {
       setError(payload.mensagem || "Sessão inválida");
       clearTvToken();
@@ -218,14 +246,9 @@ export function TvPanel({ initialCodigo }: Props) {
     return () => window.clearInterval(id);
   }, [token, syncFromAtendimentos]);
 
-  useEffect(() => {
-    if (imagens.length <= 1) return;
-    const ms = Math.max(1000, config?.intervalo_ms ?? 15_000);
-    const id = window.setInterval(() => {
-      setImagemIndex((i) => (i + 1) % imagens.length);
-    }, ms);
-    return () => window.clearInterval(id);
-  }, [imagens.length, config?.intervalo_ms]);
+  const advanceMedia = useCallback(() => {
+    setImagemIndex((i) => (imagens.length ? (i + 1) % imagens.length : 0));
+  }, [imagens.length]);
 
   useEffect(() => {
     if (!token) return;
@@ -256,12 +279,21 @@ export function TvPanel({ initialCodigo }: Props) {
     }
   }
 
-  const currentImage = useMemo(() => {
-    const arquivo = imagens[imagemIndex]?.arquivo;
-    return uploadsUrl(arquivo);
-  }, [imagens, imagemIndex]);
-
+  const currentItem = imagens[imagemIndex] ?? null;
+  const currentUrl = uploadsUrl(currentItem?.arquivo);
+  const loopMedia = imagens.length <= 1;
   const layout = config?.layout_tv_web ?? "propaganda";
+
+  const mediaSlide = (
+    <TvMediaSlide
+      item={currentItem}
+      url={currentUrl}
+      intervaloMs={config?.intervalo_ms ?? 15_000}
+      onComplete={advanceMedia}
+      loop={loopMedia}
+      emptyLabel={layout === "fila" ? "Espaço de mídia" : "Sem mídia de propaganda"}
+    />
+  );
 
   if (bootstrapping) {
     return (
@@ -307,24 +339,19 @@ export function TvPanel({ initialCodigo }: Props) {
   }
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-black text-foreground">
+    <div
+      ref={panelRef}
+      className={cn(
+        "relative h-screen w-screen overflow-hidden bg-black text-foreground",
+        isFullscreen && "fixed inset-0 h-full w-full",
+      )}
+    >
       {layout === "fila" ? (
-        <TvFlowLayout
-          chamadas={chamadas}
-          pendentes={pendentes}
-          currentImage={currentImage}
-        />
+        <TvFlowLayout chamadas={chamadas} pendentes={pendentes} media={mediaSlide} />
       ) : (
       <div className="flex h-full w-full flex-col">
         <div className="relative min-h-0 flex-[78]">
-          {currentImage ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={currentImage} alt="Propaganda" className="h-full w-full object-cover" />
-          ) : (
-            <div className="flex h-full items-center justify-center bg-zinc-950 text-white/40">
-              Sem imagem de propaganda
-            </div>
-          )}
+          {mediaSlide}
         </div>
 
         <div className="flex min-h-0 flex-[22]">
@@ -343,8 +370,51 @@ export function TvPanel({ initialCodigo }: Props) {
         </div>
       </div>
       )}
+
+      <button
+        type="button"
+        aria-label={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
+        onClick={toggleFullscreen}
+        className="absolute left-1/2 top-1/2 z-30 h-[min(28vmin,220px)] w-[min(28vmin,220px)] -translate-x-1/2 -translate-y-1/2 cursor-pointer rounded-full bg-transparent"
+      />
     </div>
   );
+}
+
+type FullscreenElement = HTMLElement & {
+  webkitRequestFullscreen?: () => Promise<void> | void;
+  msRequestFullscreen?: () => Promise<void> | void;
+};
+
+type FullscreenDocument = Document & {
+  webkitFullscreenElement?: Element | null;
+  webkitExitFullscreen?: () => Promise<void> | void;
+  msExitFullscreen?: () => Promise<void> | void;
+};
+
+function tvIsFullscreen() {
+  const doc = document as FullscreenDocument;
+  return Boolean(document.fullscreenElement || doc.webkitFullscreenElement);
+}
+
+function enterTvFullscreen(element: HTMLElement) {
+  const el = element as FullscreenElement;
+  const request =
+    el.requestFullscreen?.bind(el) ||
+    el.webkitRequestFullscreen?.bind(el) ||
+    el.msRequestFullscreen?.bind(el);
+  if (!request) return Promise.resolve();
+  return Promise.resolve(request()).catch(() => undefined);
+}
+
+function exitTvFullscreen() {
+  const doc = document as FullscreenDocument;
+  const exit =
+    document.exitFullscreen?.bind(document) ||
+    doc.webkitExitFullscreen?.bind(doc) ||
+    doc.msExitFullscreen?.bind(doc);
+  if (!exit) return Promise.resolve();
+  return Promise.resolve(exit()).catch(() => undefined);
 }
 
 function TipoPanel({

@@ -107,6 +107,23 @@ Emitido sempre que uma senha é criada, chamada ou finalizada.
 {"mensagem": "Sessão inválida ou expirada"}
 ```
 
+### `tv:config_atualizada` (room `setor:<setor_id>`)
+Emitido quando a fila de mídia da TV muda (upload, vínculo, ativar/desativar,
+ordem, exclusão ou flags do setor). O payload é o mesmo de
+`GET /api/v1/setor/tv_config`.
+```json
+{
+  "propagandas_ativas": true,
+  "layout_tv_web": "propaganda",
+  "setor_nome": "Balcão",
+  "imagens": [
+    {"id": 1, "arquivo": "uuid.jpg", "ordem": 1, "tipo": "image"},
+    {"id": 2, "arquivo": "uuid.mp4", "ordem": 2, "tipo": "video"}
+  ],
+  "intervalo_ms": 15000
+}
+```
+
 ## 4. Eventos cliente → servidor
 
 ### `operador:chamar_proxima`

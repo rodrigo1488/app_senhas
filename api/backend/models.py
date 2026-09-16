@@ -195,12 +195,13 @@ usuario_setores = db.Table(
 
 
 class Propaganda(db.Model):
-    """Imagem publicitária vinculável a um ou mais setores."""
+    """Mídia publicitária (imagem ou vídeo) vinculável a um ou mais setores/TVs."""
 
     __tablename__ = "propagandas"
 
     id = db.Column(db.Integer, primary_key=True)
     arquivo = db.Column(db.Text, nullable=False)
+    tipo = db.Column(db.String(10), nullable=False, default="image")  # image | video
     ordem = db.Column(db.Integer, nullable=False, default=0)
     ativo = db.Column(db.Boolean, nullable=False, default=True)
     criado_em = db.Column(db.DateTime, default=datetime.now)
@@ -215,8 +216,65 @@ class Propaganda(db.Model):
         return {
             "id": self.id,
             "arquivo": self.arquivo,
+            "tipo": (self.tipo or "image"),
             "ordem": self.ordem,
             "ativo": bool(self.ativo),
             "criado_em": self.criado_em.isoformat() if self.criado_em else None,
             "setor_ids": sorted(setor.id for setor in self.setores),
+        }
+
+
+dispositivo_propagandas = db.Table(
+    "dispositivo_propagandas",
+    db.Column(
+        "dispositivo_id",
+        db.Integer,
+        db.ForeignKey("tv_dispositivos.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column(
+        "propaganda_id",
+        db.Integer,
+        db.ForeignKey("propagandas.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    db.Column("ordem", db.Integer, nullable=False, default=0),
+)
+
+
+class TvDispositivo(db.Model):
+    """TV registrada: cliente de streaming legado ou painel de senha de um setor."""
+
+    __tablename__ = "tv_dispositivos"
+
+    id = db.Column(db.Integer, primary_key=True)
+    tipo = db.Column(db.String(20), nullable=False, default="streaming")  # streaming | setor
+    chave = db.Column(db.Text, nullable=False, unique=True)
+    nome = db.Column(db.Text, nullable=False)
+    device_name = db.Column(db.Text)
+    user_agent = db.Column(db.Text)
+    last_seen = db.Column(db.DateTime, default=datetime.now)
+    is_online = db.Column(db.Boolean, nullable=False, default=False)
+    setor_id = db.Column(db.Integer, db.ForeignKey("setores.id", ondelete="SET NULL"))
+    criado_em = db.Column(db.DateTime, default=datetime.now)
+
+    setor = db.relationship("Setor", lazy="joined")
+    propagandas = db.relationship(
+        "Propaganda",
+        secondary=dispositivo_propagandas,
+        lazy="select",
+    )
+
+    def to_admin_dict(self, *, online: bool | None = None, propaganda_ids: list[int] | None = None):
+        return {
+            "id": self.id,
+            "tipo": self.tipo,
+            "chave": self.chave,
+            "nome": self.nome,
+            "device_name": self.device_name or "",
+            "user_agent": self.user_agent or "",
+            "last_seen": self.last_seen.isoformat() if self.last_seen else None,
+            "is_online": bool(self.is_online if online is None else online),
+            "setor_id": self.setor_id,
+            "propaganda_ids": propaganda_ids if propaganda_ids is not None else [],
         }

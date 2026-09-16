@@ -37,9 +37,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import com.example.compuflow.data.remote.NetworkModule
+import com.example.compuflow.data.remote.dto.PropagandaImagemDto
 import com.example.compuflow.data.remote.dto.SenhaDto
 
 private val PreferencialPanel = Color(0xFF1A1A1A)
@@ -61,8 +69,12 @@ fun TvScreen(viewModel: TvViewModel = viewModel()) {
 
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
         if (viewModel.showPropagandaLayout) {
+            val atual = viewModel.imagens.getOrNull(viewModel.imagemIndex)
             PropagandaTvLayout(
-                imageUrl = mediaUrl(viewModel.imagens.getOrNull(viewModel.imagemIndex)?.arquivo),
+                item = atual,
+                mediaUrl = mediaUrl(atual?.arquivo),
+                loop = viewModel.imagens.size <= 1,
+                onEnded = viewModel::onMediaEnded,
                 preferencialSenha = viewModel.ultimaPreferencialSenha,
                 normalSenha = viewModel.ultimaNormalSenha,
             )
@@ -89,7 +101,10 @@ fun TvScreen(viewModel: TvViewModel = viewModel()) {
 
 @Composable
 private fun PropagandaTvLayout(
-    imageUrl: String?,
+    item: PropagandaImagemDto?,
+    mediaUrl: String?,
+    loop: Boolean,
+    onEnded: () -> Unit,
     preferencialSenha: String?,
     normalSenha: String?,
 ) {
@@ -101,9 +116,16 @@ private fun PropagandaTvLayout(
                 .background(Color.Black),
             contentAlignment = Alignment.Center,
         ) {
-            if (imageUrl != null) {
-                AsyncImage(
-                    model = imageUrl,
+            when {
+                mediaUrl == null -> Unit
+                item?.tipo == "video" -> MutedVideoPlayer(
+                    url = mediaUrl,
+                    loop = loop,
+                    onEnded = onEnded,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                else -> AsyncImage(
+                    model = mediaUrl,
                     contentDescription = "Propaganda",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.fillMaxSize(),
@@ -303,4 +325,49 @@ private fun mediaUrl(path: String?): String? {
     if (value.startsWith("http://") || value.startsWith("https://")) return value
     val normalized = value.trimStart('/').removePrefix("uploads/")
     return "${NetworkModule.currentHttpBaseUrl().trimEnd('/')}/uploads/$normalized"
+}
+
+@Composable
+private fun MutedVideoPlayer(
+    url: String,
+    loop: Boolean,
+    onEnded: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val exoPlayer = remember(url, loop) {
+        ExoPlayer.Builder(context).build().apply {
+            setMediaItem(MediaItem.fromUri(url))
+            volume = 0f
+            repeatMode = if (loop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
+            playWhenReady = true
+            prepare()
+        }
+    }
+    DisposableEffect(exoPlayer) {
+        val listener = object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                if (playbackState == Player.STATE_ENDED && !loop) onEnded()
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                onEnded()
+            }
+        }
+        exoPlayer.addListener(listener)
+        onDispose {
+            exoPlayer.removeListener(listener)
+            exoPlayer.release()
+        }
+    }
+    AndroidView(
+        factory = { ctx ->
+            PlayerView(ctx).apply {
+                useController = false
+                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+            }
+        },
+        update = { view -> view.player = exoPlayer },
+        modifier = modifier,
+    )
 }

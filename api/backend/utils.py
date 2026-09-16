@@ -11,11 +11,20 @@ from backend.extensions import db
 from backend.models import Configuracao
 
 
-def allowed_file(filename: str) -> bool:
+def _file_extension(filename: str) -> str | None:
     if not filename or "." not in filename:
-        return False
-    ext = filename.rsplit(".", 1)[1].lower()
-    return ext in current_app.config["ALLOWED_EXTENSIONS"]
+        return None
+    return filename.rsplit(".", 1)[1].lower()
+
+
+def allowed_file(filename: str) -> bool:
+    ext = _file_extension(filename)
+    return bool(ext) and ext in current_app.config["ALLOWED_EXTENSIONS"]
+
+
+def is_video_filename(filename: str) -> bool:
+    ext = _file_extension(filename)
+    return bool(ext) and ext in current_app.config.get("ALLOWED_VIDEO_EXTENSIONS", set())
 
 
 def process_image(file, max_size: tuple[int, int] = (500, 500), quality: int = 85) -> str | None:
@@ -38,6 +47,18 @@ def process_image(file, max_size: tuple[int, int] = (500, 500), quality: int = 8
 def process_propaganda_image(file) -> str | None:
     """Salva imagem de propaganda em resolução adequada para TV (~1920px)."""
     return process_image(file, max_size=(1920, 1920), quality=88)
+
+
+def save_propaganda_video(file) -> str | None:
+    """Grava o MP4 como está (sem transcode) para reprodução na TV."""
+    try:
+        filename = f"{uuid.uuid4()}.mp4"
+        filepath = os.path.join(current_app.config["UPLOAD_FOLDER"], filename)
+        file.save(filepath)
+        return filename
+    except Exception as exc:  # pragma: no cover - defensivo
+        current_app.logger.error(f"Erro ao salvar vídeo de propaganda: {exc}")
+        return None
 
 
 def delete_old_image(filename: str | None) -> None:

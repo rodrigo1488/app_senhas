@@ -113,7 +113,10 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         UPLOAD_FOLDER=upload_folder,
         ALLOWED_EXTENSIONS={"png", "jpg", "jpeg", "gif", "webp"},
+        ALLOWED_VIDEO_EXTENSIONS={"mp4"},
         MAX_FILE_SIZE=5 * 1024 * 1024,
+        MAX_VIDEO_SIZE=80 * 1024 * 1024,
+        MAX_CONTENT_LENGTH=80 * 1024 * 1024,
         DB_PATH=db_path,
         PERMANENT_SESSION_LIFETIME=60 * 60 * 24 * 365,
         SESSION_COOKIE_SAMESITE="Lax",
@@ -158,8 +161,10 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     from backend.blueprints.notificacao_bp import notificacao_bp
     from backend.blueprints.api_bp import api_bp
     from backend.blueprints.misc_bp import misc_bp
+    from backend.blueprints.streaming_bp import streaming_bp
 
     app.register_blueprint(misc_bp)
+    app.register_blueprint(streaming_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(admin_api_bp)
@@ -198,6 +203,7 @@ def _init_database(app: Flask) -> None:
     db.create_all()
     _migrate_operator_identification_columns()
     _migrate_propagandas_columns()
+    _migrate_propaganda_tipo_column()
     _migrate_tv_layout_column()
     _migrate_usuario_papeis()
 
@@ -262,6 +268,26 @@ def _migrate_propagandas_columns() -> None:
                 text(
                     f"ALTER TABLE setores ADD COLUMN {if_not_exists}"
                     f"propagandas_ativas BOOLEAN NOT NULL DEFAULT {bool_default}"
+                )
+            )
+
+
+def _migrate_propaganda_tipo_column() -> None:
+    """Garante `propagandas.tipo` (image|video) em instalações já existentes."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    if "propagandas" not in inspector.get_table_names():
+        return
+    propaganda_columns = {column["name"] for column in inspector.get_columns("propagandas")}
+    if_not_exists = "IF NOT EXISTS " if db.engine.dialect.name == "postgresql" else ""
+
+    with db.engine.begin() as conn:
+        if "tipo" not in propaganda_columns:
+            conn.execute(
+                text(
+                    f"ALTER TABLE propagandas ADD COLUMN {if_not_exists}"
+                    "tipo VARCHAR(10) NOT NULL DEFAULT 'image'"
                 )
             )
 

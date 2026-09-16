@@ -23,7 +23,8 @@ from backend.auth import (
     create_operator_action_token,
     create_session_token,
 )
-from backend.models import AtendimentoAtual, Impressora, Operador, Propaganda, Senha, Setor, setor_propagandas
+from backend.models import AtendimentoAtual, Impressora, Operador, Senha, Setor
+from backend.services.tv_config_service import serializar_tv_config
 from backend.services.avaliacao_service import AvaliacaoError, buscar_avaliacao_pendente, registrar_avaliacao
 from backend.services.fila_service import (
     FilaError,
@@ -192,32 +193,13 @@ def setor_fila(session_payload):
 @api_bp.route("/setor/tv_config", methods=["GET"])
 @api_token_required
 def setor_tv_config(session_payload):
-    """Configuração da TV: layout de propaganda e imagens globais ativas."""
+    """Configuração da TV: layout e fila de mídia (imagem/vídeo) do setor."""
     setor = Setor.query.get(session_payload["setor_id"])
-    ativas = bool(setor.propagandas_ativas) if setor else False
-    imagens = []
-    if ativas:
-        imagens = [
-            {
-                "id": p.id,
-                "arquivo": p.arquivo,
-                "ordem": p.ordem,
-            }
-            for p in Propaganda.query.filter_by(ativo=True)
-            .join(setor_propagandas, setor_propagandas.c.propaganda_id == Propaganda.id)
-            .filter(setor_propagandas.c.setor_id == session_payload["setor_id"])
-            .order_by(Propaganda.ordem.asc(), Propaganda.id.asc())
-            .all()
-        ]
-    return jsonify(
-        {
-            "propagandas_ativas": ativas,
-            "layout_tv_web": (setor.layout_tv_web if setor else None) or "propaganda",
-            "setor_nome": setor.nome if setor else None,
-            "imagens": imagens,
-            "intervalo_ms": 15_000,
-        }
-    )
+    if setor and session_payload.get("role") == "tv":
+        from backend.services.streaming_service import registrar_setor_tv
+
+        registrar_setor_tv(setor)
+    return jsonify(serializar_tv_config(setor))
 
 
 @api_bp.route("/setor/tv_chamadas_recentes", methods=["GET"])

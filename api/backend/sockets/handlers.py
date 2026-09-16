@@ -77,8 +77,11 @@ def handle_connect(auth=None):
     payload = decode_session_token(token) if token else None
 
     if not payload:
-        emit(EV_AUTH_ERRO, {"mensagem": "Sessão inválida ou expirada"})
-        return False  # rejeita a conexão
+        if token:
+            emit(EV_AUTH_ERRO, {"mensagem": "Sessão inválida ou expirada"})
+            return False
+        session["streaming"] = True
+        return True
 
     session["setor_id"] = payload.get("setor_id")
     session["role"] = payload.get("role")
@@ -90,6 +93,12 @@ def handle_connect(auth=None):
             join_room(room_operadores(setor_id))
         else:
             join_room(room_setor(setor_id))
+        if payload.get("role") == "tv":
+            setor = Setor.query.get(setor_id)
+            if setor:
+                from backend.services.streaming_service import registrar_setor_tv
+
+                registrar_setor_tv(setor, request.sid)
 
     if payload.get("role") == "operador" and payload.get("operador_id"):
         join_room(room_operador(setor_id, payload["operador_id"]))
@@ -104,7 +113,30 @@ def handle_connect(auth=None):
 
 @socketio.on("disconnect")
 def handle_disconnect():
-    pass  # flask-socketio já remove o sid de todas as rooms automaticamente
+    from backend.services.streaming_service import marcar_offline_sid
+
+    marcar_offline_sid(request.sid)
+
+
+@socketio.on("register")
+def handle_streaming_register(data):
+    """Registro das TVs do APP_STREAMING (smart/legacy)."""
+    payload = data or {}
+    ip_address = payload.get("ip_address")
+    if not ip_address:
+        emit("error", {"message": "IP address é obrigatório"})
+        return
+    from backend.services.streaming_service import fila_streaming, registrar_streaming
+
+    dispositivo = registrar_streaming(
+        ip_address=ip_address,
+        device_name=payload.get("device_name") or "Dispositivo",
+        user_agent=payload.get("user_agent") or request.headers.get("User-Agent", ""),
+        nome=payload.get("nome"),
+        sid=request.sid,
+    )
+    join_room(dispositivo.chave)
+    emit("queue_updated", {"queue": fila_streaming(dispositivo)})
 
 
 @socketio.on("ticket:seguir")

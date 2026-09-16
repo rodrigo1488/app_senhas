@@ -17,7 +17,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.receiveAsFlow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class TvViewModel : ViewModel() {
@@ -93,12 +92,20 @@ class TvViewModel : ViewModel() {
     private fun restartRotation() {
         rotationJob?.cancel()
         if (!showPropagandaLayout) return
+        val atual = imagens.getOrNull(imagemIndex) ?: return
+        if (atual.tipo == "video") return
+        if (imagens.size <= 1) return
         rotationJob = viewModelScope.launch {
-            while (isActive && imagens.size > 1) {
-                delay(intervaloMs)
-                imagemIndex = (imagemIndex + 1) % imagens.size
-            }
+            delay(intervaloMs)
+            imagemIndex = (imagemIndex + 1) % imagens.size
+            restartRotation()
         }
+    }
+
+    fun onMediaEnded() {
+        if (imagens.size <= 1) return
+        imagemIndex = (imagemIndex + 1) % imagens.size
+        restartRotation()
     }
 
     private fun syncFromAtendimentos(lista: List<AtendimentoDto>) {
@@ -132,6 +139,13 @@ class TvViewModel : ViewModel() {
                 if (soundDeduplicator.isNewCall(event.senha)) {
                     _callSoundEvents.trySend(Unit)
                 }
+            }
+            is SocketEvent.TvConfigAtualizada -> {
+                applyTvConfig(
+                    ativas = event.propagandasAtivas,
+                    imgs = event.imagens,
+                    intervalo = event.intervaloMs,
+                )
             }
             else -> Unit
         }
