@@ -29,21 +29,26 @@ import {
 } from "@/components/ui/sidebar";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { apiFetch, type AdminUser } from "@/lib/api";
+import { apiFetch, rotuloPapel, type AdminUser, type PapelPainel } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-const NAV_BASE = [
-  { href: "/admin", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/admin/relatorios", label: "Relatórios", icon: FileText },
-  { href: "/admin/heatmap", label: "Mapa de calor", icon: Grid3x3 },
-  { href: "/admin/fila-ao-vivo", label: "Fila ao Vivo", icon: Activity },
-  { href: "/admin/operadores", label: "Operadores", icon: Users },
-  { href: "/admin/setores", label: "Setores", icon: Building2 },
-  { href: "/admin/propagandas", label: "Mídias", icon: ImageIcon, adminOnly: true },
-  { href: "/admin/impressoras", label: "Impressoras", icon: Printer },
-  { href: "/admin/usuarios", label: "Usuários", icon: UserCog, adminOnly: true },
-  { href: "/admin/configuracoes", label: "Configurações", icon: Settings, adminOnly: true },
-] as const;
+const NAV_BASE: {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  papeis: PapelPainel[];
+}[] = [
+  { href: "/admin", label: "Dashboard", icon: LayoutDashboard, papeis: ["admin", "gerente"] },
+  { href: "/admin/relatorios", label: "Relatórios", icon: FileText, papeis: ["admin", "gerente"] },
+  { href: "/admin/heatmap", label: "Mapa de calor", icon: Grid3x3, papeis: ["admin", "gerente"] },
+  { href: "/admin/fila-ao-vivo", label: "Fila ao Vivo", icon: Activity, papeis: ["admin", "gerente"] },
+  { href: "/admin/operadores", label: "Operadores", icon: Users, papeis: ["admin", "gerente"] },
+  { href: "/admin/setores", label: "Setores", icon: Building2, papeis: ["admin", "gerente"] },
+  { href: "/admin/propagandas", label: "Mídias", icon: ImageIcon, papeis: ["admin", "marketing"] },
+  { href: "/admin/impressoras", label: "Impressoras", icon: Printer, papeis: ["admin", "gerente"] },
+  { href: "/admin/usuarios", label: "Usuários", icon: UserCog, papeis: ["admin"] },
+  { href: "/admin/configuracoes", label: "Configurações", icon: Settings, papeis: ["admin"] },
+];
 
 export function AppSidebar({
   nomeEmpresa,
@@ -55,9 +60,8 @@ export function AppSidebar({
   const pathname = usePathname();
   const router = useRouter();
   const { open } = useSidebar();
-  const isAdmin = Boolean(user?.is_admin ?? user?.papel !== "gerente");
-
-  const nav = NAV_BASE.filter((item) => !("adminOnly" in item && item.adminOnly) || isAdmin);
+  const papel: PapelPainel = user?.papel === "marketing" || user?.papel === "gerente" ? user.papel : "admin";
+  const nav = NAV_BASE.filter((item) => item.papeis.includes(papel));
 
   async function logout() {
     try {
@@ -84,7 +88,7 @@ export function AppSidebar({
               </p>
               {user?.papel ? (
                 <p className="truncate text-[11px] text-muted-foreground">
-                  {user.papel === "admin" ? "Administrador" : "Gerente"}
+                  {rotuloPapel(user.papel)}
                 </p>
               ) : null}
             </div>

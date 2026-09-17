@@ -29,13 +29,32 @@ export async function apiFetch<T = unknown>(
   return (await res.json()) as T;
 }
 
+export type PapelPainel = "admin" | "gerente" | "marketing";
+
+export function rotuloPapel(papel: PapelPainel | string): string {
+  if (papel === "admin") return "Administrador";
+  if (papel === "marketing") return "Marketing";
+  if (papel === "gerente") return "Gerente";
+  return papel;
+}
+
+export function homeDoPapel(papel: PapelPainel | string): string {
+  return papel === "marketing" ? "/admin/propagandas" : "/admin";
+}
+
+export function rotaAdminPermitida(papel: PapelPainel | string, pathname: string): boolean {
+  if (papel !== "marketing") return true;
+  return pathname === "/admin/propagandas" || pathname.startsWith("/admin/propagandas/");
+}
+
 export type AdminUser = {
   id: number;
   email: string;
   nome?: string;
   nome_empresa: string;
-  papel: "admin" | "gerente";
+  papel: PapelPainel;
   is_admin?: boolean;
+  is_marketing?: boolean;
   setor_ids?: number[];
   setores?: { id: number; nome: string }[];
 };
@@ -44,7 +63,7 @@ export type PainelUsuario = {
   id: number;
   email: string;
   nome: string;
-  papel: "admin" | "gerente";
+  papel: PapelPainel;
   setor_ids: number[];
   setores: { id: number; nome: string }[];
   criado_em: string | null;
@@ -55,10 +74,22 @@ export type Setor = {
   nome: string;
   descricao: string;
   senha_setor: string;
+  tipo_setor?: "atendimento" | "streaming";
   modo_identificacao_operador: "foto" | "pin";
   propagandas_ativas: boolean;
+  propagandas_cliente_ativas?: boolean;
+  propaganda_ids_cliente?: number[];
   layout_tv_web: "propaganda" | "fila";
+  orientacao_tv: "horizontal" | "vertical";
 };
+
+export function setorEhAtendimento(setor: { tipo_setor?: string | null }): boolean {
+  return (setor.tipo_setor || "atendimento") !== "streaming";
+}
+
+export function setorEhStreaming(setor: { tipo_setor?: string | null }): boolean {
+  return (setor.tipo_setor || "atendimento") === "streaming";
+}
 
 export type PropagandaTipo = "image" | "video";
 
@@ -70,6 +101,7 @@ export type Propaganda = {
   ativo: boolean;
   criado_em: string | null;
   setor_ids: number[];
+  setor_ids_cliente?: number[];
 };
 
 export type TvAdmin = {
@@ -80,8 +112,11 @@ export type TvAdmin = {
   device_name?: string;
   is_online: boolean;
   setor_id?: number | null;
+  setor_nome?: string | null;
+  tipo_setor?: "atendimento" | "streaming" | null;
   propaganda_ids: number[];
   layout_tv_web?: "propaganda" | "fila";
+  orientacao_tv?: "horizontal" | "vertical";
 };
 
 export type Operador = {
@@ -148,6 +183,8 @@ export type AnalyticsData = {
     abandono: number;
     abandono_minutos: number;
     taxa_abandono: number | null;
+    qr_escaneados: number;
+    pedidos_adiantados: number;
   };
   por_setor: {
     setor_id: number;
@@ -157,6 +194,8 @@ export type AnalyticsData = {
     finalizadas: number;
     atendimentos: number;
     nao_chamadas: number;
+    qr_escaneados: number;
+    pedidos_adiantados: number;
     espera: EsperaStats;
     nota_media: number | null;
   }[];
@@ -168,6 +207,11 @@ export type AnalyticsData = {
     espera_media: number | null;
     nota_media: number | null;
   }[];
+  fluxo_por_setor: {
+    granularidade: "hora" | "dia";
+    setores: { id: number; nome: string; chave: string }[];
+    series: Array<{ t: string; label: string } & Record<string, string | number>>;
+  };
   heatmap: {
     setores: { id: number; nome: string }[];
     celulas: {

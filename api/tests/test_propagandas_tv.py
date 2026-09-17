@@ -100,6 +100,26 @@ class PropagandasTvTest(unittest.TestCase):
             setor = db.session.get(Setor, self.setor_id)
             self.assertEqual("fila", setor.layout_tv_web)
 
+    def test_setor_persiste_orientacao_tv_e_rejeita_valor_invalido(self):
+        client = self._admin_client()
+
+        response = client.put(
+            f"/api/v1/admin/setores/{self.setor_id}",
+            json={"orientacao_tv": "vertical"},
+        )
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("vertical", response.get_json()["orientacao_tv"])
+
+        invalid = client.put(
+            f"/api/v1/admin/setores/{self.setor_id}",
+            json={"orientacao_tv": "diagonal"},
+        )
+        self.assertEqual(400, invalid.status_code)
+
+        with self.app.app_context():
+            setor = db.session.get(Setor, self.setor_id)
+            self.assertEqual("vertical", setor.orientacao_tv)
+
     def test_tv_config_empty_when_disabled(self):
         with self.app.app_context():
             db.session.add(Propaganda(arquivo="a.jpg", ordem=1, ativo=True))
@@ -113,6 +133,7 @@ class PropagandasTvTest(unittest.TestCase):
         payload = response.get_json()
         self.assertFalse(payload["propagandas_ativas"])
         self.assertEqual("propaganda", payload["layout_tv_web"])
+        self.assertEqual("horizontal", payload["orientacao_tv"])
         self.assertEqual("Balcão", payload["setor_nome"])
         self.assertEqual([], payload["imagens"])
         self.assertEqual(15_000, payload["intervalo_ms"])

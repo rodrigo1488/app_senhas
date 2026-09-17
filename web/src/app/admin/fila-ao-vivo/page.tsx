@@ -5,7 +5,7 @@ import { Activity, Radio } from "lucide-react";
 import { io, type Socket } from "socket.io-client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { apiFetch, type FilaAoVivoData, type Setor } from "@/lib/api";
+import { apiFetch, setorEhAtendimento, type FilaAoVivoData, type Setor } from "@/lib/api";
 import { resolveApiBaseUrl } from "@/lib/cliente-socket";
 import { cn } from "@/lib/utils";
 
@@ -64,8 +64,9 @@ export default function FilaAoVivoPage() {
   useEffect(() => {
     apiFetch<Setor[]>("/api/v1/admin/setores")
       .then((list) => {
-        setSetores(list);
-        setSetorId((current) => current || (list[0] ? String(list[0].id) : ""));
+        const atendimento = list.filter(setorEhAtendimento);
+        setSetores(atendimento);
+        setSetorId((current) => current || (atendimento[0] ? String(atendimento[0].id) : ""));
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Erro ao carregar setores"));
   }, []);

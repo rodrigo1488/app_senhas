@@ -42,6 +42,7 @@ def registrar_token(token):
 
 @notificacao_bp.route("/api/verificar_senha/<token>", methods=["GET"])
 def api_verificar_senha(token):
+    """Status da senha + registro do scan de QR (1 por token) na primeira abertura."""
     try:
         return jsonify(verificar_senha(token))
     except FilaError as exc:

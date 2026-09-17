@@ -209,6 +209,8 @@ def _init_database(app: Flask) -> None:
     _migrate_propagandas_columns()
     _migrate_propaganda_tipo_column()
     _migrate_tv_layout_column()
+    _migrate_tv_orientacao_column()
+    _migrate_tipo_setor_column()
     _migrate_usuario_papeis()
 
     is_sqlite = db.engine.dialect.name == "sqlite"
@@ -223,9 +225,11 @@ def _init_database(app: Flask) -> None:
         # já existentes; adiciona de forma idempotente nos dois dialetos.
         _ensure_column(conn, "senhas", "chamada_em", "TIMESTAMP" if not is_sqlite else "DATETIME", is_sqlite)
         _ensure_column(conn, "senhas", "finalizado_em", "TIMESTAMP" if not is_sqlite else "DATETIME", is_sqlite)
+        _ensure_column(conn, "senhas", "pedido_em", "TIMESTAMP" if not is_sqlite else "DATETIME", is_sqlite)
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_senhas_setor_status ON senhas (setor_id, status)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_senhas_token_unico ON senhas (token_unico)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_senhas_data_hora ON senhas (data_hora)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_qr_scans_setor_scanned_at ON qr_scans (setor_id, scanned_at)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_atendimento_setor_operador ON atendimento_atual (setor_id, operador_id)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_finalizados_setor_operador ON finalizados (setor_id, operador_id)"))
         conn.commit()
@@ -274,6 +278,13 @@ def _migrate_propagandas_columns() -> None:
                     f"propagandas_ativas BOOLEAN NOT NULL DEFAULT {bool_default}"
                 )
             )
+        if "propagandas_cliente_ativas" not in setores_columns:
+            conn.execute(
+                text(
+                    f"ALTER TABLE setores ADD COLUMN {if_not_exists}"
+                    f"propagandas_cliente_ativas BOOLEAN NOT NULL DEFAULT {bool_default}"
+                )
+            )
 
 
 def _migrate_propaganda_tipo_column() -> None:
@@ -312,6 +323,52 @@ def _migrate_tv_layout_column() -> None:
                     "layout_tv_web VARCHAR(20) NOT NULL DEFAULT 'propaganda'"
                 )
             )
+
+
+def _migrate_tv_orientacao_column() -> None:
+    """Garante a preferência de orientação da tela da TV (horizontal/vertical)."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    if "setores" not in inspector.get_table_names():
+        return
+    setores_columns = {column["name"] for column in inspector.get_columns("setores")}
+    if_not_exists = "IF NOT EXISTS " if db.engine.dialect.name == "postgresql" else ""
+
+    with db.engine.begin() as conn:
+        if "orientacao_tv" not in setores_columns:
+            conn.execute(
+                text(
+                    f"ALTER TABLE setores ADD COLUMN {if_not_exists}"
+                    "orientacao_tv VARCHAR(20) NOT NULL DEFAULT 'horizontal'"
+                )
+            )
+
+
+def _migrate_tipo_setor_column() -> None:
+    """Garante `setores.tipo_setor` (atendimento|streaming). Existentes = atendimento."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    if "setores" not in inspector.get_table_names():
+        return
+    setores_columns = {column["name"] for column in inspector.get_columns("setores")}
+    if_not_exists = "IF NOT EXISTS " if db.engine.dialect.name == "postgresql" else ""
+
+    with db.engine.begin() as conn:
+        if "tipo_setor" not in setores_columns:
+            conn.execute(
+                text(
+                    f"ALTER TABLE setores ADD COLUMN {if_not_exists}"
+                    "tipo_setor VARCHAR(20) NOT NULL DEFAULT 'atendimento'"
+                )
+            )
+        conn.execute(
+            text(
+                "UPDATE setores SET tipo_setor = 'atendimento' "
+                "WHERE tipo_setor IS NULL OR tipo_setor = ''"
+            )
+        )
 
 
 def _backfill_setor_propagandas() -> None:

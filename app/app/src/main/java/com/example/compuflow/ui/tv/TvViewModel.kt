@@ -40,6 +40,7 @@ class TvViewModel : ViewModel() {
     var ultimaPreferencialFoto by mutableStateOf<String?>(null)
 
     var layoutTvWeb by mutableStateOf("propaganda")
+    var orientacaoTv by mutableStateOf("horizontal")
     var imagens by mutableStateOf<List<PropagandaImagemDto>>(emptyList())
     var intervaloMs by mutableStateOf(15_000L)
     var imagemIndex by mutableStateOf(0)
@@ -69,6 +70,7 @@ class TvViewModel : ViewModel() {
                 val config = NetworkModule.apiService().tvConfig()
                 applyTvConfig(
                     layout = config.layout_tv_web,
+                    orientacao = config.orientacao_tv,
                     imgs = config.imagens,
                     intervalo = config.intervalo_ms.coerceAtLeast(1_000L),
                 )
@@ -88,10 +90,12 @@ class TvViewModel : ViewModel() {
 
     private fun applyTvConfig(
         layout: String,
+        orientacao: String,
         imgs: List<PropagandaImagemDto>,
         intervalo: Long,
     ) {
         layoutTvWeb = if (layout == "fila") "fila" else "propaganda"
+        orientacaoTv = if (orientacao == "vertical") "vertical" else "horizontal"
         imagens = imgs
         intervaloMs = intervalo
         imagemIndex = if (imgs.isEmpty()) 0 else imagemIndex % imgs.size
@@ -177,6 +181,7 @@ class TvViewModel : ViewModel() {
             is SocketEvent.TvConfigAtualizada -> {
                 applyTvConfig(
                     layout = event.layoutTvWeb,
+                    orientacao = event.orientacaoTv,
                     imgs = event.imagens,
                     intervalo = event.intervaloMs,
                 )

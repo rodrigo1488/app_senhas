@@ -14,15 +14,32 @@ from sqlalchemy import func
 
 from backend.auth import api_login_required
 from backend.extensions import db
-from backend.models import AtendimentoAtual, Finalizado, Impressora, Operador, Propaganda, Senha, Setor, Usuario
+from backend.models import (
+    AtendimentoAtual,
+    Finalizado,
+    Impressora,
+    Operador,
+    Propaganda,
+    Senha,
+    Setor,
+    TvDispositivo,
+    Usuario,
+    normalizar_tipo_setor,
+    setor_eh_streaming,
+    TIPO_SETOR_ATENDIMENTO,
+    TIPO_SETOR_STREAMING,
+)
 from backend.services.streaming_service import atribuir_midias_tv, listar_tvs_admin
 from backend.services.admin_access import (
     AdminAccessError,
     assert_setor_permitido,
     filtrar_setor_id,
     is_admin,
+    is_marketing,
     query_setores_visiveis,
     require_admin,
+    require_admin_ou_marketing,
+    restringir_marketing_se_necessario,
     setor_ids_permitidos,
     usuario_atual,
 )
@@ -46,10 +63,18 @@ from backend.utils import (
 )
 from backend.services.tv_config_service import (
     ativar_propagandas_nos_setores,
+    atribuir_midias_cliente,
+    notificar_clientes,
     notificar_tvs,
+    propaganda_ids_cliente,
 )
 
 admin_api_bp = Blueprint("admin_api", __name__, url_prefix="/api/v1/admin")
+
+
+@admin_api_bp.before_request
+def _restringir_marketing():
+    return restringir_marketing_se_necessario()
 
 
 def _modo_identificacao(valor) -> str:
@@ -66,6 +91,13 @@ def _layout_tv_web(valor) -> str:
     return layout
 
 
+def _orientacao_tv(valor) -> str:
+    orientacao = (valor or "horizontal").strip().lower()
+    if orientacao not in {"horizontal", "vertical"}:
+        raise ValueError("Orientação da TV deve ser horizontal ou vertical")
+    return orientacao
+
+
 def _validar_setor_pronto_para_pin(setor: Setor) -> None:
     sem_pin = setor.operadores.filter(
         (Operador.pin_hash.is_(None)) | (Operador.pin_hash == "")
@@ -74,6 +106,34 @@ def _validar_setor_pronto_para_pin(setor: Setor) -> None:
         raise ValueError(
             f"Cadastre o PIN de todos os operadores do setor antes de ativar este modo ({sem_pin} pendente(s))"
         )
+
+
+def _setor_admin_dict(setor: Setor, *, ocultar_senha: bool = False) -> dict:
+    return {
+        "id": setor.id,
+        "nome": setor.nome,
+        "descricao": setor.descricao or "",
+        "senha_setor": "" if ocultar_senha else (setor.senha_setor or ""),
+        "tipo_setor": setor.tipo_setor or TIPO_SETOR_ATENDIMENTO,
+        "modo_identificacao_operador": setor.modo_identificacao_operador or "foto",
+        "propagandas_ativas": bool(setor.propagandas_ativas),
+        "propagandas_cliente_ativas": bool(setor.propagandas_cliente_ativas),
+        "propaganda_ids_cliente": propaganda_ids_cliente(setor.id),
+        "layout_tv_web": setor.layout_tv_web or "propaganda",
+        "orientacao_tv": setor.orientacao_tv or "horizontal",
+    }
+
+
+def _assert_setor_atendimento(setor: Setor, acao: str) -> None:
+    if setor_eh_streaming(setor):
+        raise ValueError(f"Setor de streaming não permite {acao}")
+
+
+def _validar_conversao_streaming(setor: Setor) -> None:
+    if setor.operadores.count():
+        raise ValueError("Remova os operadores antes de converter o setor para streaming")
+    if setor.impressoras.count():
+        raise ValueError("Remova as impressoras antes de converter o setor para streaming")
 
 
 def _avaliacao_numerica():
@@ -88,6 +148,7 @@ def _user_payload(usuario: Usuario) -> dict:
     data = usuario.to_dict()
     data["nome_empresa"] = usuario.nome_empresa or get_configuracao("nome_empresa", "") or ""
     data["is_admin"] = is_admin(usuario)
+    data["is_marketing"] = is_marketing(usuario)
     return data
 
 
@@ -294,8 +355,11 @@ def fila_ao_vivo_token():
         assert_setor_permitido(setor_id)
     except AdminAccessError as exc:
         return _access_error_response(exc)
-    if not Setor.query.get(setor_id):
+    setor = Setor.query.get(setor_id)
+    if not setor:
         return jsonify({"error": "Setor não encontrado"}), 404
+    if setor_eh_streaming(setor):
+        return jsonify({"error": "Setor de streaming não possui fila de atendimento"}), 400
     token = create_session_token(setor_id, role="tv", ttl_seconds=60 * 60 * 8)
     return jsonify({"session_token": token, "setor_id": setor_id})
 
@@ -328,7 +392,7 @@ def dashboard():
     inicio_mes = datetime(hoje.year, hoje.month, 1)
     fim_mes = datetime(hoje.year + 1, 1, 1) if hoje.month == 12 else datetime(hoje.year, hoje.month + 1, 1)
 
-    setores = query_setores_visiveis().all()
+    setores = [s for s in query_setores_visiveis().all() if not setor_eh_streaming(s)]
     avaliacao_num = _avaliacao_numerica()
     setor_ids = [s.id for s in setores]
 
@@ -441,20 +505,8 @@ def dashboard():
 @api_login_required
 def list_setores():
     setores = query_setores_visiveis().all()
-    return jsonify(
-        [
-            {
-                "id": s.id,
-                "nome": s.nome,
-                "descricao": s.descricao or "",
-                "senha_setor": s.senha_setor or "",
-                "modo_identificacao_operador": s.modo_identificacao_operador or "foto",
-                "propagandas_ativas": bool(s.propagandas_ativas),
-                "layout_tv_web": s.layout_tv_web or "propaganda",
-            }
-            for s in setores
-        ]
-    )
+    ocultar_senha = is_marketing()
+    return jsonify([_setor_admin_dict(s, ocultar_senha=ocultar_senha) for s in setores])
 
 
 @admin_api_bp.route("/setores", methods=["POST"])
@@ -466,21 +518,34 @@ def create_setor():
     if not nome:
         return jsonify({"error": "Nome é obrigatório"}), 400
     try:
+        tipo_setor = normalizar_tipo_setor(data.get("tipo_setor"))
         modo = _modo_identificacao(data.get("modo_identificacao_operador"))
         layout_tv_web = _layout_tv_web(data.get("layout_tv_web"))
+        orientacao_tv = _orientacao_tv(data.get("orientacao_tv"))
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
+    if tipo_setor == TIPO_SETOR_STREAMING:
+        modo = "foto"
+        layout_tv_web = "propaganda"
+        senha_setor = ""
+        cliente_ativas = False
+    else:
+        senha_setor = (data.get("senha_setor") or "").strip()
+        cliente_ativas = bool(data.get("propagandas_cliente_ativas", False))
     setor = Setor(
         nome=nome,
         descricao=(data.get("descricao") or "").strip(),
-        senha_setor=(data.get("senha_setor") or "").strip(),
+        senha_setor=senha_setor,
+        tipo_setor=tipo_setor,
         modo_identificacao_operador=modo,
         propagandas_ativas=bool(data.get("propagandas_ativas", False)),
+        propagandas_cliente_ativas=cliente_ativas,
         layout_tv_web=layout_tv_web,
+        orientacao_tv=orientacao_tv,
     )
     db.session.add(setor)
     db.session.commit()
-    return jsonify({"id": setor.id, "nome": setor.nome}), 201
+    return jsonify(_setor_admin_dict(setor)), 201
 
 
 @admin_api_bp.route("/setores/<int:setor_id>", methods=["PUT"])
@@ -495,7 +560,13 @@ def update_setor(setor_id: int):
     # Gerente só altera flags operacionais; admin altera tudo.
     admin = is_admin()
     if not admin:
-        allowed = {"propagandas_ativas", "layout_tv_web", "modo_identificacao_operador"}
+        allowed = {
+            "propagandas_ativas",
+            "propagandas_cliente_ativas",
+            "layout_tv_web",
+            "orientacao_tv",
+            "modo_identificacao_operador",
+        }
         data = {k: v for k, v in data.items() if k in allowed}
     if "nome" in data:
         nome = (data.get("nome") or "").strip()
@@ -504,9 +575,24 @@ def update_setor(setor_id: int):
         setor.nome = nome
     if "descricao" in data:
         setor.descricao = (data.get("descricao") or "").strip()
-    if "senha_setor" in data:
+    if "senha_setor" in data and not setor_eh_streaming(setor):
         setor.senha_setor = (data.get("senha_setor") or "").strip()
-    if "modo_identificacao_operador" in data:
+    if "tipo_setor" in data:
+        try:
+            tipo_setor = normalizar_tipo_setor(data.get("tipo_setor"))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+        if tipo_setor == TIPO_SETOR_STREAMING and not setor_eh_streaming(setor):
+            try:
+                _validar_conversao_streaming(setor)
+            except ValueError as exc:
+                return jsonify({"error": str(exc)}), 400
+            setor.senha_setor = ""
+            setor.layout_tv_web = "propaganda"
+            setor.modo_identificacao_operador = "foto"
+            setor.propagandas_cliente_ativas = False
+        setor.tipo_setor = tipo_setor
+    if "modo_identificacao_operador" in data and not setor_eh_streaming(setor):
         try:
             modo = _modo_identificacao(data.get("modo_identificacao_operador"))
             if modo == "pin":
@@ -516,24 +602,22 @@ def update_setor(setor_id: int):
             return jsonify({"error": str(exc)}), 400
     if "propagandas_ativas" in data:
         setor.propagandas_ativas = bool(data.get("propagandas_ativas"))
-    if "layout_tv_web" in data:
+    if "propagandas_cliente_ativas" in data and not setor_eh_streaming(setor):
+        setor.propagandas_cliente_ativas = bool(data.get("propagandas_cliente_ativas"))
+    if "layout_tv_web" in data and not setor_eh_streaming(setor):
         try:
             setor.layout_tv_web = _layout_tv_web(data.get("layout_tv_web"))
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
+    if "orientacao_tv" in data:
+        try:
+            setor.orientacao_tv = _orientacao_tv(data.get("orientacao_tv"))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
     db.session.commit()
     notificar_tvs([setor.id])
-    return jsonify(
-        {
-            "id": setor.id,
-            "nome": setor.nome,
-            "descricao": setor.descricao,
-            "senha_setor": setor.senha_setor,
-            "modo_identificacao_operador": setor.modo_identificacao_operador or "foto",
-            "propagandas_ativas": bool(setor.propagandas_ativas),
-            "layout_tv_web": setor.layout_tv_web or "propaganda",
-        }
-    )
+    notificar_clientes([setor.id])
+    return jsonify(_setor_admin_dict(setor))
 
 
 @admin_api_bp.route("/setores/<int:setor_id>", methods=["DELETE"])
@@ -627,7 +711,7 @@ def list_propagandas():
 
 @admin_api_bp.route("/propagandas", methods=["POST"])
 @api_login_required
-@require_admin
+@require_admin_ou_marketing
 def create_propaganda():
     arquivos = _arquivos_midia_do_request()
     if not arquivos:
@@ -670,7 +754,7 @@ def create_propaganda():
 
 @admin_api_bp.route("/propagandas/setores", methods=["PUT"])
 @api_login_required
-@require_admin
+@require_admin_ou_marketing
 def update_propagandas_setores():
     data = request.get_json(silent=True) or {}
     propaganda_ids = data.get("propaganda_ids")
@@ -703,9 +787,35 @@ def update_propagandas_setores():
     )
 
 
+@admin_api_bp.route("/propagandas/cliente", methods=["PUT"])
+@api_login_required
+@require_admin_ou_marketing
+def update_propagandas_cliente():
+    data = request.get_json(silent=True) or {}
+    try:
+        setor_id = int(data.get("setor_id"))
+        propaganda_ids = [int(item_id) for item_id in (data.get("propaganda_ids") or [])]
+    except (TypeError, ValueError):
+        return jsonify({"error": "IDs inválidos"}), 400
+    ativas = data.get("ativas")
+    try:
+        assert_setor_permitido(setor_id)
+        result = atribuir_midias_cliente(
+            setor_id,
+            propaganda_ids,
+            ativas=bool(ativas) if ativas is not None else None,
+        )
+    except AdminAccessError as exc:
+        return _access_error_response(exc)
+    except ValueError as exc:
+        status = 404 if "não encontrad" in str(exc) else 400
+        return jsonify({"error": str(exc)}), status
+    return jsonify(result)
+
+
 @admin_api_bp.route("/propagandas/<int:propaganda_id>", methods=["PUT"])
 @api_login_required
-@require_admin
+@require_admin_ou_marketing
 def update_propaganda(propaganda_id: int):
     item = Propaganda.query.get_or_404(propaganda_id)
     data = request.get_json(silent=True) or {}
@@ -718,19 +828,22 @@ def update_propaganda(propaganda_id: int):
         item.ativo = bool(data.get("ativo"))
     db.session.commit()
     notificar_tvs([setor.id for setor in item.setores])
+    notificar_clientes([setor.id for setor in item.setores_cliente])
     return jsonify(item.to_dict())
 
 
 @admin_api_bp.route("/propagandas/<int:propaganda_id>", methods=["DELETE"])
 @api_login_required
-@require_admin
+@require_admin_ou_marketing
 def delete_propaganda(propaganda_id: int):
     item = Propaganda.query.get_or_404(propaganda_id)
     setor_ids = [setor.id for setor in item.setores]
+    setor_ids_cliente = [setor.id for setor in item.setores_cliente]
     delete_old_image(item.arquivo)
     db.session.delete(item)
     db.session.commit()
     notificar_tvs(setor_ids)
+    notificar_clientes(setor_ids_cliente)
     return jsonify({"ok": True})
 
 
@@ -742,7 +855,7 @@ def list_tvs():
 
 @admin_api_bp.route("/tvs/midias", methods=["PUT"])
 @api_login_required
-@require_admin
+@require_admin_ou_marketing
 def update_tv_midias():
     data = request.get_json(silent=True) or {}
     tipo = (data.get("tipo") or "").strip().lower()
@@ -755,6 +868,32 @@ def update_tv_midias():
         return jsonify({"error": "IDs inválidos"}), 400
     try:
         result = atribuir_midias_tv(tipo=tipo, alvo_id=alvo_id, propaganda_ids=propaganda_ids)
+    except ValueError as exc:
+        status = 404 if "não encontrad" in str(exc) else 400
+        return jsonify({"error": str(exc)}), status
+    return jsonify(result)
+
+
+@admin_api_bp.route("/tvs/<int:dispositivo_id>/setor", methods=["PUT"])
+@api_login_required
+@require_admin
+def update_tv_setor(dispositivo_id: int):
+    from backend.services.streaming_service import vincular_tv_streaming_ao_setor
+
+    data = request.get_json(silent=True) or {}
+    setor_id = data.get("setor_id")
+    if setor_id in ("", None):
+        setor_id = None
+    else:
+        try:
+            setor_id = int(setor_id)
+        except (TypeError, ValueError):
+            return jsonify({"error": "setor_id inválido"}), 400
+    dispositivo = db.session.get(TvDispositivo, dispositivo_id)
+    if not dispositivo or dispositivo.tipo != "streaming":
+        return jsonify({"error": "TV de streaming não encontrada"}), 404
+    try:
+        result = vincular_tv_streaming_ao_setor(dispositivo, setor_id)
     except ValueError as exc:
         status = 404 if "não encontrad" in str(exc) else 400
         return jsonify({"error": str(exc)}), status
@@ -831,6 +970,10 @@ def create_operador():
     setor = Setor.query.get(int(setor_id))
     if not setor:
         return jsonify({"error": "Setor não encontrado"}), 404
+    try:
+        _assert_setor_atendimento(setor, "cadastro de operadores")
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     foto_perfil = None
     file = request.files.get("foto_perfil")
@@ -879,6 +1022,10 @@ def update_operador(operador_id: int):
     novo_setor = Setor.query.get(int(setor_id))
     if not novo_setor:
         return jsonify({"error": "Setor não encontrado"}), 404
+    try:
+        _assert_setor_atendimento(novo_setor, "cadastro de operadores")
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
 
     setor_anterior_id = op.setor_id
     op.nome = nome
@@ -980,6 +1127,13 @@ def create_impressora():
         assert_setor_permitido(int(setor_id))
     except AdminAccessError as exc:
         return _access_error_response(exc)
+    setor = Setor.query.get(int(setor_id))
+    if not setor:
+        return jsonify({"error": "Setor não encontrado"}), 404
+    try:
+        _assert_setor_atendimento(setor, "cadastro de impressoras")
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     porta = int(data.get("porta") or current_app.config["IMPRESSORA_PORTA"])
     imp = Impressora(nome=nome, ip=ip, porta=porta, setor_id=int(setor_id))
     db.session.add(imp)

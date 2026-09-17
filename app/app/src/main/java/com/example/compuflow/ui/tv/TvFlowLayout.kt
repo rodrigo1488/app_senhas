@@ -59,79 +59,131 @@ fun TvFlowLayout(
     mediaUrl: String?,
     loop: Boolean,
     onEnded: () -> Unit,
+    vertical: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val atual = chamadas.firstOrNull()
-    val anteriores = chamadas.drop(1).take(3)
-    val proximas = pendentes.take(5)
+    val anteriores = chamadas.drop(1).take(if (vertical) 5 else 3)
+    val proximas = pendentes.take(if (vertical) 7 else 5)
 
-    Row(
-        modifier = modifier
-            .fillMaxSize()
-            .background(FilaBackground)
-            .padding(16.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .weight(2.15f)
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(36.dp))
-                .background(MediaPanel)
-                .border(1.dp, Color.Black.copy(alpha = 0.10f), RoundedCornerShape(36.dp)),
+    if (vertical) {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .background(FilaBackground)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            TvMediaSlide(
+            MediaPane(
                 item = item,
                 mediaUrl = mediaUrl,
                 loop = loop,
                 onEnded = onEnded,
-                emptyLabel = "Espaço de mídia",
-                emptyBackground = MediaPanel,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxWidth().weight(1.05f),
+            )
+            QueuePane(
+                atual = atual,
+                anteriores = anteriores,
+                proximas = proximas,
+                modifier = Modifier.fillMaxWidth().weight(1f),
             )
         }
-
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight()
-                .shadow(18.dp, RoundedCornerShape(36.dp), clip = false)
-                .clip(RoundedCornerShape(36.dp))
-                .background(AsideBackground)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 22.dp, vertical = 24.dp),
+    } else {
+        Row(
+            modifier = modifier
+                .fillMaxSize()
+                .background(FilaBackground)
+                .padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            GroupLabel("Chamadas anteriores")
+            MediaPane(
+                item = item,
+                mediaUrl = mediaUrl,
+                loop = loop,
+                onEnded = onEnded,
+                modifier = Modifier.weight(2.15f).fillMaxHeight(),
+            )
+            QueuePane(
+                atual = atual,
+                anteriores = anteriores,
+                proximas = proximas,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun MediaPane(
+    item: PropagandaImagemDto?,
+    mediaUrl: String?,
+    loop: Boolean,
+    onEnded: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(36.dp))
+            .background(MediaPanel)
+            .border(1.dp, Color.Black.copy(alpha = 0.10f), RoundedCornerShape(36.dp)),
+    ) {
+        TvMediaSlide(
+            item = item,
+            mediaUrl = mediaUrl,
+            loop = loop,
+            onEnded = onEnded,
+            emptyLabel = "Espaço de mídia",
+            emptyBackground = MediaPanel,
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
+}
+
+@Composable
+private fun QueuePane(
+    atual: TvChamadaRecenteDto?,
+    anteriores: List<TvChamadaRecenteDto>,
+    proximas: List<SenhaDto>,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .shadow(18.dp, RoundedCornerShape(36.dp), clip = false)
+            .clip(RoundedCornerShape(36.dp))
+            .background(AsideBackground)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 22.dp, vertical = 24.dp),
+    ) {
+        GroupLabel("Chamadas anteriores")
+        CallTable(headers = listOf("Senha", "Tipo", "Atendente")) {
             if (anteriores.isEmpty()) {
                 EmptyLine("Nenhuma chamada anterior")
             } else {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    anteriores.forEachIndexed { index, call ->
-                        PreviousCard(call = call, index = index)
-                    }
+                anteriores.forEachIndexed { index, call ->
+                    PreviousRow(call = call, index = index)
                 }
             }
+        }
 
-            AnimatedContent(
-                targetState = atual,
-                contentKey = { it?.senha_id ?: 0 },
-                transitionSpec = {
-                    (fadeIn() + slideInVertically { it / 2 }) togetherWith fadeOut()
-                },
-                label = "chamada-atual",
-                modifier = Modifier.padding(vertical = 16.dp),
-            ) { chamada ->
-                CurrentCallCard(chamada)
-            }
+        AnimatedContent(
+            targetState = atual,
+            contentKey = { it?.senha_id ?: 0 },
+            transitionSpec = {
+                (fadeIn() + slideInVertically { it / 2 }) togetherWith fadeOut()
+            },
+            label = "chamada-atual",
+            modifier = Modifier.padding(vertical = 16.dp),
+        ) { chamada ->
+            CurrentCallCard(chamada)
+        }
 
-            GroupLabel("Próximas senhas")
+        GroupLabel("Próximas senhas")
+        CallTable(headers = listOf("#", "Senha", "Tipo")) {
             if (proximas.isEmpty()) {
                 EmptyLine("Não há senhas aguardando")
             } else {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    proximas.forEachIndexed { index, senha ->
-                        NextCard(senha = senha, position = index + 1)
-                    }
+                proximas.forEachIndexed { index, senha ->
+                    NextRow(senha = senha, position = index + 1)
                 }
             }
         }
@@ -255,49 +307,78 @@ private fun OperatorRow(nome: String?, foto: String?) {
 }
 
 @Composable
-private fun PreviousCard(call: TvChamadaRecenteDto, index: Int) {
-    Row(
+private fun CallTable(
+    headers: List<String>,
+    content: @Composable () -> Unit,
+) {
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
-            .background(Color.Black.copy(alpha = 0.045f))
+            .background(Color.White.copy(alpha = 0.55f))
+            .border(1.dp, Color.Black.copy(alpha = 0.10f), RoundedCornerShape(16.dp)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(Color.Black.copy(alpha = 0.035f))
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+        ) {
+            headers.forEach { header ->
+                Text(
+                    text = header.uppercase(),
+                    color = Ink.copy(alpha = 0.40f),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 1.4.sp,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+        content()
+    }
+}
+
+@Composable
+private fun PreviousRow(call: TvChamadaRecenteDto, index: Int) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Row(
             modifier = Modifier.weight(1f),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             OperatorPhoto(foto = call.operador_foto)
-            Spacer(Modifier.width(10.dp))
+            Spacer(Modifier.width(8.dp))
             Text(
                 text = call.senha,
-                color = Ink.copy(alpha = (0.72f - index * 0.16f).coerceAtLeast(0.36f)),
-                fontSize = 26.sp,
+                color = Ink.copy(alpha = (0.78f - index * 0.12f).coerceAtLeast(0.40f)),
+                fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
             )
-            Spacer(Modifier.width(10.dp))
-            Text(
-                text = call.operador_nome.orEmpty(),
-                color = Ink.copy(alpha = 0.55f),
-                fontSize = 13.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
         }
-        TicketType(tipo = call.tipo)
+        Box(modifier = Modifier.weight(1f)) {
+            TicketType(tipo = call.tipo)
+        }
+        Text(
+            text = call.operador_nome?.takeIf { it.isNotBlank() } ?: "—",
+            color = Ink.copy(alpha = 0.55f),
+            fontSize = 13.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
 @Composable
-private fun NextCard(senha: SenhaDto, position: Int) {
+private fun NextRow(senha: SenhaDto, position: Int) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .shadow(2.dp, RoundedCornerShape(16.dp), clip = false)
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color.White.copy(alpha = 0.70f))
             .padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -306,16 +387,18 @@ private fun NextCard(senha: SenhaDto, position: Int) {
             color = Ink.copy(alpha = 0.35f),
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.width(28.dp),
+            modifier = Modifier.weight(1f),
         )
         Text(
             text = senha.senha,
             color = Ink,
-            fontSize = 26.sp,
+            fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.weight(1f),
         )
-        TicketType(tipo = senha.tipo)
+        Box(modifier = Modifier.weight(1f)) {
+            TicketType(tipo = senha.tipo)
+        }
     }
 }
 

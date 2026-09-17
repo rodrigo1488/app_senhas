@@ -14,6 +14,7 @@ from backend.services.streaming_service import (
     fila_streaming,
     marcar_online,
     registrar_streaming,
+    vincular_tv_streaming_ao_setor,
 )
 
 streaming_bp = Blueprint("streaming", __name__)
@@ -144,14 +145,32 @@ def register_poll():
     ip_address = data.get("ip_address")
     if not ip_address:
         return jsonify({"status": "error", "message": "IP address é obrigatório"}), 400
-    registrar_streaming(
+    dispositivo = registrar_streaming(
         ip_address=ip_address,
         device_name=data.get("device_name") or "Dispositivo",
         user_agent=data.get("user_agent") or request.headers.get("User-Agent", ""),
         nome=data.get("nome"),
         sid=f"poll_{ip_address}",
     )
-    return jsonify({"status": "ok", "message": "Cliente registrado com sucesso", "ip_address": ip_address})
+    setor_raw = data.get("setor_id")
+    if setor_raw not in (None, ""):
+        try:
+            setor_id = int(setor_raw)
+        except (TypeError, ValueError):
+            return jsonify({"status": "error", "message": "setor_id inválido"}), 400
+        try:
+            vincular_tv_streaming_ao_setor(dispositivo, setor_id)
+        except ValueError as exc:
+            status = 404 if "não encontrad" in str(exc) else 400
+            return jsonify({"status": "error", "message": str(exc)}), status
+    return jsonify(
+        {
+            "status": "ok",
+            "message": "Cliente registrado com sucesso",
+            "ip_address": ip_address,
+            "setor_id": dispositivo.setor_id,
+        }
+    )
 
 
 @streaming_bp.route("/api/remove_client", methods=["POST"])

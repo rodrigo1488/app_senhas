@@ -1,5 +1,7 @@
 package com.example.compuflow.ui.tv
 
+import android.app.Activity
+import android.content.pm.ActivityInfo
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -52,6 +54,20 @@ fun TvScreen(viewModel: TvViewModel = viewModel()) {
     val atual = viewModel.imagens.getOrNull(viewModel.imagemIndex)
     val url = mediaUrl(atual?.arquivo)
     val loop = viewModel.imagens.size <= 1
+    val vertical = viewModel.orientacaoTv == "vertical"
+
+    DisposableEffect(vertical) {
+        val activity = context as? Activity
+        val previous = activity?.requestedOrientation
+        activity?.requestedOrientation = if (vertical) {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        }
+        onDispose {
+            activity?.requestedOrientation = previous ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
 
     Surface(
         color = if (viewModel.isFilaLayout) Color(0xFFE7E3DC) else Color.Black,
@@ -65,6 +81,7 @@ fun TvScreen(viewModel: TvViewModel = viewModel()) {
                 mediaUrl = url,
                 loop = loop,
                 onEnded = viewModel::onMediaEnded,
+                vertical = vertical,
             )
         } else {
             PropagandaTvLayout(
@@ -76,6 +93,7 @@ fun TvScreen(viewModel: TvViewModel = viewModel()) {
                 preferencialFoto = viewModel.ultimaPreferencialFoto,
                 normalSenha = viewModel.ultimaNormalSenha,
                 normalFoto = viewModel.ultimaNormalFoto,
+                vertical = vertical,
             )
         }
     }
@@ -91,6 +109,7 @@ private fun PropagandaTvLayout(
     preferencialFoto: String?,
     normalSenha: String?,
     normalFoto: String?,
+    vertical: Boolean = false,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
         TvMediaSlide(
@@ -101,27 +120,50 @@ private fun PropagandaTvLayout(
             emptyLabel = "Sem mídia de propaganda",
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(0.78f),
+                .weight(if (vertical) 0.62f else 0.78f),
         )
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(0.22f),
-        ) {
-            TipoSenhaPanel(
-                titulo = "PREFERENCIAL",
-                senha = preferencialSenha,
-                foto = preferencialFoto,
-                background = PreferencialPanel,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-            )
-            TipoSenhaPanel(
-                titulo = "NORMAL",
-                senha = normalSenha,
-                foto = normalFoto,
-                background = NormalPanel,
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-            )
+        if (vertical) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(0.38f),
+            ) {
+                TipoSenhaPanel(
+                    titulo = "PREFERENCIAL",
+                    senha = preferencialSenha,
+                    foto = preferencialFoto,
+                    background = PreferencialPanel,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                )
+                TipoSenhaPanel(
+                    titulo = "NORMAL",
+                    senha = normalSenha,
+                    foto = normalFoto,
+                    background = NormalPanel,
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                )
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(0.22f),
+            ) {
+                TipoSenhaPanel(
+                    titulo = "PREFERENCIAL",
+                    senha = preferencialSenha,
+                    foto = preferencialFoto,
+                    background = PreferencialPanel,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                )
+                TipoSenhaPanel(
+                    titulo = "NORMAL",
+                    senha = normalSenha,
+                    foto = normalFoto,
+                    background = NormalPanel,
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                )
+            }
         }
     }
 }

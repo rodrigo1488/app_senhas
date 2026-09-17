@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { apiFetch, type PainelUsuario, type Setor } from "@/lib/api";
+import { apiFetch, rotuloPapel, type PainelUsuario, type PapelPainel, type Setor } from "@/lib/api";
 
 export default function UsuariosPage() {
   const [itens, setItens] = useState<PainelUsuario[]>([]);
@@ -17,7 +17,7 @@ export default function UsuariosPage() {
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [nome, setNome] = useState("");
-  const [papel, setPapel] = useState<"admin" | "gerente">("gerente");
+  const [papel, setPapel] = useState<PapelPainel>("gerente");
   const [setorIds, setSetorIds] = useState<number[]>([]);
 
   async function load() {
@@ -85,6 +85,7 @@ export default function UsuariosPage() {
         <h1 className="text-2xl font-bold">Usuários do painel</h1>
         <p className="text-muted-foreground">
           Administradores veem tudo. Gerentes ficam limitados aos setores atribuídos.
+          Marketing gerencia apenas mídias e TVs.
         </p>
       </div>
 
@@ -126,10 +127,11 @@ export default function UsuariosPage() {
                 id="papel"
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
                 value={papel}
-                onChange={(e) => setPapel(e.target.value as "admin" | "gerente")}
+                onChange={(e) => setPapel(e.target.value as PapelPainel)}
               >
                 <option value="admin">Administrador</option>
                 <option value="gerente">Gerente</option>
+                <option value="marketing">Marketing</option>
               </select>
             </div>
             {papel === "gerente" ? (
@@ -170,7 +172,7 @@ export default function UsuariosPage() {
                 <p className="font-semibold">{u.nome || u.email}</p>
                 <p className="text-sm text-muted-foreground">{u.email}</p>
                 <p className="mt-1 text-sm">
-                  Papel: <span className="font-medium">{u.papel === "admin" ? "Administrador" : "Gerente"}</span>
+                  Papel: <span className="font-medium">{rotuloPapel(u.papel)}</span>
                 </p>
                 {u.papel === "gerente" ? (
                   <div className="mt-2 grid gap-1 sm:grid-cols-2">
@@ -196,7 +198,11 @@ export default function UsuariosPage() {
                     })}
                   </div>
                 ) : (
-                  <p className="mt-1 text-xs text-muted-foreground">Acesso a todos os setores</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {u.papel === "marketing"
+                      ? "Acesso apenas a mídias e TVs"
+                      : "Acesso a todos os setores"}
+                  </p>
                 )}
               </div>
               <Button variant="outline" size="sm" onClick={() => onDelete(u.id)}>

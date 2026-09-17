@@ -5,9 +5,37 @@ tabela e coluna abaixo são idênticos aos criados pelo código antigo em `app.p
 from backend.extensions import db
 from backend.timezone import agora_sp
 
+TIPO_SETOR_ATENDIMENTO = "atendimento"
+TIPO_SETOR_STREAMING = "streaming"
+TIPOS_SETOR = {TIPO_SETOR_ATENDIMENTO, TIPO_SETOR_STREAMING}
+
+
+def normalizar_tipo_setor(valor) -> str:
+    tipo = (valor or TIPO_SETOR_ATENDIMENTO).strip().lower()
+    if tipo not in TIPOS_SETOR:
+        raise ValueError("Tipo do setor deve ser atendimento ou streaming")
+    return tipo
+
+
+def setor_eh_streaming(setor) -> bool:
+    if setor is None:
+        return False
+    return (getattr(setor, "tipo_setor", None) or TIPO_SETOR_ATENDIMENTO) == TIPO_SETOR_STREAMING
+
 
 setor_propagandas = db.Table(
     "setor_propagandas",
+    db.Column("setor_id", db.Integer, db.ForeignKey("setores.id", ondelete="CASCADE"), primary_key=True),
+    db.Column(
+        "propaganda_id",
+        db.Integer,
+        db.ForeignKey("propagandas.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+setor_propagandas_cliente = db.Table(
+    "setor_propagandas_cliente",
     db.Column("setor_id", db.Integer, db.ForeignKey("setores.id", ondelete="CASCADE"), primary_key=True),
     db.Column(
         "propaganda_id",
@@ -25,9 +53,12 @@ class Setor(db.Model):
     nome = db.Column(db.Text, nullable=False)
     descricao = db.Column(db.Text)
     senha_setor = db.Column(db.Text)  # "código do setor" usado no login do app/kiosk
+    tipo_setor = db.Column(db.String(20), nullable=False, default=TIPO_SETOR_ATENDIMENTO)
     modo_identificacao_operador = db.Column(db.String(10), nullable=False, default="foto")
     propagandas_ativas = db.Column(db.Boolean, nullable=False, default=False)
+    propagandas_cliente_ativas = db.Column(db.Boolean, nullable=False, default=False)
     layout_tv_web = db.Column(db.String(20), nullable=False, default="propaganda")
+    orientacao_tv = db.Column(db.String(20), nullable=False, default="horizontal")
 
     operadores = db.relationship("Operador", backref="setor", lazy="dynamic")
     impressoras = db.relationship("Impressora", backref="setor", lazy="dynamic")
@@ -37,6 +68,14 @@ class Setor(db.Model):
         secondary=setor_propagandas,
         back_populates="setores",
         lazy="select",
+        overlaps="propagandas_cliente,setores_cliente",
+    )
+    propagandas_cliente = db.relationship(
+        "Propaganda",
+        secondary=setor_propagandas_cliente,
+        back_populates="setores_cliente",
+        lazy="select",
+        overlaps="propagandas,setores",
     )
 
     def to_dict(self):
@@ -44,9 +83,12 @@ class Setor(db.Model):
             "id": self.id,
             "nome": self.nome,
             "descricao": self.descricao,
+            "tipo_setor": self.tipo_setor or TIPO_SETOR_ATENDIMENTO,
             "modo_identificacao_operador": self.modo_identificacao_operador or "foto",
             "propagandas_ativas": bool(self.propagandas_ativas),
+            "propagandas_cliente_ativas": bool(self.propagandas_cliente_ativas),
             "layout_tv_web": self.layout_tv_web or "propaganda",
+            "orientacao_tv": self.orientacao_tv or "horizontal",
         }
 
 
@@ -93,6 +135,8 @@ class Senha(db.Model):
     pedido = db.Column(db.Text)
     tem_pedido = db.Column(db.Boolean, default=False)
     pedido_confirmado = db.Column(db.Boolean, default=False)
+    # Primeiro envio de "adiantar pedido" (não muda se o cliente editar o texto).
+    pedido_em = db.Column(db.DateTime)
     data_hora = db.Column(db.DateTime, default=agora_sp)  # retirada (horário de São Paulo)
     # Persistidos no ciclo de vida para analytics (espera = chamada_em - data_hora;
     # atendimento = finalizado_em - chamada_em). AtendimentoAtual é apagado ao
@@ -111,10 +155,27 @@ class Senha(db.Model):
             "tem_pedido": bool(self.tem_pedido),
             "pedido": self.pedido,
             "pedido_confirmado": bool(self.pedido_confirmado),
+            "pedido_em": self.pedido_em.isoformat() if self.pedido_em else None,
             "data_hora": self.data_hora.isoformat() if self.data_hora else None,
             "chamada_em": self.chamada_em.isoformat() if self.chamada_em else None,
             "finalizado_em": self.finalizado_em.isoformat() if self.finalizado_em else None,
         }
+
+
+class QrScan(db.Model):
+    """Abertura efetiva do acompanhamento via QR (`/acompanhar/<token>`).
+
+    Regra de contagem: **1 registro por senha/token**. Recarregar a página,
+    o polling de `/api/verificar_senha/<token>` e reabrir o mesmo link não
+    criam outro scan — só o primeiro acesso bem-sucedido é persistido.
+    """
+
+    __tablename__ = "qr_scans"
+
+    id = db.Column(db.Integer, primary_key=True)
+    senha_id = db.Column(db.Integer, db.ForeignKey("senhas.id"), nullable=False, unique=True)
+    setor_id = db.Column(db.Integer, db.ForeignKey("setores.id"))
+    scanned_at = db.Column(db.DateTime, default=agora_sp, nullable=False)
 
 
 class AtendimentoAtual(db.Model):
@@ -154,6 +215,7 @@ class Usuario(db.Model):
     Papéis:
     - `admin`: acesso total
     - `gerente`: vê apenas os setores vinculados em `usuario_setores`
+    - `marketing`: gerencia apenas mídias/propagandas e TVs
     """
     __tablename__ = "usuarios"
 
@@ -209,6 +271,14 @@ class Propaganda(db.Model):
         secondary=setor_propagandas,
         back_populates="propagandas",
         lazy="select",
+        overlaps="propagandas_cliente,setores_cliente",
+    )
+    setores_cliente = db.relationship(
+        "Setor",
+        secondary=setor_propagandas_cliente,
+        back_populates="propagandas_cliente",
+        lazy="select",
+        overlaps="propagandas,setores",
     )
 
     def to_dict(self):
@@ -220,6 +290,7 @@ class Propaganda(db.Model):
             "ativo": bool(self.ativo),
             "criado_em": self.criado_em.isoformat() if self.criado_em else None,
             "setor_ids": sorted(setor.id for setor in self.setores),
+            "setor_ids_cliente": sorted(setor.id for setor in self.setores_cliente),
         }
 
 
@@ -275,5 +346,7 @@ class TvDispositivo(db.Model):
             "last_seen": self.last_seen.isoformat() if self.last_seen else None,
             "is_online": bool(self.is_online if online is None else online),
             "setor_id": self.setor_id,
+            "setor_nome": self.setor.nome if self.setor else None,
+            "tipo_setor": (self.setor.tipo_setor or TIPO_SETOR_ATENDIMENTO) if self.setor else None,
             "propaganda_ids": propaganda_ids if propaganda_ids is not None else [],
         }

@@ -32,6 +32,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.compuflow.ui.theme.FundoClienteEscuro
 import com.example.compuflow.ui.theme.VerdeSenhaNormal
 import com.example.compuflow.ui.theme.VermelhoPreferencial
+import com.example.compuflow.ui.tv.TvMediaSlide
+import com.example.compuflow.ui.tv.mediaUrl
 
 /** Totem de retirada: emite, imprime no servidor e fica pronto para a próxima pessoa. */
 @Composable
@@ -41,6 +43,23 @@ fun ClienteScreen(viewModel: ClienteViewModel = viewModel()) {
             .fillMaxSize()
             .background(FundoClienteEscuro),
     ) {
+        val item = viewModel.currentItem
+        if (item != null) {
+            TvMediaSlide(
+                item = item,
+                mediaUrl = mediaUrl(item.arquivo),
+                loop = viewModel.imagens.size <= 1,
+                onEnded = { viewModel.onMediaEnded() },
+                emptyLabel = "",
+                modifier = Modifier.fillMaxSize(),
+                emptyBackground = FundoClienteEscuro,
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.45f)),
+            )
+        }
         SelecaoTipoSenha(viewModel)
     }
 }

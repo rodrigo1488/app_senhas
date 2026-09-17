@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { apiFetch, type Impressora, type Setor } from "@/lib/api";
+import { apiFetch, setorEhAtendimento, type Impressora, type Setor } from "@/lib/api";
 
 export default function ImpressorasPage() {
   const [impressoras, setImpressoras] = useState<Impressora[]>([]);
@@ -23,8 +23,9 @@ export default function ImpressorasPage() {
       apiFetch<Setor[]>("/api/v1/admin/setores"),
     ]);
     setImpressoras(imps);
-    setSetores(sets);
-    if (!setorId && sets[0]) setSetorId(String(sets[0].id));
+    const atendimento = sets.filter(setorEhAtendimento);
+    setSetores(atendimento);
+    if (!setorId && atendimento[0]) setSetorId(String(atendimento[0].id));
   }
 
   useEffect(() => {

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { apiFetch, type Operador, type Setor } from "@/lib/api";
+import { apiFetch, setorEhAtendimento, type Operador, type Setor } from "@/lib/api";
 
 export default function EditOperadorPage() {
   const params = useParams<{ id: string }>();
@@ -30,7 +30,8 @@ export default function EditOperadorPage() {
       .then(([ops, sets]) => {
         const op = ops.find((o) => String(o.id) === params.id) || null;
         setOperador(op);
-        setSetores(sets);
+        const atendimento = sets.filter(setorEhAtendimento);
+        setSetores(atendimento);
         if (op) {
           setNome(op.nome);
           setSetorId(String(op.setor_id || ""));

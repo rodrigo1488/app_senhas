@@ -3,22 +3,31 @@
 import { type ReactNode } from "react";
 import { UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { uploadsUrl, type TvRecentCall, type TvSenha } from "@/lib/tv-api";
+import { uploadsUrl, type TvOrientacao, type TvRecentCall, type TvSenha } from "@/lib/tv-api";
 
 type Props = {
   chamadas: TvRecentCall[];
   pendentes: TvSenha[];
   media: ReactNode;
+  orientacao?: TvOrientacao;
 };
 
-export function TvFlowLayout({ chamadas, pendentes, media }: Props) {
+export function TvFlowLayout({ chamadas, pendentes, media, orientacao = "horizontal" }: Props) {
+  const vertical = orientacao === "vertical";
   const atual = chamadas[0] ?? null;
-  const anteriores = chamadas.slice(1, 4);
-  const proximas = pendentes.slice(0, 5);
+  const anteriores = chamadas.slice(1, vertical ? 5 : 4);
+  const proximas = pendentes.slice(0, vertical ? 7 : 5);
   const animationKey = atual?.senha_id ?? atual?.senha ?? "empty";
 
   return (
-    <div className="grid h-full w-full grid-cols-[minmax(0,2.15fr)_minmax(22rem,1fr)] gap-[clamp(0.75rem,1.25vw,1.25rem)] bg-[#e7e3dc] p-[clamp(0.75rem,1.25vw,1.25rem)] text-[#1b1b1b]">
+    <div
+      className={cn(
+        "grid h-full w-full gap-[clamp(0.75rem,1.25vw,1.25rem)] bg-[#e7e3dc] p-[clamp(0.75rem,1.25vw,1.25rem)] text-[#1b1b1b]",
+        vertical
+          ? "grid-rows-[minmax(0,1.05fr)_minmax(0,1fr)]"
+          : "grid-cols-[minmax(0,2.15fr)_minmax(22rem,1fr)]",
+      )}
+    >
       <section className="relative min-h-0 overflow-hidden rounded-[clamp(1.5rem,2.5vw,2.75rem)] bg-[#d9d6cf]">
         {media}
         <div className="pointer-events-none absolute inset-0 ring-1 ring-inset ring-black/10" />
@@ -27,18 +36,15 @@ export function TvFlowLayout({ chamadas, pendentes, media }: Props) {
       <aside className="flex min-h-0 flex-col overflow-hidden rounded-[clamp(1.5rem,2.5vw,2.75rem)] bg-[#f4f1ea] shadow-[0_12px_35px_rgba(36,30,20,0.10)]">
         <div className="min-h-0 flex-1 overflow-hidden px-[clamp(1rem,1.6vw,1.6rem)] py-[clamp(1.1rem,1.8vw,1.8rem)]">
           <GroupLabel>Chamadas anteriores</GroupLabel>
-          <div
+          <CallTable
             key={`previous-${animationKey}`}
-            className="grid gap-[clamp(0.35rem,0.6vw,0.6rem)]"
+            headers={["Senha", "Tipo", "Atendente"]}
+            empty="Nenhuma chamada anterior"
           >
-            {anteriores.length ? (
-              anteriores.map((call, index) => (
-                <PreviousCard key={`${call.senha_id}-${call.chamada_em}`} call={call} index={index} />
-              ))
-            ) : (
-              <EmptyLine>Nenhuma chamada anterior</EmptyLine>
-            )}
-          </div>
+            {anteriores.map((call, index) => (
+              <PreviousRow key={`${call.senha_id}-${call.chamada_em}`} call={call} index={index} />
+            ))}
+          </CallTable>
 
           <div
             key={`current-${animationKey}`}
@@ -67,16 +73,15 @@ export function TvFlowLayout({ chamadas, pendentes, media }: Props) {
           </div>
 
           <GroupLabel>Próximas senhas</GroupLabel>
-          <div
+          <CallTable
             key={`next-${proximas.map((senha) => senha.id).join("-")}`}
-            className="grid gap-[clamp(0.35rem,0.6vw,0.6rem)]"
+            headers={["#", "Senha", "Tipo"]}
+            empty="Não há senhas aguardando"
           >
-            {proximas.length ? (
-              proximas.map((senha, index) => <NextCard key={senha.id} senha={senha} position={index + 1} />)
-            ) : (
-              <EmptyLine>Não há senhas aguardando</EmptyLine>
-            )}
-          </div>
+            {proximas.map((senha, index) => (
+              <NextRow key={senha.id} senha={senha} position={index + 1} />
+            ))}
+          </CallTable>
         </div>
       </aside>
 
@@ -118,6 +123,33 @@ export function TvFlowLayout({ chamadas, pendentes, media }: Props) {
   );
 }
 
+function CallTable({
+  headers,
+  empty,
+  children,
+}: {
+  headers: string[];
+  empty: string;
+  children: ReactNode;
+}) {
+  const rows = Array.isArray(children) ? children.filter(Boolean) : children ? [children] : [];
+  const hasRows = rows.length > 0;
+
+  return (
+    <div className="overflow-hidden rounded-[clamp(0.85rem,1.2vw,1.2rem)] bg-white/55 ring-1 ring-black/10">
+      <div
+        className="grid items-center border-b border-black/10 bg-black/[0.035] px-[clamp(0.75rem,1.1vw,1.1rem)] py-[clamp(0.35rem,0.5vw,0.5rem)] text-[clamp(0.56rem,0.66vw,0.66rem)] font-bold uppercase tracking-[0.14em] text-black/40"
+        style={{ gridTemplateColumns: `repeat(${headers.length}, minmax(0, 1fr))` }}
+      >
+        {headers.map((header) => (
+          <span key={header}>{header}</span>
+        ))}
+      </div>
+      {hasRows ? rows : <EmptyLine>{empty}</EmptyLine>}
+    </div>
+  );
+}
+
 function GroupLabel({ children }: { children: ReactNode }) {
   return (
     <p className="mb-[clamp(0.4rem,0.65vw,0.65rem)] text-[clamp(0.6rem,0.72vw,0.72rem)] font-bold uppercase tracking-[0.18em] text-black/45">
@@ -126,36 +158,34 @@ function GroupLabel({ children }: { children: ReactNode }) {
   );
 }
 
-function PreviousCard({ call, index }: { call: TvRecentCall; index: number }) {
+function PreviousRow({ call, index }: { call: TvRecentCall; index: number }) {
   return (
-    <div style={{ opacity: 0.72 - index * 0.16 }}>
-      <div
-        className="tv-row-rise grid grid-cols-[1fr_auto] items-center rounded-[clamp(0.85rem,1.2vw,1.2rem)] bg-black/[0.045] px-[clamp(0.85rem,1.2vw,1.2rem)] py-[clamp(0.5rem,0.75vw,0.75rem)]"
-        style={{ animationDelay: `${index * 45}ms` }}
-      >
-        <div className="flex min-w-0 items-center gap-3">
-          <OperatorPhoto photo={call.operador_foto} />
-          <strong className="text-[clamp(1.3rem,2vw,2rem)] tracking-[-0.04em]">{call.senha}</strong>
-          <span className="truncate text-[clamp(0.65rem,0.76vw,0.76rem)] text-black/55">
-            {call.operador_nome}
-          </span>
-        </div>
-        <TicketType tipo={call.tipo} />
+    <div
+      className="tv-row-rise grid grid-cols-3 items-center border-b border-black/10 px-[clamp(0.75rem,1.1vw,1.1rem)] py-[clamp(0.42rem,0.62vw,0.62rem)] last:border-b-0"
+      style={{ animationDelay: `${index * 45}ms`, opacity: 0.78 - index * 0.12 }}
+    >
+      <div className="flex min-w-0 items-center gap-2">
+        <OperatorPhoto photo={call.operador_foto} />
+        <strong className="text-[clamp(1.2rem,1.8vw,1.8rem)] tracking-[-0.04em] tabular-nums">{call.senha}</strong>
       </div>
+      <TicketType tipo={call.tipo} />
+      <span className="truncate text-[clamp(0.68rem,0.82vw,0.82rem)] text-black/55">
+        {call.operador_nome || "—"}
+      </span>
     </div>
   );
 }
 
-function NextCard({ senha, position }: { senha: TvSenha; position: number }) {
+function NextRow({ senha, position }: { senha: TvSenha; position: number }) {
   return (
     <div
-      className="tv-row-rise grid grid-cols-[2rem_1fr_auto] items-center gap-2 rounded-[clamp(0.85rem,1.2vw,1.2rem)] bg-white/70 px-[clamp(0.8rem,1.15vw,1.15rem)] py-[clamp(0.48rem,0.72vw,0.72rem)] shadow-[0_2px_8px_rgba(36,30,20,0.06)]"
+      className="tv-row-rise grid grid-cols-3 items-center border-b border-black/10 px-[clamp(0.75rem,1.1vw,1.1rem)] py-[clamp(0.42rem,0.62vw,0.62rem)] last:border-b-0"
       style={{ animationDelay: `${position * 40}ms` }}
     >
       <span className="text-[clamp(0.62rem,0.72vw,0.72rem)] font-semibold tabular-nums text-black/35">
         {String(position).padStart(2, "0")}
       </span>
-      <strong className="text-[clamp(1.35rem,2vw,2rem)] tracking-[-0.04em]">{senha.senha}</strong>
+      <strong className="text-[clamp(1.2rem,1.8vw,1.8rem)] tracking-[-0.04em] tabular-nums">{senha.senha}</strong>
       <TicketType tipo={senha.tipo} />
     </div>
   );
@@ -200,7 +230,7 @@ function Operator({ call }: { call: TvRecentCall }) {
 function OperatorPhoto({ photo }: { photo?: string | null }) {
   const url = uploadsUrl(photo);
   return (
-    <div className="flex h-[clamp(2rem,2.7vw,2.7rem)] w-[clamp(2rem,2.7vw,2.7rem)] shrink-0 items-center justify-center overflow-hidden rounded-full bg-black/10">
+    <div className="flex h-[clamp(1.7rem,2.3vw,2.3rem)] w-[clamp(1.7rem,2.3vw,2.3rem)] shrink-0 items-center justify-center overflow-hidden rounded-full bg-black/10">
       {url ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img src={url} alt="" className="h-full w-full object-cover" />
@@ -213,8 +243,6 @@ function OperatorPhoto({ photo }: { photo?: string | null }) {
 
 function EmptyLine({ children }: { children: ReactNode }) {
   return (
-    <div className="rounded-xl border border-dashed border-black/15 px-4 py-3 text-center text-[clamp(0.68rem,0.8vw,0.8rem)] text-black/35">
-      {children}
-    </div>
+    <div className="px-4 py-3 text-center text-[clamp(0.68rem,0.8vw,0.8rem)] text-black/35">{children}</div>
   );
 }

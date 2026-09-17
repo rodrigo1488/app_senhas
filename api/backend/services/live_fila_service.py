@@ -6,7 +6,7 @@ from statistics import mean
 from typing import Any, Optional
 
 from backend.extensions import db
-from backend.models import AtendimentoAtual, Finalizado, Operador, Senha, Setor
+from backend.models import AtendimentoAtual, Finalizado, Operador, Senha, Setor, setor_eh_streaming
 from backend.services.fila_service import serializar_fila
 from backend.timezone import agora_sp
 from backend.utils import get_configuracao
@@ -99,6 +99,8 @@ def montar_fila_ao_vivo(setor_id: int) -> dict[str, Any]:
     setor = Setor.query.get(setor_id)
     if not setor:
         raise ValueError("Setor não encontrado")
+    if setor_eh_streaming(setor):
+        raise ValueError("Setor de streaming não possui fila de atendimento")
 
     agora = agora_sp()
     inicio_hora = agora - timedelta(hours=1)

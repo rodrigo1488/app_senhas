@@ -6,10 +6,10 @@ from datetime import date, datetime, timedelta
 from statistics import mean, median
 from typing import Any, Optional
 
-from sqlalchemy import and_
+from sqlalchemy import and_, func, or_
 
 from backend.extensions import db
-from backend.models import Finalizado, Operador, Senha, Setor
+from backend.models import Finalizado, Operador, QrScan, Senha, Setor, TIPO_SETOR_STREAMING, setor_eh_streaming
 from backend.timezone import agora_sp
 from backend.utils import get_configuracao
 
@@ -97,6 +97,125 @@ def _faixa_espera(minutos: float) -> str:
     return ">20"
 
 
+def _aplicar_escopo_setor(query, column, escopo_ids: Optional[list[int]]):
+    if escopo_ids is None:
+        return query
+    if not escopo_ids:
+        return query.filter(False)
+    return query.filter(column.in_(escopo_ids))
+
+
+def _setor_bucket(sid: int, setores: dict[int, Setor]) -> dict[str, Any]:
+    return {
+        "setor_id": sid,
+        "setor": setores[sid].nome if sid in setores else "—",
+        "emitidas": 0,
+        "chamadas": 0,
+        "finalizadas": 0,
+        "esperas": [],
+        "notas": [],
+        "atendimentos": 0,
+        "nao_chamadas": 0,
+        "qr_escaneados": 0,
+        "pedidos_adiantados": 0,
+    }
+
+
+def _qr_scans_periodo(
+    inicio: datetime,
+    fim: datetime,
+    escopo_ids: Optional[list[int]],
+) -> list[QrScan]:
+    """Scans reais do QR no período (timestamp do scan, não da emissão).
+
+    1 por senha/token — a tabela `qr_scans` já é unique em senha_id.
+    Setores `tipo_setor=streaming` ficam de fora do escopo de analytics.
+    """
+    q = QrScan.query.filter(QrScan.scanned_at >= inicio, QrScan.scanned_at < fim)
+    return _aplicar_escopo_setor(q, QrScan.setor_id, escopo_ids).all()
+
+
+def _pedidos_adiantados_periodo(
+    inicio: datetime,
+    fim: datetime,
+    escopo_ids: Optional[list[int]],
+) -> list[Senha]:
+    """Senhas que usaram 'adiantar pedido' no período.
+
+    1 por senha (`tem_pedido`). Data = primeiro envio (`pedido_em`),
+    com fallback para `data_hora` em registros legados sem timestamp.
+    """
+    when_ts = func.coalesce(Senha.pedido_em, Senha.data_hora)
+    q = Senha.query.filter(Senha.tem_pedido.is_(True), when_ts >= inicio, when_ts < fim)
+    return _aplicar_escopo_setor(q, Senha.setor_id, escopo_ids).all()
+
+
+def _montar_fluxo_por_setor(
+    senhas: list[Senha],
+    setores: dict[int, Setor],
+    inicio: datetime,
+    fim: datetime,
+) -> dict[str, Any]:
+    """Série temporal de volume (senhas emitidas) por setor de atendimento."""
+    atendimento = {
+        sid: setor
+        for sid, setor in setores.items()
+        if not setor_eh_streaming(setor)
+    }
+    span = fim - inicio
+    use_hour = span <= timedelta(days=2)
+    granularidade = "hora" if use_hour else "dia"
+
+    buckets: list[tuple[datetime, str]] = []
+    if use_hour:
+        cursor = datetime(inicio.year, inicio.month, inicio.day, inicio.hour)
+        while cursor < fim:
+            label = (
+                cursor.strftime("%d/%m %Hh")
+                if span > timedelta(days=1)
+                else f"{cursor.hour:02d}h"
+            )
+            buckets.append((cursor, label))
+            cursor += timedelta(hours=1)
+    else:
+        cursor = datetime(inicio.year, inicio.month, inicio.day)
+        while cursor < fim:
+            buckets.append((cursor, cursor.strftime("%d/%m")))
+            cursor += timedelta(days=1)
+
+    counts: dict[tuple[datetime, int], int] = defaultdict(int)
+    for senha in senhas:
+        if not senha.data_hora or senha.setor_id not in atendimento:
+            continue
+        if use_hour:
+            chave_t = datetime(
+                senha.data_hora.year,
+                senha.data_hora.month,
+                senha.data_hora.day,
+                senha.data_hora.hour,
+            )
+        else:
+            chave_t = datetime(senha.data_hora.year, senha.data_hora.month, senha.data_hora.day)
+        counts[(chave_t, senha.setor_id)] += 1
+
+    setores_serie = [
+        {"id": setor.id, "nome": setor.nome, "chave": f"setor_{setor.id}"}
+        for setor in sorted(atendimento.values(), key=lambda item: item.nome or "")
+    ]
+    series = []
+    for momento, label in buckets:
+        row: dict[str, Any] = {"t": momento.isoformat(), "label": label}
+        for item in setores_serie:
+            row[item["chave"]] = counts.get((momento, item["id"]), 0)
+        series.append(row)
+
+    return {
+        "granularidade": granularidade,
+        "setores": setores_serie,
+        "series": series,
+    }
+
+
 def montar_analytics(
     *,
     from_s: Optional[str] = None,
@@ -124,7 +243,24 @@ def montar_analytics(
     elif setor_id is not None:
         escopo_ids = [setor_id]
 
+    atendimento_ids = [
+        sid
+        for (sid,) in db.session.query(Setor.id)
+        .filter(or_(Setor.tipo_setor.is_(None), Setor.tipo_setor != TIPO_SETOR_STREAMING))
+        .all()
+    ]
+    if escopo_ids is None:
+        escopo_ids = atendimento_ids
+    else:
+        permitidos = set(atendimento_ids)
+        escopo_ids = [sid for sid in escopo_ids if sid in permitidos]
+
     q = Senha.query.filter(Senha.data_hora >= inicio, Senha.data_hora < fim)
+    streaming_ids = [
+        sid for (sid,) in db.session.query(Setor.id).filter(Setor.tipo_setor == TIPO_SETOR_STREAMING).all()
+    ]
+    if streaming_ids:
+        q = q.filter(~Senha.setor_id.in_(streaming_ids))
     if escopo_ids is not None:
         if not escopo_ids:
             q = q.filter(False)
@@ -156,7 +292,7 @@ def montar_analytics(
         else:
             setores_q = setores_q.filter(Setor.id.in_(escopo_ids))
             operadores_q = operadores_q.filter(Operador.setor_id.in_(escopo_ids))
-    setores = {s.id: s for s in setores_q.all()}
+    setores = {s.id: s for s in setores_q.all() if not setor_eh_streaming(s)}
     operadores = {o.id: o for o in Operador.query.all()}
     if escopo_ids is not None:
         operadores = {oid: o for oid, o in operadores.items() if o.setor_id in escopo_ids}
@@ -167,6 +303,8 @@ def montar_analytics(
         .join(Senha, Senha.id == Finalizado.senha_id)
         .filter(Senha.data_hora >= inicio, Senha.data_hora < fim)
     )
+    if streaming_ids:
+        fq = fq.filter(~Senha.setor_id.in_(streaming_ids))
     if escopo_ids is not None:
         if not escopo_ids:
             fq = fq.filter(False)
@@ -207,6 +345,9 @@ def montar_analytics(
     nota_media = round(mean(notas), 2) if notas else None
     pct_avaliacoes = round(100.0 * len(notas) / atendimentos, 1) if atendimentos else None
 
+    qr_scans = _qr_scans_periodo(inicio, fim, escopo_ids)
+    pedidos_adiantados_rows = _pedidos_adiantados_periodo(inicio, fim, escopo_ids)
+
     kpis = {
         "emitidas": emitidas,
         "chamadas": chamadas,
@@ -219,26 +360,15 @@ def montar_analytics(
         "abandono": abandono_count,
         "abandono_minutos": abandono_minutos,
         "taxa_abandono": round(100.0 * abandono_count / emitidas, 1) if emitidas else None,
+        "qr_escaneados": len(qr_scans),
+        "pedidos_adiantados": len(pedidos_adiantados_rows),
     }
 
     # Por setor
     por_setor_map: dict[int, dict[str, Any]] = {}
     for s in senhas:
         sid = s.setor_id or 0
-        bucket = por_setor_map.setdefault(
-            sid,
-            {
-                "setor_id": sid,
-                "setor": setores[sid].nome if sid in setores else "—",
-                "emitidas": 0,
-                "chamadas": 0,
-                "finalizadas": 0,
-                "esperas": [],
-                "notas": [],
-                "atendimentos": 0,
-                "nao_chamadas": 0,
-            },
-        )
+        bucket = por_setor_map.setdefault(sid, _setor_bucket(sid, setores))
         bucket["emitidas"] += 1
         if s.chamada_em is not None or s.status in ("C", "F"):
             bucket["chamadas"] += 1
@@ -252,24 +382,21 @@ def montar_analytics(
 
     for fin, senha in finalizados_rows:
         sid = fin.setor_id or senha.setor_id or 0
-        bucket = por_setor_map.setdefault(
-            sid,
-            {
-                "setor_id": sid,
-                "setor": setores[sid].nome if sid in setores else "—",
-                "emitidas": 0,
-                "chamadas": 0,
-                "finalizadas": 0,
-                "esperas": [],
-                "notas": [],
-                "atendimentos": 0,
-                "nao_chamadas": 0,
-            },
-        )
+        bucket = por_setor_map.setdefault(sid, _setor_bucket(sid, setores))
         bucket["atendimentos"] += 1
         n = _parse_nota(fin.avaliacao)
         if n is not None:
             bucket["notas"].append(n)
+
+    for scan in qr_scans:
+        sid = scan.setor_id or 0
+        bucket = por_setor_map.setdefault(sid, _setor_bucket(sid, setores))
+        bucket["qr_escaneados"] += 1
+
+    for senha in pedidos_adiantados_rows:
+        sid = senha.setor_id or 0
+        bucket = por_setor_map.setdefault(sid, _setor_bucket(sid, setores))
+        bucket["pedidos_adiantados"] += 1
 
     por_setor = []
     for sid, b in sorted(por_setor_map.items(), key=lambda x: x[1]["setor"]):
@@ -282,6 +409,8 @@ def montar_analytics(
                 "finalizadas": b["finalizadas"],
                 "atendimentos": b["atendimentos"],
                 "nao_chamadas": b["nao_chamadas"],
+                "qr_escaneados": b["qr_escaneados"],
+                "pedidos_adiantados": b["pedidos_adiantados"],
                 "espera": _espera_stats(b["esperas"]),
                 "nota_media": round(mean(b["notas"]), 2) if b["notas"] else None,
             }
@@ -529,6 +658,7 @@ def montar_analytics(
         "kpis": kpis,
         "por_setor": por_setor,
         "por_hora": por_hora,
+        "fluxo_por_setor": _montar_fluxo_por_setor(senhas, setores, inicio, fim),
         "heatmap": {
             "setores": [
                 {"id": sid, "nome": setores[sid].nome if sid in setores else "—"}

@@ -12,6 +12,7 @@ from backend.services.fila_service import serializar_fila
 from backend.services.push_service import push_chamada, push_pedido, push_posicao
 from backend.sockets.events import (
     EV_AVALIACAO_SOLICITADA,
+    EV_CLIENTE_CONFIG_ATUALIZADA,
     EV_FILA_ATUALIZADA,
     EV_PEDIDO_STATUS,
     EV_SENHA_CHAMADA,
@@ -19,6 +20,7 @@ from backend.sockets.events import (
     EV_SENHA_POSICAO,
     EV_TV_CONFIG_ATUALIZADA,
     room_avaliacao,
+    room_cliente_midia,
     room_operador,
     room_operadores,
     room_setor,
@@ -133,6 +135,11 @@ def emit_pedido_status(ticket_token: str, pedido: str, status: str, mensagem: st
 
 def emit_tv_config_atualizada(setor_id: int, payload: dict) -> None:
     socketio.emit(EV_TV_CONFIG_ATUALIZADA, payload, room=room_setor(setor_id))
+
+
+def emit_cliente_config_atualizada(setor_id: int, payload: dict) -> None:
+    socketio.emit(EV_CLIENTE_CONFIG_ATUALIZADA, payload, room=room_setor(setor_id))
+    socketio.emit(EV_CLIENTE_CONFIG_ATUALIZADA, payload, room=room_cliente_midia(setor_id))
 
 
 def emit_avaliacao_solicitada(setor_id: int, operador_id: int, operador_nome: str, operador_foto: str | None, senha_id: int, senha_codigo: str) -> None:

@@ -103,6 +103,8 @@ export default function RelatoriosPage() {
         ["Não chamadas", data.kpis.nao_chamadas],
         ["Abandono", data.kpis.abandono],
         ["Taxa de abandono (%)", data.kpis.taxa_abandono],
+        ["QR codes escaneados", data.kpis.qr_escaneados ?? 0],
+        ["Pedidos adiantados", data.kpis.pedidos_adiantados ?? 0],
         [],
       );
     }
@@ -117,6 +119,8 @@ export default function RelatoriosPage() {
           "Finalizadas",
           "Atendimentos",
           "Não chamadas",
+          "QR escaneados",
+          "Pedidos adiantados",
           "Espera média (min)",
           "P90 (min)",
           "Nota média",
@@ -128,6 +132,8 @@ export default function RelatoriosPage() {
           row.finalizadas,
           row.atendimentos,
           row.nao_chamadas,
+          row.qr_escaneados ?? 0,
+          row.pedidos_adiantados ?? 0,
           row.espera.media,
           row.espera.p90,
           row.nota_media,
@@ -333,6 +339,8 @@ function ExecutiveSummary({ data }: { data: AnalyticsData }) {
     ["Nota média", fmt(data.kpis.nota_media)],
     ["Não chamadas", data.kpis.nao_chamadas],
     ["Taxa de abandono", fmt(data.kpis.taxa_abandono, "%")],
+    ["QR codes escaneados", data.kpis.qr_escaneados ?? 0],
+    ["Pedidos adiantados", data.kpis.pedidos_adiantados ?? 0],
   ];
   return (
     <section>
@@ -362,6 +370,8 @@ function SectorReport({ rows }: { rows: AnalyticsData["por_setor"] }) {
         "Finalizadas",
         "Atendimentos",
         "Não chamadas",
+        "QR escaneados",
+        "Pedidos adiantados",
         "Espera média",
         "P90",
         "Nota",
@@ -373,6 +383,8 @@ function SectorReport({ rows }: { rows: AnalyticsData["por_setor"] }) {
         row.finalizadas,
         row.atendimentos,
         row.nao_chamadas,
+        row.qr_escaneados ?? 0,
+        row.pedidos_adiantados ?? 0,
         fmt(row.espera.media, " min"),
         fmt(row.espera.p90, " min"),
         fmt(row.nota_media),

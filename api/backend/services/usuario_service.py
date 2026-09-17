@@ -1,13 +1,13 @@
 """Regras de negócio para usuários do painel (`/login`).
 
 Autenticação local (tabela `usuarios`), com senha em hash
-(`werkzeug.security`). Suporta papéis `admin` e `gerente`.
+(`werkzeug.security`). Suporta papéis `admin`, `gerente` e `marketing`.
 """
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from backend.extensions import db
 from backend.models import Usuario
-from backend.services.admin_access import PAPEL_ADMIN, normalizar_papel, set_usuario_setores
+from backend.services.admin_access import PAPEL_ADMIN, PAPEL_GERENTE, normalizar_papel, set_usuario_setores
 
 
 def autenticar(email: str, senha: str) -> Usuario | None:
@@ -52,7 +52,7 @@ def criar_usuario(
     if Usuario.query.filter_by(email=email_n).first():
         raise ValueError("Já existe um usuário com este email")
     papel_n = normalizar_papel(papel)
-    if papel_n == "gerente" and not setor_ids:
+    if papel_n == PAPEL_GERENTE and not setor_ids:
         raise ValueError("Gerente precisa de ao menos um setor")
     usuario = Usuario(
         email=email_n,
@@ -62,7 +62,7 @@ def criar_usuario(
     )
     db.session.add(usuario)
     db.session.flush()
-    if papel_n == "gerente":
+    if papel_n == PAPEL_GERENTE:
         set_usuario_setores(usuario, setor_ids or [])
     else:
         usuario.setores = []
@@ -94,7 +94,7 @@ def atualizar_usuario(
     if papel is not None:
         usuario.papel = normalizar_papel(papel)
     papel_atual = normalizar_papel(usuario.papel)
-    if papel_atual == "gerente":
+    if papel_atual == PAPEL_GERENTE:
         if setor_ids is not None:
             if not setor_ids:
                 raise ValueError("Gerente precisa de ao menos um setor")

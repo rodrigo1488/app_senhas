@@ -166,6 +166,15 @@ def migrate_database():
                 print("✅ Coluna propagandas_ativas adicionada!")
             else:
                 print("✅ Coluna propagandas_ativas já existe.")
+            if 'propagandas_cliente_ativas' not in setor_cols:
+                print("Adicionando propagandas_cliente_ativas à tabela setores...")
+                cursor.execute(
+                    "ALTER TABLE setores ADD COLUMN propagandas_cliente_ativas BOOLEAN NOT NULL DEFAULT 0"
+                )
+                conn.commit()
+                print("✅ Coluna propagandas_cliente_ativas adicionada!")
+            else:
+                print("✅ Coluna propagandas_cliente_ativas já existe.")
 
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='propagandas'")
         if not cursor.fetchone():

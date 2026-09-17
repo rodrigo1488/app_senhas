@@ -57,11 +57,18 @@ def handle_connect(auth=None):
     """
     ticket_token = auth.get("ticket_token") if isinstance(auth, dict) else None
     if ticket_token:
-        if not Senha.query.filter_by(token_unico=ticket_token).first():
+        senha = Senha.query.filter_by(token_unico=ticket_token).first()
+        if not senha:
             emit(EV_AUTH_ERRO, {"mensagem": "Ticket não encontrado"})
             return False
         session["ticket_token"] = ticket_token
         join_room(room_ticket(ticket_token))
+        if senha.setor_id:
+            from backend.services.tv_config_service import serializar_cliente_config
+            from backend.sockets.events import EV_CLIENTE_CONFIG_ATUALIZADA, room_cliente_midia
+
+            join_room(room_cliente_midia(senha.setor_id))
+            emit(EV_CLIENTE_CONFIG_ATUALIZADA, serializar_cliente_config(Setor.query.get(senha.setor_id)))
         # Emit direto para este socket (room broadcast no connect pode não
         # entregar ao cliente que acabou de entrar). Sem push — evita spam
         # a cada reload da página.

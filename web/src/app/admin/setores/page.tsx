@@ -1,12 +1,12 @@
 "use client";
 
 import { FormEvent, type ReactNode, useEffect, useState } from "react";
-import { GalleryHorizontalEnd, ListStart } from "lucide-react";
+import { GalleryHorizontalEnd, ListStart, MonitorPlay, RectangleHorizontal, RectangleVertical, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { apiFetch, type Setor } from "@/lib/api";
+import { apiFetch, setorEhStreaming, type Setor } from "@/lib/api";
 
 export default function SetoresPage() {
   const [setores, setSetores] = useState<Setor[]>([]);
@@ -16,7 +16,10 @@ export default function SetoresPage() {
   const [senhaSetor, setSenhaSetor] = useState("");
   const [modoIdentificacao, setModoIdentificacao] = useState<"foto" | "pin">("foto");
   const [propagandasAtivas, setPropagandasAtivas] = useState(false);
+  const [propagandasClienteAtivas, setPropagandasClienteAtivas] = useState(false);
   const [layoutTvWeb, setLayoutTvWeb] = useState<"propaganda" | "fila">("propaganda");
+  const [orientacaoTv, setOrientacaoTv] = useState<"horizontal" | "vertical">("horizontal");
+  const [tipoSetor, setTipoSetor] = useState<"atendimento" | "streaming">("atendimento");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -35,7 +38,10 @@ export default function SetoresPage() {
     setSenhaSetor(setor.senha_setor || "");
     setModoIdentificacao(setor.modo_identificacao_operador || "foto");
     setPropagandasAtivas(Boolean(setor.propagandas_ativas));
+    setPropagandasClienteAtivas(Boolean(setor.propagandas_cliente_ativas));
     setLayoutTvWeb(setor.layout_tv_web || "propaganda");
+    setOrientacaoTv(setor.orientacao_tv || "horizontal");
+    setTipoSetor(setor.tipo_setor === "streaming" ? "streaming" : "atendimento");
   }
 
   function resetForm() {
@@ -45,7 +51,10 @@ export default function SetoresPage() {
     setSenhaSetor("");
     setModoIdentificacao("foto");
     setPropagandasAtivas(false);
+    setPropagandasClienteAtivas(false);
     setLayoutTvWeb("propaganda");
+    setOrientacaoTv("horizontal");
+    setTipoSetor("atendimento");
   }
 
   async function onSubmit(e: FormEvent) {
@@ -56,10 +65,13 @@ export default function SetoresPage() {
       const body = JSON.stringify({
         nome,
         descricao,
-        senha_setor: senhaSetor,
-        modo_identificacao_operador: modoIdentificacao,
+        tipo_setor: tipoSetor,
+        senha_setor: tipoSetor === "streaming" ? "" : senhaSetor,
+        modo_identificacao_operador: tipoSetor === "streaming" ? "foto" : modoIdentificacao,
         propagandas_ativas: propagandasAtivas,
-        layout_tv_web: layoutTvWeb,
+        propagandas_cliente_ativas: tipoSetor === "streaming" ? false : propagandasClienteAtivas,
+        layout_tv_web: tipoSetor === "streaming" ? "propaganda" : layoutTvWeb,
+        orientacao_tv: orientacaoTv,
       });
       if (editing) {
         await apiFetch(`/api/v1/admin/setores/${editing.id}`, { method: "PUT", body });
@@ -89,11 +101,21 @@ export default function SetoresPage() {
     await load();
   }
 
+  async function togglePropagandasCliente(setor: Setor) {
+    await apiFetch(`/api/v1/admin/setores/${setor.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ propagandas_cliente_ativas: !setor.propagandas_cliente_ativas }),
+    });
+    await load();
+  }
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold">Setores</h1>
-        <p className="text-muted-foreground">Áreas de atendimento e códigos de acesso do app</p>
+        <p className="text-muted-foreground">
+          Áreas de atendimento (fila e operadores) ou de streaming (apenas TVs de mídia)
+        </p>
       </div>
 
       <Card>
@@ -106,6 +128,32 @@ export default function SetoresPage() {
               <Label>Nome</Label>
               <Input value={nome} onChange={(e) => setNome(e.target.value)} required />
             </div>
+            <fieldset className="space-y-3 md:col-span-2">
+              <div>
+                <Label>Tipo do setor</Label>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Atendimento usa fila e operadores. Streaming é só digital signage.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <LayoutOption
+                  active={tipoSetor === "atendimento"}
+                  icon={<Users className="h-5 w-5" />}
+                  title="Atendimento"
+                  description="Fila, senhas, operadores e painel de chamadas."
+                  onClick={() => setTipoSetor("atendimento")}
+                />
+                <LayoutOption
+                  active={tipoSetor === "streaming"}
+                  icon={<MonitorPlay className="h-5 w-5" />}
+                  title="Streaming"
+                  description="Apenas TVs de mídia, sem operadores nem senhas."
+                  onClick={() => setTipoSetor("streaming")}
+                />
+              </div>
+            </fieldset>
+            {tipoSetor === "atendimento" ? (
+              <>
             <div className="space-y-2">
               <Label>Código / senha do setor</Label>
               <Input value={senhaSetor} onChange={(e) => setSenhaSetor(e.target.value)} />
@@ -121,6 +169,8 @@ export default function SetoresPage() {
                 <option value="pin">PIN numérico</option>
               </select>
             </div>
+              </>
+            ) : null}
             <div className="flex items-center gap-3 space-y-0 pt-8">
               <input
                 id="propagandas_ativas"
@@ -131,6 +181,19 @@ export default function SetoresPage() {
               />
               <Label htmlFor="propagandas_ativas">Propagandas na TV</Label>
             </div>
+            {tipoSetor === "atendimento" ? (
+            <div className="flex items-center gap-3 space-y-0 pt-8">
+              <input
+                id="propagandas_cliente_ativas"
+                type="checkbox"
+                className="h-4 w-4 rounded border"
+                checked={propagandasClienteAtivas}
+                onChange={(e) => setPropagandasClienteAtivas(e.target.checked)}
+              />
+              <Label htmlFor="propagandas_cliente_ativas">Propagandas na espera do cliente</Label>
+            </div>
+            ) : null}
+            {tipoSetor === "atendimento" ? (
             <fieldset className="space-y-3 md:col-span-2">
               <div>
                 <Label>Layout da TV web</Label>
@@ -152,6 +215,31 @@ export default function SetoresPage() {
                   title="Fluxo de chamadas"
                   description="Senha atual em destaque, histórico e próximas da fila."
                   onClick={() => setLayoutTvWeb("fila")}
+                />
+              </div>
+            </fieldset>
+            ) : null}
+            <fieldset className="space-y-3 md:col-span-2">
+              <div>
+                <Label>Orientação da tela</Label>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Use horizontal para TVs deitadas e vertical para telas em pé.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <LayoutOption
+                  active={orientacaoTv === "horizontal"}
+                  icon={<RectangleHorizontal className="h-5 w-5" />}
+                  title="Horizontal"
+                  description="Layout em paisagem, com a fila ao lado da mídia."
+                  onClick={() => setOrientacaoTv("horizontal")}
+                />
+                <LayoutOption
+                  active={orientacaoTv === "vertical"}
+                  icon={<RectangleVertical className="h-5 w-5" />}
+                  title="Vertical"
+                  description="Layout em retrato, com a fila abaixo da mídia."
+                  onClick={() => setOrientacaoTv("vertical")}
                 />
               </div>
             </fieldset>
@@ -182,21 +270,49 @@ export default function SetoresPage() {
           {setores.map((s) => (
             <div key={s.id} className="flex items-center justify-between rounded-lg border p-3">
               <div>
-                <p className="font-medium">{s.nome}</p>
-                <p className="text-xs text-muted-foreground">
-                  Código: {s.senha_setor || "—"} · {s.descricao || "Sem descrição"}
+                <p className="font-medium">
+                  {s.nome}
+                  {setorEhStreaming(s) ? (
+                    <span className="ml-2 rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground">
+                      Streaming
+                    </span>
+                  ) : null}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  Operadores: {s.modo_identificacao_operador === "pin" ? "PIN numérico" : "Clique na foto"}
-                  {" · "}
-                  TV web: {s.layout_tv_web === "fila" ? "Fluxo de chamadas" : "Propagandas"}
-                  {s.layout_tv_web !== "fila" && !s.propagandas_ativas ? " (sem imagens ativas)" : ""}
+                  {setorEhStreaming(s)
+                    ? s.descricao || "Setor de mídia, sem fila de atendimento"
+                    : `Código: ${s.senha_setor || "—"} · ${s.descricao || "Sem descrição"}`}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {setorEhStreaming(s) ? (
+                    <>
+                      TVs de streaming
+                      {" · "}
+                      Tela: {s.orientacao_tv === "vertical" ? "Vertical" : "Horizontal"}
+                      {!s.propagandas_ativas ? " (sem imagens ativas)" : ""}
+                    </>
+                  ) : (
+                    <>
+                      Operadores: {s.modo_identificacao_operador === "pin" ? "PIN numérico" : "Clique na foto"}
+                      {" · "}
+                      TV web: {s.layout_tv_web === "fila" ? "Fluxo de chamadas" : "Propagandas"}
+                      {" · "}
+                      Tela: {s.orientacao_tv === "vertical" ? "Vertical" : "Horizontal"}
+                      {s.layout_tv_web !== "fila" && !s.propagandas_ativas ? " (sem imagens ativas)" : ""}
+                      {s.propagandas_cliente_ativas ? " · Espera do cliente: ligada" : " · Espera do cliente: desligada"}
+                    </>
+                  )}
                 </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button variant="outline" size="sm" onClick={() => togglePropagandas(s)}>
                   {s.propagandas_ativas ? "Desligar TV ads" : "Ligar TV ads"}
                 </Button>
+                {!setorEhStreaming(s) ? (
+                <Button variant="outline" size="sm" onClick={() => togglePropagandasCliente(s)}>
+                  {s.propagandas_cliente_ativas ? "Desligar espera" : "Ligar espera"}
+                </Button>
+                ) : null}
                 <Button variant="outline" size="sm" onClick={() => startEdit(s)}>
                   Editar
                 </Button>

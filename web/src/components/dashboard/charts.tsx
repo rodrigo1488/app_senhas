@@ -7,6 +7,8 @@ import {
   BarChart,
   CartesianGrid,
   Legend,
+  Line,
+  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -144,6 +146,67 @@ export function EsperaSatisfacaoChart({
             <Bar dataKey="nota" name="Nota média" fill={CHART[3]} radius={[6, 6, 0, 0]} />
           </BarChart>
         </ResponsiveContainer>
+      </CardContent>
+    </Card>
+  );
+}
+
+const FLUXO_COLORS = [
+  "var(--chart-1)",
+  "var(--chart-2)",
+  "var(--chart-3)",
+  "var(--chart-4)",
+  "var(--chart-5)",
+];
+
+export function FluxoPorSetorChart({
+  data,
+}: {
+  data: AnalyticsData["fluxo_por_setor"] | undefined;
+}) {
+  const setores = data?.setores ?? [];
+  const series = data?.series ?? [];
+  const hasVolume = series.some((row) =>
+    setores.some((setor) => Number(row[setor.chave] ?? 0) > 0),
+  );
+
+  return (
+    <Card className="col-span-full">
+      <CardHeader>
+        <CardTitle>Fluxo por setor</CardTitle>
+        <CardDescription>
+          Volume de senhas {data?.granularidade === "dia" ? "por dia" : "por hora"} em cada
+          setor de atendimento
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="h-[320px]">
+        {!setores.length || !hasVolume ? (
+          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+            Sem fluxo de senhas no período selecionado.
+          </div>
+        ) : (
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={series}>
+              <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+              <XAxis dataKey="label" tickLine={false} axisLine={false} fontSize={12} />
+              <YAxis tickLine={false} axisLine={false} fontSize={12} allowDecimals={false} />
+              <Tooltip />
+              <Legend />
+              {setores.map((setor, index) => (
+                <Line
+                  key={setor.id}
+                  type="monotone"
+                  dataKey={setor.chave}
+                  name={setor.nome}
+                  stroke={FLUXO_COLORS[index % FLUXO_COLORS.length]}
+                  strokeWidth={2}
+                  dot={false}
+                  activeDot={{ r: 4 }}
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        )}
       </CardContent>
     </Card>
   );

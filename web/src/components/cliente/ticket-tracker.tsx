@@ -5,8 +5,11 @@ import { Bell, BellOff, CheckCircle2, Ticket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RatingStars } from "@/components/cliente/rating-stars";
+import { ClienteEsperaSlideshow } from "@/components/cliente/cliente-espera-slideshow";
 import {
   connectTicketSocket,
+  parseClienteConfig,
+  type ClienteConfig,
   type PedidoStatus,
   type SenhaChamada,
   type SenhaPosicao,
@@ -36,13 +39,13 @@ function normalizePosicao(data: Record<string, unknown>, token: string): SenhaPo
   };
 }
 
-async function fetchPosicao(token: string): Promise<SenhaPosicao> {
+async function fetchPosicao(token: string): Promise<{ pos: SenhaPosicao; midias: ClienteConfig }> {
   const res = await fetch(`/api/verificar_senha/${encodeURIComponent(token)}`, {
     cache: "no-store",
   });
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
   if (!res.ok) throw new Error(String(data.error || "Senha não encontrada"));
-  return normalizePosicao(data, token);
+  return { pos: normalizePosicao(data, token), midias: parseClienteConfig(data) };
 }
 
 function applyPosicao(
@@ -78,6 +81,7 @@ export function TicketTracker({ token }: Props) {
   const [nota, setNota] = useState<number | null>(null);
   const [avaliado, setAvaliado] = useState(false);
   const [avaliando, setAvaliando] = useState(false);
+  const [midias, setMidias] = useState<ClienteConfig | null>(null);
 
   useEffect(() => {
     if (!("Notification" in window)) {
@@ -104,13 +108,14 @@ export function TicketTracker({ token }: Props) {
         const data = await fetchPosicao(token);
         if (cancelled) return;
         applyPosicao(
-          data,
+          data.pos,
           token,
           setPos,
           setChamada,
           setAvaliado,
           setPedidoText,
         );
+        setMidias(data.midias);
         setError(null);
       } catch {
         if (!cancelled) setError("Não foi possível carregar a senha");
@@ -129,7 +134,8 @@ export function TicketTracker({ token }: Props) {
     const id = window.setInterval(() => {
       fetchPosicao(token)
         .then((data) => {
-          applyPosicao(data, token, setPos, setChamada, setAvaliado, setPedidoText);
+          applyPosicao(data.pos, token, setPos, setChamada, setAvaliado, setPedidoText);
+          setMidias(data.midias);
           setError(null);
         })
         .catch(() => undefined);
@@ -178,6 +184,10 @@ export function TicketTracker({ token }: Props) {
 
     socket.on("pedido:status", (data: PedidoStatus) => {
       setPedidoMsg(data.mensagem || "Pedido sendo preparado");
+    });
+
+    socket.on("cliente:config_atualizada", (data: ClienteConfig) => {
+      setMidias(parseClienteConfig(data));
     });
 
     socket.on("auth:erro", (payload: { mensagem?: string }) => {
@@ -312,6 +322,10 @@ export function TicketTracker({ token }: Props) {
           <h1 className="text-2xl font-semibold tracking-tight">{titulo}</h1>
           <p className="text-muted-foreground">{subtitulo}</p>
         </div>
+
+        {status === "A" && midias?.imagens.length ? (
+          <ClienteEsperaSlideshow config={midias} />
+        ) : null}
 
         {(pedidoMsg || pos?.tem_pedido) && !finalizado ? (
           <p className="flex w-full items-center gap-2 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-left text-sm text-emerald-800 dark:text-emerald-200">

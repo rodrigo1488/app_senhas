@@ -60,6 +60,13 @@ sealed class SocketEvent {
     data class TvConfigAtualizada(
         val propagandasAtivas: Boolean,
         val layoutTvWeb: String,
+        val orientacaoTv: String,
+        val imagens: List<PropagandaImagemDto>,
+        val intervaloMs: Long,
+    ) : SocketEvent()
+
+    data class ClienteConfigAtualizada(
+        val propagandasAtivas: Boolean,
         val imagens: List<PropagandaImagemDto>,
         val intervaloMs: Long,
     ) : SocketEvent()

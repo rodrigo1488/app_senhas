@@ -19,6 +19,7 @@ import {
   type TvFila,
   type TvPropagandaImagem,
   type TvRecentCall,
+  type TvOrientacao,
   type TvRecentCallsResponse,
   type TvSenha,
   type TvSetor,
@@ -85,6 +86,7 @@ export function TvPanel({ initialCodigo }: Props) {
             ({
               propagandas_ativas: false,
               layout_tv_web: "propaganda",
+              orientacao_tv: "horizontal",
               setor_nome: null,
               imagens: [] as TvPropagandaImagem[],
               intervalo_ms: 15_000,
@@ -283,6 +285,14 @@ export function TvPanel({ initialCodigo }: Props) {
   const currentUrl = uploadsUrl(currentItem?.arquivo);
   const loopMedia = imagens.length <= 1;
   const layout = config?.layout_tv_web ?? "propaganda";
+  const orientacao: TvOrientacao = config?.orientacao_tv === "vertical" ? "vertical" : "horizontal";
+  const vertical = orientacao === "vertical";
+
+  useEffect(() => {
+    if (!token) return;
+    applyTvOrientation(orientacao);
+    return () => unlockTvOrientation();
+  }, [token, orientacao]);
 
   const mediaSlide = (
     <TvMediaSlide
@@ -347,25 +357,32 @@ export function TvPanel({ initialCodigo }: Props) {
       )}
     >
       {layout === "fila" ? (
-        <TvFlowLayout chamadas={chamadas} pendentes={pendentes} media={mediaSlide} />
+        <TvFlowLayout
+          chamadas={chamadas}
+          pendentes={pendentes}
+          media={mediaSlide}
+          orientacao={orientacao}
+        />
       ) : (
       <div className="flex h-full w-full flex-col">
-        <div className="relative min-h-0 flex-[78]">
+        <div className={cn("relative min-h-0", vertical ? "flex-[62]" : "flex-[78]")}>
           {mediaSlide}
         </div>
 
-        <div className="flex min-h-0 flex-[22]">
+        <div className={cn("flex min-h-0", vertical ? "flex-[38] flex-col" : "flex-[22]")}>
           <TipoPanel
             titulo="PREFERENCIAL"
             senha={preferencial.senha}
             foto={preferencial.foto}
             className="bg-[#120B1E] text-white"
+            compact={vertical}
           />
           <TipoPanel
             titulo="NORMAL"
             senha={normal.senha}
             foto={normal.foto}
             className="bg-[#E85D04] text-white"
+            compact={vertical}
           />
         </div>
       </div>
@@ -417,21 +434,43 @@ function exitTvFullscreen() {
   return Promise.resolve(exit()).catch(() => undefined);
 }
 
+type ScreenOrientationLock = ScreenOrientation & {
+  lock?: (orientation: "portrait" | "landscape") => Promise<void>;
+  unlock?: () => void;
+};
+
+function applyTvOrientation(orientacao: TvOrientacao) {
+  const orientation = screen.orientation as ScreenOrientationLock | undefined;
+  if (!orientation?.lock) return;
+  void orientation.lock(orientacao === "vertical" ? "portrait" : "landscape").catch(() => undefined);
+}
+
+function unlockTvOrientation() {
+  const orientation = screen.orientation as ScreenOrientationLock | undefined;
+  try {
+    orientation?.unlock?.();
+  } catch {
+    /* alguns navegadores de TV recusam unlock */
+  }
+}
+
 function TipoPanel({
   titulo,
   senha,
   foto,
   className,
+  compact = false,
 }: {
   titulo: string;
   senha: string | null;
   foto: string | null;
   className: string;
+  compact?: boolean;
 }) {
   const photo = uploadsUrl(foto);
   return (
-    <div className={cn("flex flex-1 flex-col items-center justify-center px-6 py-3", className)}>
-      <p className="text-lg font-bold tracking-[0.18em] sm:text-xl md:text-2xl">{titulo}</p>
+    <div className={cn("flex flex-1 flex-col items-center justify-center px-6", compact ? "py-2" : "py-3", className)}>
+      <p className={cn("font-bold tracking-[0.18em]", compact ? "text-base sm:text-lg" : "text-lg sm:text-xl md:text-2xl")}>{titulo}</p>
       <div className="mt-2 flex items-center gap-4 sm:gap-5">
         <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white/15 sm:h-16 sm:w-16 md:h-20 md:w-20">
           {photo ? (

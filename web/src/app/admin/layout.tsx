@@ -1,10 +1,11 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { Separator } from "@/components/ui/separator";
 import { ModeToggle } from "@/components/mode-toggle";
-import type { AdminUser } from "@/lib/api";
+import { homeDoPapel, rotaAdminPermitida, type AdminUser } from "@/lib/api";
+import { RoleRouteGate } from "@/components/role-route-gate";
 
 async function fetchMe(): Promise<AdminUser | null> {
   const cookieStore = await cookies();
@@ -31,6 +32,18 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     redirect("/login");
   }
 
+  const pathname = (await headers()).get("x-pathname") || "";
+  if (pathname && !rotaAdminPermitida(me.papel, pathname)) {
+    redirect(homeDoPapel(me.papel));
+  }
+
+  const tituloPainel =
+    me.papel === "gerente"
+      ? "Painel do gerente"
+      : me.papel === "marketing"
+        ? "Painel de mídias"
+        : "Administração";
+
   return (
     <SidebarProvider>
       <AppSidebar nomeEmpresa={me.nome_empresa} user={me} />
@@ -39,16 +52,16 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <SidebarTrigger />
           <Separator orientation="vertical" className="h-6" />
           <div className="flex flex-1 items-center justify-between gap-3">
-            <p className="text-sm font-medium text-muted-foreground">
-              {me.papel === "gerente" ? "Painel do gerente" : "Administração"}
-            </p>
+            <p className="text-sm font-medium text-muted-foreground">{tituloPainel}</p>
             <div className="flex items-center gap-1">
               <p className="hidden text-sm text-muted-foreground sm:block">{me.email}</p>
               <ModeToggle />
             </div>
           </div>
         </header>
-        <div className="flex-1 p-6">{children}</div>
+        <div className="flex-1 p-6">
+          <RoleRouteGate papel={me.papel}>{children}</RoleRouteGate>
+        </div>
       </SidebarInset>
     </SidebarProvider>
   );

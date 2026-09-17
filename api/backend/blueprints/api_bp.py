@@ -23,8 +23,8 @@ from backend.auth import (
     create_operator_action_token,
     create_session_token,
 )
-from backend.models import AtendimentoAtual, Impressora, Operador, Senha, Setor
-from backend.services.tv_config_service import serializar_tv_config
+from backend.models import AtendimentoAtual, Impressora, Operador, Senha, Setor, setor_eh_streaming
+from backend.services.tv_config_service import serializar_cliente_config, serializar_tv_config
 from backend.services.avaliacao_service import (
     AvaliacaoError,
     buscar_avaliacao_pendente,
@@ -100,6 +100,8 @@ def setor_login():
     setor = Setor.query.filter_by(senha_setor=codigo).first()
     if not setor:
         return jsonify({"error": "Código de setor inválido"}), 401
+    if setor_eh_streaming(setor) and not codigo:
+        return jsonify({"error": "Código de setor inválido"}), 401
 
     # Token "genérico": o papel (cliente/operador/avaliacao/tv) é escolhido
     # depois, na tela de seleção de modo do app — ver `/sessao/papel`.
@@ -118,6 +120,12 @@ def selecionar_papel(session_payload):
         return jsonify({"error": "role deve ser cliente, operador, avaliacao ou tv"}), 400
 
     setor_id = session_payload["setor_id"]
+    setor = Setor.query.get(setor_id)
+    if setor_eh_streaming(setor) and role in {"cliente", "operador", "avaliacao", "tv"}:
+        return jsonify({
+            "error": "Setor de streaming só permite TV de propagandas",
+        }), 400
+
     operador_id = data.get("operador_id")
     operador = None
     if role == "operador":
@@ -200,11 +208,21 @@ def setor_fila(session_payload):
 def setor_tv_config(session_payload):
     """Configuração da TV: layout e fila de mídia (imagem/vídeo) do setor."""
     setor = Setor.query.get(session_payload["setor_id"])
-    if setor and session_payload.get("role") == "tv":
+    if setor and session_payload.get("role") == "tv" and not setor_eh_streaming(setor):
         from backend.services.streaming_service import registrar_setor_tv
 
         registrar_setor_tv(setor)
     return jsonify(serializar_tv_config(setor))
+
+
+@api_bp.route("/setor/cliente_config", methods=["GET"])
+@api_token_required
+def setor_cliente_config(session_payload):
+    """Fila de mídia da tela de espera do cliente (independente da TV)."""
+    if session_payload.get("role") != "cliente":
+        return jsonify({"error": "Sessão de cliente obrigatória"}), 403
+    setor = Setor.query.get(session_payload["setor_id"])
+    return jsonify(serializar_cliente_config(setor))
 
 
 @api_bp.route("/setor/tv_chamadas_recentes", methods=["GET"])

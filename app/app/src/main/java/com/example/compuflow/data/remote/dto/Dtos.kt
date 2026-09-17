@@ -152,7 +152,15 @@ data class PropagandaImagemDto(
 data class TvConfigDto(
     val propagandas_ativas: Boolean = false,
     val layout_tv_web: String = "propaganda",
+    val orientacao_tv: String = "horizontal",
     val setor_nome: String? = null,
+    val imagens: List<PropagandaImagemDto> = emptyList(),
+    val intervalo_ms: Long = 15_000,
+)
+
+@Serializable
+data class ClienteConfigDto(
+    val propagandas_ativas: Boolean = false,
     val imagens: List<PropagandaImagemDto> = emptyList(),
     val intervalo_ms: Long = 15_000,
 )

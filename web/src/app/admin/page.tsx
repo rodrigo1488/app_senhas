@@ -13,6 +13,7 @@ import {
   DemandaPorHoraChart,
   DistribuicaoNotasChart,
   EsperaSatisfacaoChart,
+  FluxoPorSetorChart,
 } from "@/components/dashboard/charts";
 import { HeatmapSetorHora } from "@/components/dashboard/heatmap";
 import { AtendentesTable } from "@/components/dashboard/atendentes-table";
@@ -120,7 +121,19 @@ export default function AdminDashboardPage() {
                 data.kpis.taxa_abandono != null ? ` (${data.kpis.taxa_abandono}%)` : ""
               }`}
             />
+            <KpiCard
+              title="QR codes escaneados"
+              value={String(data.kpis.qr_escaneados ?? 0)}
+              hint="Pessoas que abriram o acompanhamento pelo QR (1 por senha)"
+            />
+            <KpiCard
+              title="Pedidos adiantados"
+              value={String(data.kpis.pedidos_adiantados ?? 0)}
+              hint="Clientes que enviaram o pedido pelo acompanhamento"
+            />
           </div>
+
+          <FluxoPorSetorChart data={data.fluxo_por_setor} />
 
           <div className="grid gap-4 lg:grid-cols-3">
             <DemandaPorHoraChart data={data.por_hora} />

@@ -11,6 +11,7 @@ EV_PEDIDO_STATUS = "pedido:status"
 EV_AVALIACAO_SOLICITADA = "avaliacao:solicitada"
 EV_AUTH_ERRO = "auth:erro"
 EV_TV_CONFIG_ATUALIZADA = "tv:config_atualizada"
+EV_CLIENTE_CONFIG_ATUALIZADA = "cliente:config_atualizada"
 
 # Eventos cliente -> servidor
 EV_OPERADOR_CHAMAR_PROXIMA = "operador:chamar_proxima"
@@ -43,3 +44,8 @@ def room_avaliacao(setor_id: int, operador_id: int) -> str:
 def room_avaliacao_setor(setor_id: int) -> str:
     """Tablet de avaliação do setor (idle com mídia; recebe qualquer finalização)."""
     return f"avaliacao:{setor_id}"
+
+
+def room_cliente_midia(setor_id: int) -> str:
+    """Páginas de acompanhamento (QR) que só devem receber a fila da espera."""
+    return f"cliente_midia:{setor_id}"

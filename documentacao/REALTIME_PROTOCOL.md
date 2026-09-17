@@ -126,6 +126,21 @@ ordem, exclusão ou flags do setor). O payload é o mesmo de
 }
 ```
 
+### `cliente:config_atualizada` (rooms `setor:<setor_id>` e `cliente_midia:<setor_id>`)
+Emitido quando a fila da tela de espera do cliente muda. O payload é o mesmo de
+`GET /api/v1/setor/cliente_config` (papel `cliente`) e não inclui layout da TV.
+A página pública `/acompanhar` entra em `cliente_midia:<setor_id>` no handshake
+com `ticket_token`.
+```json
+{
+  "propagandas_ativas": true,
+  "imagens": [
+    {"id": 1, "arquivo": "uuid.jpg", "ordem": 1, "tipo": "image"}
+  ],
+  "intervalo_ms": 15000
+}
+```
+
 ## 4. Eventos cliente → servidor
 
 ### `operador:chamar_proxima`

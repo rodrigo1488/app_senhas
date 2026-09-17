@@ -18,9 +18,10 @@ from datetime import datetime
 from typing import Optional
 
 from sqlalchemy import and_, or_
+from sqlalchemy.exc import IntegrityError
 
 from backend.extensions import db
-from backend.models import AtendimentoAtual, Finalizado, Operador, Senha, Setor
+from backend.models import AtendimentoAtual, Finalizado, Operador, QrScan, Senha, Setor, setor_eh_streaming
 from backend.timezone import agora_sp, inicio_fim_dia_sp, segundos_ate_proxima_meia_noite
 from backend.utils import gerar_token_unico, get_configuracao
 
@@ -274,6 +275,8 @@ def criar_senha(setor_id: int, tipo: str) -> Senha:
     setor = Setor.query.get(setor_id)
     if not setor:
         raise FilaError("Setor não encontrado")
+    if setor_eh_streaming(setor):
+        raise FilaError("Setor de streaming não emite senhas")
 
     lock = _setor_locks[setor_id]
     with lock:
@@ -407,6 +410,11 @@ def salvar_pedido(token_unico: str, pedido: str) -> Senha:
     if not senha:
         raise FilaError("Token não encontrado")
     senha.pedido = pedido
+    # Contagem de "pedidos adiantados": 1 por senha. Só grava o timestamp
+    # na primeira vez que o cliente usa a função; edições posteriores do
+    # texto não geram outro evento.
+    if not senha.tem_pedido or senha.pedido_em is None:
+        senha.pedido_em = agora_sp()
     senha.tem_pedido = True
     db.session.commit()
     return senha
@@ -512,12 +520,41 @@ def estado_atendimento_atual(setor_id: int, operador_id: int | None = None) -> O
     }
 
 
+def registrar_qr_scan(senha: Senha) -> bool:
+    """Persiste o scan do QR de acompanhamento.
+
+    Regra: **1 por senha/token**. Usado no GET `/api/verificar_senha/<token>`,
+    que é o endpoint que o cliente chama ao abrir o link impresso no QR.
+    Polling, F5 e reabertura do mesmo token não incrementam (unique em senha_id).
+    """
+    if not senha or not senha.id:
+        return False
+    if QrScan.query.filter_by(senha_id=senha.id).first():
+        return False
+    db.session.add(
+        QrScan(
+            senha_id=senha.id,
+            setor_id=senha.setor_id,
+            scanned_at=agora_sp(),
+        )
+    )
+    try:
+        db.session.commit()
+        return True
+    except IntegrityError:
+        db.session.rollback()
+        return False
+
+
 def verificar_senha(token_unico: str) -> dict:
     senha = Senha.query.filter_by(token_unico=token_unico).first()
     if not senha:
         raise FilaError("Token não encontrado")
+    registrar_qr_scan(senha)
     setor = Setor.query.get(senha.setor_id) if senha.setor_id else None
     posicao_info = posicao_na_fila(token_unico)
+    from backend.services.tv_config_service import serializar_cliente_config
+
     return {
         "senha": senha.senha,
         "status": senha.status,
@@ -530,4 +567,5 @@ def verificar_senha(token_unico: str) -> dict:
         # Campos alinhados a `senha:posicao` para hidratar a tela Next sem socket.
         **posicao_info,
         "setor_nome": posicao_info.get("setor_nome") or (setor.nome if setor else "Geral"),
+        "midias": serializar_cliente_config(setor),
     }

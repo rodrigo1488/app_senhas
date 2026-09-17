@@ -7,7 +7,7 @@ import {
   type DashboardFiltersState,
 } from "@/components/dashboard/filters";
 import { HeatmapSetorHora } from "@/components/dashboard/heatmap";
-import { DemandaPorHoraChart } from "@/components/dashboard/charts";
+import { DemandaPorHoraChart, FluxoPorSetorChart } from "@/components/dashboard/charts";
 import { KpiCard } from "@/components/dashboard/kpi-card";
 
 function todayISO() {
@@ -107,6 +107,8 @@ export default function HeatmapDashboardPage() {
           </div>
 
           <HeatmapSetorHora heatmap={data.heatmap} />
+
+          <FluxoPorSetorChart data={data.fluxo_por_setor} />
 
           <div className="grid gap-4 lg:grid-cols-1">
             <DemandaPorHoraChart data={data.por_hora} />

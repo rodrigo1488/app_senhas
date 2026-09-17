@@ -80,6 +80,18 @@ object SocketManager {
                 SocketEvent.TvConfigAtualizada(
                     propagandasAtivas = obj.optBoolean("propagandas_ativas", false),
                     layoutTvWeb = obj.optString("layout_tv_web", "propaganda").ifBlank { "propaganda" },
+                    orientacaoTv = obj.optString("orientacao_tv", "horizontal").ifBlank { "horizontal" },
+                    imagens = obj.optJSONArray("imagens").toPropagandaList(),
+                    intervaloMs = obj.optLong("intervalo_ms", 15_000L).coerceAtLeast(1_000L),
+                )
+            )
+        })
+
+        newSocket.on(SocketEvents.CLIENTE_CONFIG_ATUALIZADA, listener { args ->
+            val obj = args.jsonObjectOrNull(0) ?: return@listener
+            _events.tryEmit(
+                SocketEvent.ClienteConfigAtualizada(
+                    propagandasAtivas = obj.optBoolean("propagandas_ativas", false),
                     imagens = obj.optJSONArray("imagens").toPropagandaList(),
                     intervaloMs = obj.optLong("intervalo_ms", 15_000L).coerceAtLeast(1_000L),
                 )

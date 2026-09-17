@@ -11,6 +11,7 @@ from backend.models import (
     Setor,
     TvDispositivo,
     dispositivo_propagandas,
+    setor_eh_streaming,
     setor_propagandas,
 )
 from backend.services.tv_config_service import INTERVALO_IMAGEM_MS, serializar_tv_config
@@ -295,6 +296,8 @@ def listar_tvs_admin() -> list[dict]:
     )
     tvs: list[dict] = []
     for setor in setores:
+        if setor_eh_streaming(setor):
+            continue
         chave = chave_setor(setor.id)
         tvs.append(
             {
@@ -305,17 +308,19 @@ def listar_tvs_admin() -> list[dict]:
                 "device_name": "Painel de senhas",
                 "is_online": esta_online(chave),
                 "setor_id": setor.id,
+                "setor_nome": setor.nome,
+                "tipo_setor": setor.tipo_setor or "atendimento",
                 "propaganda_ids": propaganda_ids_setor(setor.id),
                 "layout_tv_web": setor.layout_tv_web or "propaganda",
+                "orientacao_tv": setor.orientacao_tv or "horizontal",
             }
         )
     for dispositivo in streaming:
-        tvs.append(
-            dispositivo.to_admin_dict(
-                online=esta_online(dispositivo.chave),
-                propaganda_ids=propaganda_ids_dispositivo(dispositivo.id),
-            )
+        payload = dispositivo.to_admin_dict(
+            online=esta_online(dispositivo.chave),
+            propaganda_ids=propaganda_ids_dispositivo(dispositivo.id),
         )
+        tvs.append(payload)
     return tvs
 
 
@@ -348,6 +353,30 @@ def atribuir_midias_tv(*, tipo: str, alvo_id: int, propaganda_ids: list[int]) ->
     db.session.commit()
     emitir_fila_streaming(dispositivo)
     return {"tipo": "streaming", "id": dispositivo.id, "propaganda_ids": [item.id for item in ordered]}
+
+
+def vincular_tv_streaming_ao_setor(dispositivo: TvDispositivo, setor_id: int | None) -> dict:
+    """Associa (ou desassocia) uma TV de streaming a um setor, sem quebrar TVs avulsas."""
+    if dispositivo.tipo != "streaming":
+        raise ValueError("Apenas TVs de streaming podem ser vinculadas a um setor")
+    setor = None
+    if setor_id is not None:
+        setor = db.session.get(Setor, setor_id)
+        if not setor:
+            raise ValueError("Setor não encontrado")
+        dispositivo.setor_id = setor.id
+        if not propaganda_ids_dispositivo(dispositivo.id):
+            herdados = propaganda_ids_setor(setor.id)
+            if herdados:
+                substituir_fila_dispositivo(dispositivo, herdados)
+                emitir_fila_streaming(dispositivo)
+    else:
+        dispositivo.setor_id = None
+    db.session.commit()
+    return dispositivo.to_admin_dict(
+        online=esta_online(dispositivo.chave),
+        propaganda_ids=propaganda_ids_dispositivo(dispositivo.id),
+    )
 
 
 def biblioteca_como_media_files() -> dict:

@@ -4,7 +4,7 @@ código do setor em vez de escolher de uma lista)."""
 from flask import Blueprint, make_response, redirect, render_template, request, url_for
 
 from backend.auth import login_required
-from backend.models import Impressora, Setor
+from backend.models import Impressora, Setor, setor_eh_streaming
 
 setores_bp = Blueprint("setores", __name__)
 
@@ -27,7 +27,7 @@ def selecionar_setor():
             resp.set_cookie("end_impressora_local", impressora.ip)
         return resp
 
-    setores = Setor.query.all()
+    setores = [s for s in Setor.query.all() if not setor_eh_streaming(s)]
     return render_template("selecionar_setor.html", setores=setores)
 
 

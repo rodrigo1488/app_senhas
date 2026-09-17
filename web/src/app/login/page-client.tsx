@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ModeToggle } from "@/components/mode-toggle";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, homeDoPapel, rotaAdminPermitida, type AdminUser } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -23,11 +23,14 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      await apiFetch("/api/v1/admin/login", {
+      const data = await apiFetch<{ ok: boolean; user: AdminUser }>("/api/v1/admin/login", {
         method: "POST",
         body: JSON.stringify({ email, senha }),
       });
-      router.replace(search.get("next") || "/admin");
+      const next = search.get("next") || "";
+      const destino =
+        next && rotaAdminPermitida(data.user.papel, next) ? next : homeDoPapel(data.user.papel);
+      router.replace(destino);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Falha no login");

@@ -23,6 +23,7 @@ import com.example.compuflow.data.remote.dto.StreamingFilaResponse
 import com.example.compuflow.data.remote.dto.SuccessDto
 import com.example.compuflow.data.remote.dto.TvChamadasRecentesResponse
 import com.example.compuflow.data.remote.dto.TvConfigDto
+import com.example.compuflow.data.remote.dto.ClienteConfigDto
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.Header
@@ -57,6 +58,9 @@ interface ApiService {
 
     @GET("api/v1/setor/tv_config")
     suspend fun tvConfig(): TvConfigDto
+
+    @GET("api/v1/setor/cliente_config")
+    suspend fun clienteConfig(): ClienteConfigDto
 
     @GET("api/v1/setor/tv_chamadas_recentes")
     suspend fun tvChamadasRecentes(): TvChamadasRecentesResponse

@@ -28,6 +28,46 @@ export type PedidoStatus = {
   mensagem: string;
 };
 
+export type ClienteMidia = {
+  id: number;
+  arquivo: string;
+  ordem?: number;
+  tipo?: "image" | "video";
+};
+
+export type ClienteConfig = {
+  propagandas_ativas: boolean;
+  imagens: ClienteMidia[];
+  intervalo_ms: number;
+};
+
+export function parseClienteConfig(data: unknown): ClienteConfig {
+  const empty: ClienteConfig = { propagandas_ativas: false, imagens: [], intervalo_ms: 15_000 };
+  if (!data || typeof data !== "object") return empty;
+  const obj = data as Record<string, unknown>;
+  const raw = (obj.midias && typeof obj.midias === "object" ? obj.midias : obj) as Record<string, unknown>;
+  const imagensRaw = Array.isArray(raw.imagens) ? raw.imagens : [];
+  return {
+    propagandas_ativas: Boolean(raw.propagandas_ativas),
+    intervalo_ms: typeof raw.intervalo_ms === "number" ? raw.intervalo_ms : 15_000,
+    imagens: imagensRaw
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+        const midia = item as Record<string, unknown>;
+        const id = Number(midia.id);
+        const arquivo = String(midia.arquivo || "");
+        if (!id || !arquivo) return null;
+        return {
+          id,
+          arquivo,
+          ordem: typeof midia.ordem === "number" ? midia.ordem : 0,
+          tipo: midia.tipo === "video" ? "video" : "image",
+        } satisfies ClienteMidia;
+      })
+      .filter((item): item is ClienteMidia => item !== null),
+  };
+}
+
 /**
  * Base da API para o browser.
  *
