@@ -99,6 +99,7 @@ private fun PropagandaTvLayout(
             loop = loop,
             onEnded = onEnded,
             emptyLabel = "Sem mídia de propaganda",
+            contentScale = ContentScale.Fit,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(0.78f),

@@ -123,17 +123,15 @@ export function TicketTracker({ token }: Props) {
     };
   }, [token]);
 
-  // Segurança adicional ao tempo real: mantém a posição correta mesmo se o
-  // proxy, a rede móvel ou o navegador interromperem o Socket.IO.
+  // Reserva ao tempo real: posição correta mesmo se o proxy/rede interromper o Socket.IO.
   useEffect(() => {
     const id = window.setInterval(() => {
       fetchPosicao(token)
         .then((data) => {
           applyPosicao(data, token, setPos, setChamada, setAvaliado, setPedidoText);
-          setError(null);
         })
         .catch(() => undefined);
-    }, 12_000);
+    }, 8_000);
     return () => window.clearInterval(id);
   }, [token]);
 
@@ -185,10 +183,8 @@ export function TicketTracker({ token }: Props) {
       setLoading(false);
     });
 
-    socket.on("connect_error", (err) => {
-      // Só mostra erro de socket se ainda não hidratou via REST
-      setError((prev) => prev ?? `Tempo real indisponível (${err.message || "conexão"}). Atualizações podem atrasar.`);
-    });
+    // Falha de socket não alarma: REST já hidrata e faz poll a cada 8s.
+    socket.on("connect_error", () => undefined);
 
     return () => {
       socket.removeAllListeners();

@@ -28,6 +28,8 @@ class StreamingTvViewModel : ViewModel() {
     var errorMessage by mutableStateOf<String?>(null)
 
     private var rotationJob: Job? = null
+    /** Evita reiniciar o timer a cada poll (travava na 1ª mídia). */
+    private var queueFingerprint: String = ""
 
     val currentItem: StreamingQueueItemDto?
         get() = queue.getOrNull(imagemIndex)
@@ -43,16 +45,16 @@ class StreamingTvViewModel : ViewModel() {
         viewModelScope.launch {
             SocketManager.events.collect { event ->
                 when (event) {
-                    is SocketEvent.QueueUpdated -> {
-                        applyQueue(event.queue)
-                    }
+                    is SocketEvent.QueueUpdated -> applyQueue(event.queue)
+                    is SocketEvent.Connected -> refreshFila(silent = true)
                     else -> Unit
                 }
             }
         }
+        // Poll de reserva se o socket não entregar queue_updated.
         viewModelScope.launch {
             while (isActive) {
-                delay(8_000)
+                delay(5_000)
                 refreshFila(silent = true)
             }
         }
@@ -73,16 +75,32 @@ class StreamingTvViewModel : ViewModel() {
     }
 
     private fun applyQueue(items: List<StreamingQueueItemDto>) {
-        queue = items.sortedBy { it.order }
-        if (queue.isEmpty()) {
+        val sorted = items.sortedBy { it.order }
+        val fingerprint = sorted.joinToString("|") { "${it.path}\u0000${it.type}\u0000${it.duration}" }
+        val changed = fingerprint != queueFingerprint
+
+        queue = sorted
+
+        if (sorted.isEmpty()) {
+            queueFingerprint = ""
             imagemIndex = 0
             rotationJob?.cancel()
+            rotationJob = null
             return
         }
-        if (imagemIndex >= queue.size) {
+
+        if (changed) {
+            queueFingerprint = fingerprint
             imagemIndex = 0
+            restartRotation()
+            return
         }
-        restartRotation()
+
+        if (imagemIndex >= sorted.size) {
+            imagemIndex = 0
+            restartRotation()
+        }
+        // Fila igual: não cancela o timer — senão a 1ª mídia nunca termina.
     }
 
     fun onMediaEnded() {
@@ -102,9 +120,10 @@ class StreamingTvViewModel : ViewModel() {
             // Vídeo avança no onEnded do player.
             return
         }
+        if (queue.size <= 1) return
         val duration = item.duration.takeIf { it > 0 } ?: intervaloMs
         rotationJob = viewModelScope.launch {
-            delay(duration)
+            delay(duration.coerceAtLeast(1_000L))
             advance()
         }
     }

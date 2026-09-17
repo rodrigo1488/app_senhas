@@ -296,7 +296,7 @@ def fila_ao_vivo_token():
         return _access_error_response(exc)
     if not Setor.query.get(setor_id):
         return jsonify({"error": "Setor não encontrado"}), 404
-    token = create_session_token(setor_id, role="tv", ttl_seconds=60 * 60 * 8)
+    token = create_session_token(setor_id, role="tv")
     return jsonify({"session_token": token, "setor_id": setor_id})
 
 

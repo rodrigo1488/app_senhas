@@ -78,7 +78,7 @@ def handle_connect(auth=None):
 
     if not payload:
         if token:
-            emit(EV_AUTH_ERRO, {"mensagem": "Sessão inválida ou expirada"})
+            emit(EV_AUTH_ERRO, {"mensagem": "Sessão inválida"})
             return False
         session["streaming"] = True
         return True
