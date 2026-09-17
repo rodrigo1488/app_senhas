@@ -50,21 +50,21 @@ export function parseClienteConfig(data: unknown): ClienteConfig {
   return {
     propagandas_ativas: Boolean(raw.propagandas_ativas),
     intervalo_ms: typeof raw.intervalo_ms === "number" ? raw.intervalo_ms : 15_000,
-    imagens: imagensRaw
-      .map((item) => {
-        if (!item || typeof item !== "object") return null;
-        const midia = item as Record<string, unknown>;
-        const id = Number(midia.id);
-        const arquivo = String(midia.arquivo || "");
-        if (!id || !arquivo) return null;
-        return {
+    imagens: imagensRaw.flatMap((item): ClienteMidia[] => {
+      if (!item || typeof item !== "object") return [];
+      const midia = item as Record<string, unknown>;
+      const id = Number(midia.id);
+      const arquivo = String(midia.arquivo || "");
+      if (!id || !arquivo) return [];
+      return [
+        {
           id,
           arquivo,
           ordem: typeof midia.ordem === "number" ? midia.ordem : 0,
           tipo: midia.tipo === "video" ? "video" : "image",
-        } satisfies ClienteMidia;
-      })
-      .filter((item): item is ClienteMidia => item !== null),
+        },
+      ];
+    }),
   };
 }
 
