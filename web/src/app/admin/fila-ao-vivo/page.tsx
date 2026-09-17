@@ -91,9 +91,14 @@ export default function FilaAoVivoPage() {
         );
         if (cancelled) return;
         const base = resolveApiBaseUrl();
+        const viaHttpsProxy =
+          typeof window !== "undefined" &&
+          window.location.protocol === "https:" &&
+          (!base || base === window.location.origin);
         socket = io(base || "/", {
           path: "/socket.io",
-          transports: ["websocket", "polling"],
+          transports: viaHttpsProxy ? ["polling"] : ["websocket", "polling"],
+          upgrade: !viaHttpsProxy,
           auth: { session_token },
         });
         socket.on("connect", () => setLive(true));

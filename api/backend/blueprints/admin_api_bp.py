@@ -360,7 +360,7 @@ def fila_ao_vivo_token():
         return jsonify({"error": "Setor não encontrado"}), 404
     if setor_eh_streaming(setor):
         return jsonify({"error": "Setor de streaming não possui fila de atendimento"}), 400
-    token = create_session_token(setor_id, role="tv", ttl_seconds=60 * 60 * 8)
+    token = create_session_token(setor_id, role="tv")
     return jsonify({"session_token": token, "setor_id": setor_id})
 
 

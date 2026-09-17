@@ -66,6 +66,37 @@ def _resolve_database_config(sqlite_db_path: str) -> tuple[str, dict]:
     return f"sqlite:///{sqlite_db_path}", {"connect_args": {"timeout": 15}}
 
 
+def _resolve_secret_key(instance_path: str) -> str:
+    """Chave de assinatura (sessão Flask + JWT do app).
+
+    Sem chave estável, todo restart/redeploy invalida os JWTs já emitidos
+    ("Sessão inválida" no Android). Prioridade:
+
+    1. `APP_SECRET_KEY` no ambiente (recomendado em produção)
+    2. Arquivo `instance/secret_key` (sobrevive a redeploy se o volume
+       `api_instance` estiver montado, como no docker-compose)
+    3. Gera e grava um novo arquivo na primeira execução
+    """
+    env_key = (os.getenv("APP_SECRET_KEY") or "").strip()
+    if env_key:
+        return env_key
+
+    os.makedirs(instance_path, exist_ok=True)
+    path = os.path.join(instance_path, "secret_key")
+    if os.path.isfile(path):
+        with open(path, "r", encoding="utf-8") as fh:
+            stored = fh.read().strip()
+        if stored:
+            return stored
+
+    import secrets
+
+    generated = secrets.token_hex(32)
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(generated)
+    return generated
+
+
 def create_app(config_overrides: dict | None = None) -> Flask:
     """Application factory. Cria e configura a instância do Flask."""
     from dotenv import load_dotenv
@@ -107,7 +138,7 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     ]
 
     app.config.update(
-        SECRET_KEY=os.getenv("APP_SECRET_KEY") or os.urandom(24),
+        SECRET_KEY=_resolve_secret_key(app.instance_path),
         SQLALCHEMY_DATABASE_URI=database_uri,
         SQLALCHEMY_ENGINE_OPTIONS=engine_options,
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
@@ -122,7 +153,8 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         SESSION_COOKIE_SAMESITE="Lax",
         SESSION_COOKIE_HTTPONLY=True,
         JWT_ALGORITHM="HS256",
-        SESSION_TOKEN_TTL_SECONDS=60 * 60 * 12,  # 12h para tokens de setor/app
+        # Tokens de setor/app não usam `exp` (ver create_session_token).
+        # Só tokens de ação do operador passam ttl_seconds explícito.
         NOME_EMPRESA_PADRAO="TESTE",
         VAPID_PUBLIC_KEY=os.getenv("VAPID_PUBLIC_KEY", ""),
         VAPID_PRIVATE_KEY=os.getenv("VAPID_PRIVATE_KEY", ""),
@@ -144,6 +176,11 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     )
     db.init_app(app)
     socketio.init_app(app, cors_allowed_origins="*")
+    # O middleware WSGI do Engine.IO só reconhece `/socket.io/` (com barra).
+    # O Next, com trailingSlash padrão, devolve 308 de `/socket.io/` → `/socket.io`
+    # e o handshake cai em 404 (xhr poll error). Normalizamos o PATH_INFO antes
+    # do middleware — e o Next usa skipTrailingSlashRedirect.
+    _wrap_socketio_path_normalization(app)
 
     with app.app_context():
         from backend.services.push_service import ensure_vapid_keys
@@ -183,6 +220,20 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     iniciar_rotina_virada_dia(app)
 
     return app
+
+
+def _wrap_socketio_path_normalization(app: Flask) -> None:
+    """Garante PATH_INFO `/socket.io` → `/socket.io/` antes do middleware Engine.IO."""
+    inner = app.wsgi_app
+
+    def _normalize(environ, start_response):
+        path = environ.get("PATH_INFO") or ""
+        if path == "/socket.io":
+            environ = dict(environ)
+            environ["PATH_INFO"] = "/socket.io/"
+        return inner(environ, start_response)
+
+    app.wsgi_app = _normalize
 
 
 def _init_database(app: Flask) -> None:

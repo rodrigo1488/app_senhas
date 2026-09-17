@@ -39,6 +39,7 @@ internal fun TvMediaSlide(
     emptyLabel: String,
     modifier: Modifier = Modifier,
     emptyBackground: Color = Color(0xFF09090B),
+    contentScale: ContentScale = ContentScale.Crop,
 ) {
     Box(
         modifier = modifier.background(emptyBackground),
@@ -52,12 +53,13 @@ internal fun TvMediaSlide(
                 url = mediaUrl,
                 loop = loop,
                 onEnded = onEnded,
+                contentScale = contentScale,
                 modifier = Modifier.fillMaxSize(),
             )
             else -> AsyncImage(
                 model = mediaUrl,
                 contentDescription = "Propaganda",
-                contentScale = ContentScale.Crop,
+                contentScale = contentScale,
                 modifier = Modifier.fillMaxSize(),
             )
         }
@@ -69,9 +71,15 @@ private fun MutedVideoPlayer(
     url: String,
     loop: Boolean,
     onEnded: () -> Unit,
+    contentScale: ContentScale = ContentScale.Crop,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val resizeMode = if (contentScale == ContentScale.Fit) {
+        AspectRatioFrameLayout.RESIZE_MODE_FIT
+    } else {
+        AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+    }
     val exoPlayer = remember(url, loop) {
         ExoPlayer.Builder(context).build().apply {
             setMediaItem(MediaItem.fromUri(url))
@@ -101,10 +109,13 @@ private fun MutedVideoPlayer(
         factory = { ctx ->
             PlayerView(ctx).apply {
                 useController = false
-                resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                this.resizeMode = resizeMode
             }
         },
-        update = { view -> view.player = exoPlayer },
+        update = { view ->
+            view.player = exoPlayer
+            view.resizeMode = resizeMode
+        },
         modifier = modifier,
     )
 }

@@ -40,8 +40,9 @@ confirmação depois de receber um evento.
   Isso substitui os eventos manuais antigos `join_setor` / `join_token_room`,
   que criavam uma janela de corrida entre "conectar" e "entrar na room" onde
   eventos podiam se perder.
-- Se a autenticação for inválida/expirada, o servidor emite `auth:erro` e
-  desconecta o socket.
+- Se a autenticação for inválida (token ausente/assinatura errada/`SECRET_KEY`
+  diferente após redeploy sem chave estável), o servidor emite `auth:erro` e
+  desconecta o socket. Tokens de sessão do app **não expiram por tempo**.
 
 ## 2. Rooms
 
@@ -106,7 +107,7 @@ Emitido sempre que uma senha é criada, chamada ou finalizada.
 
 ### `auth:erro` (direto ao socket, antes de desconectar)
 ```json
-{"mensagem": "Sessão inválida ou expirada"}
+{"mensagem": "Sessão inválida"}
 ```
 
 ### `tv:config_atualizada` (room `setor:<setor_id>`)

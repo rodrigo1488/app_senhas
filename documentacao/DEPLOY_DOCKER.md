@@ -76,6 +76,13 @@ API_INTERNAL_URL=http://127.0.0.1:5000 npm run dev
 
 ## Notas
 
+- **`APP_SECRET_KEY`**: assina os JWTs do app Android/kiosk. Defina um valor
+  fixo no `.env`. Se ficar vazio, a API persiste uma chave em
+  `instance/secret_key` (volume `api_instance`). Trocar a chave invalida
+  todas as sessões já salvas no aparelho ("Sessão inválida") — o usuário
+  precisa fazer login do setor de novo.
+- Tokens de sessão do app **não expiram por tempo** (JWT sem claim `exp`).
+  Só o token curto de identificação do operador (~2 min, uso único) tem TTL.
 - Um único worker eventlet no Gunicorn (rooms Socket.IO não compartilham
   memória entre workers sem Redis).
 - Kiosk HTML (`/senhas`, `/senha_atual`, etc.) continua na API Flask.

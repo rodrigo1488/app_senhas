@@ -88,6 +88,10 @@ def create_session_token(
     `role` é um dos: "cliente", "operador", "avaliacao", "tv", "streaming",
     "generic". O backend usa papel, operador e TV para restringir endpoints
     e rooms.
+
+    Por padrão o JWT **não** inclui `exp` — sessões do app/kiosk não expiram
+    por tempo. Passe `ttl_seconds` apenas para credenciais de curta duração
+    (ex.: token de ação do operador em `create_operator_action_token`).
     """
     now = int(time.time())
     payload = {
@@ -95,8 +99,10 @@ def create_session_token(
         "role": role,
         "operador_id": operador_id,
         "iat": now,
-        "exp": now + (ttl_seconds or current_app.config["SESSION_TOKEN_TTL_SECONDS"]),
     }
+    # Sem `exp` = sem expiração por tempo (PyJWT só rejeita se o claim existir).
+    if ttl_seconds is not None:
+        payload["exp"] = now + int(ttl_seconds)
     if purpose:
         payload["purpose"] = purpose
     if jti:
@@ -173,7 +179,7 @@ def api_token_required(view):
         token = get_bearer_token()
         payload = decode_session_token(token) if token else None
         if not payload:
-            return jsonify({"error": "Sessão inválida ou expirada"}), 401
+            return jsonify({"error": "Sessão inválida"}), 401
         return view(*args, session_payload=payload, **kwargs)
 
     return wrapped

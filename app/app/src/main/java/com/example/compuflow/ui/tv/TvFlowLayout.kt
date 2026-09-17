@@ -134,6 +134,7 @@ private fun MediaPane(
             onEnded = onEnded,
             emptyLabel = "Espaço de mídia",
             emptyBackground = MediaPanel,
+            contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize(),
         )
     }

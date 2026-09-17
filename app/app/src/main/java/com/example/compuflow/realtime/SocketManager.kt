@@ -43,10 +43,12 @@ object SocketManager {
         disconnect()
         val optionsBuilder = IO.Options.builder()
             .setAuth(auth)
+            .setPath("/socket.io/")
             .setReconnection(true)
             .setTimeout(20_000)
 
         // Túnel HTTPS (Next rewrite) costuma quebrar upgrade WebSocket — força polling.
+        // Path com barra final: o Engine.IO no Flask (WSGI) só casa `/socket.io/`.
         if (httpBaseUrl.startsWith("https://", ignoreCase = true)) {
             optionsBuilder.setTransports(arrayOf(Polling.NAME))
         }

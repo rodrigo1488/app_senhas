@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -18,7 +19,11 @@ import com.example.compuflow.ui.tv.TvMediaSlide
 
 @Composable
 fun StreamingTvScreen(viewModel: StreamingTvViewModel = viewModel()) {
-    val item = viewModel.currentItem
+    // Ler estados explicitamente para o Compose recompor ao avançar o índice.
+    val index = viewModel.imagemIndex
+    val queue = viewModel.queue
+    val item = queue.getOrNull(index)
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -26,7 +31,7 @@ fun StreamingTvScreen(viewModel: StreamingTvViewModel = viewModel()) {
         contentAlignment = Alignment.Center,
     ) {
         when {
-            viewModel.errorMessage != null && viewModel.queue.isEmpty() -> {
+            viewModel.errorMessage != null && queue.isEmpty() -> {
                 Text(
                     text = viewModel.errorMessage ?: "",
                     color = Color.White.copy(alpha = 0.8f),
@@ -47,23 +52,25 @@ fun StreamingTvScreen(viewModel: StreamingTvViewModel = viewModel()) {
                 )
             }
             else -> {
-                val slide = item.toPropagandaDto()
-                TvMediaSlide(
-                    item = slide,
-                    mediaUrl = streamingMediaUrl(item.path),
-                    loop = false,
-                    onEnded = { viewModel.onMediaEnded() },
-                    emptyLabel = "Sem mídia",
-                    modifier = Modifier.fillMaxSize(),
-                )
+                key(index, item.path, item.type) {
+                    val slide = item.toPropagandaDto(index)
+                    TvMediaSlide(
+                        item = slide,
+                        mediaUrl = streamingMediaUrl(item.path),
+                        loop = queue.size <= 1,
+                        onEnded = { viewModel.onMediaEnded() },
+                        emptyLabel = "Sem mídia",
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
         }
     }
 }
 
-private fun StreamingQueueItemDto.toPropagandaDto(): PropagandaImagemDto =
+private fun StreamingQueueItemDto.toPropagandaDto(index: Int): PropagandaImagemDto =
     PropagandaImagemDto(
-        id = order,
+        id = index,
         arquivo = path,
         ordem = order,
         tipo = if (type.equals("video", ignoreCase = true)) "video" else "image",

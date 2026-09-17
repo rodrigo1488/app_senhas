@@ -49,6 +49,25 @@ class OperatorIdentificationTest(unittest.TestCase):
         with self.app.app_context():
             return create_session_token(self.setor_id, "generic")
 
+    def test_session_token_has_no_exp_by_default(self):
+        with self.app.app_context():
+            token = create_session_token(self.setor_id, "cliente")
+            payload = decode_session_token(token)
+            self.assertIsNotNone(payload)
+            self.assertNotIn("exp", payload)
+            self.assertEqual(self.setor_id, payload["setor_id"])
+            self.assertEqual("cliente", payload["role"])
+
+    def test_operator_action_token_still_has_short_exp(self):
+        from backend.auth import create_operator_action_token
+
+        with self.app.app_context():
+            token = create_operator_action_token(self.setor_id, self.operador_id)
+            payload = decode_session_token(token)
+            self.assertIsNotNone(payload)
+            self.assertIn("exp", payload)
+            self.assertEqual("chamar_proxima", payload.get("purpose"))
+
     def test_pin_is_hashed_and_duplicate_is_rejected(self):
         with self.app.app_context():
             operador = db.session.get(Operador, self.operador_id)
