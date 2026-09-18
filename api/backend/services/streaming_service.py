@@ -31,7 +31,11 @@ def media_public_path(arquivo: str) -> str:
         nome = nome[len("uploads/") :]
     if nome.startswith("media/"):
         nome = nome[len("media/") :]
-    return f"/media/{nome}"
+    path = f"/media/{nome}"
+    # Troca a URL das imagens para o APK já instalado buscar a versão enquadrada.
+    if not nome.lower().endswith(".mp4"):
+        path = f"{path}?enquadre=1"
+    return path
 
 
 def _tipo_arquivo(arquivo: str) -> str:
@@ -280,7 +284,7 @@ def atribuir_paths_streaming(ip_address: str, media_list: list[dict]) -> TvDispo
 
 
 def path_para_arquivo(path: str) -> str:
-    nome = (path or "").replace("\\", "/").lstrip("/")
+    nome = (path or "").replace("\\", "/").split("?", 1)[0].split("#", 1)[0].lstrip("/")
     for prefix in ("media/", "uploads/"):
         if nome.startswith(prefix):
             nome = nome[len(prefix) :]

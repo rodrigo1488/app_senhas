@@ -1,11 +1,12 @@
 """Utilitários diversos: imagens, QR Code, IP local, nome da empresa/ngrok."""
 import io
 import os
+import threading
 import uuid
 
 import qrcode
 from flask import current_app, request
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from backend.extensions import db
 from backend.models import Configuracao
@@ -47,6 +48,71 @@ def process_image(file, max_size: tuple[int, int] = (500, 500), quality: int = 8
 def process_propaganda_image(file) -> str | None:
     """Salva imagem de propaganda em resolução adequada para TV (~1920px)."""
     return process_image(file, max_size=(1920, 1920), quality=88)
+
+
+# Tela horizontal típica. O APK de propaganda usa recorte (crop); a imagem
+# já sai 16:9 para as laterais pretas aparecerem e o conteúdo vertical inteiro.
+_TV_HORIZONTAL_RATIO = 16 / 9
+_enquadre_cache: dict[tuple, bytes] = {}
+_enquadre_lock = threading.Lock()
+
+
+def bytes_imagem_enquadrada_tv(filepath: str) -> bytes | None:
+    """JPEG 16:9 com a imagem vertical centralizada e laterais pretas.
+
+    Retorna None se o arquivo já é horizontal/quadrado ou não for uma imagem.
+    O original em disco não é alterado.
+    """
+    try:
+        stat = os.stat(filepath)
+    except OSError:
+        return None
+    key = (os.path.abspath(filepath), stat.st_mtime_ns, stat.st_size)
+    with _enquadre_lock:
+        cached = _enquadre_cache.get(key)
+    if cached is not None:
+        return cached
+
+    try:
+        image = ImageOps.exif_transpose(Image.open(filepath))
+    except Exception as exc:
+        current_app.logger.error(f"Erro ao abrir imagem de propaganda: {exc}")
+        return None
+
+    try:
+        if image.width >= image.height:
+            return None
+        rgb, mask = _rgb_com_mascara(image)
+        canvas_h = rgb.height
+        canvas_w = max(rgb.width, round(canvas_h * _TV_HORIZONTAL_RATIO))
+        canvas = Image.new("RGB", (canvas_w, canvas_h), (0, 0, 0))
+        x = (canvas_w - rgb.width) // 2
+        y = (canvas_h - rgb.height) // 2
+        if mask is not None:
+            canvas.paste(rgb, (x, y), mask)
+        else:
+            canvas.paste(rgb, (x, y))
+        buffer = io.BytesIO()
+        canvas.save(buffer, format="JPEG", quality=88, optimize=True)
+        data = buffer.getvalue()
+    except Exception as exc:
+        current_app.logger.error(f"Erro ao enquadrar imagem de propaganda: {exc}")
+        return None
+    finally:
+        image.close()
+
+    with _enquadre_lock:
+        if len(_enquadre_cache) > 32:
+            _enquadre_cache.clear()
+        _enquadre_cache[key] = data
+    return data
+
+
+def _rgb_com_mascara(image: Image.Image) -> tuple[Image.Image, Image.Image | None]:
+    if image.mode in ("RGBA", "LA") or (image.mode == "P" and "transparency" in image.info):
+        rgba = image.convert("RGBA")
+        return rgba.convert("RGB"), rgba.getchannel("A")
+    return image.convert("RGB"), None
 
 
 def save_propaganda_video(file) -> str | None:

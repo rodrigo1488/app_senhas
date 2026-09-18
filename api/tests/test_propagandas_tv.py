@@ -454,7 +454,7 @@ class PropagandasTvTest(unittest.TestCase):
         media = client.get("/api/media")
         self.assertEqual(200, media.status_code)
         paths = [item["path"] for item in media.get_json()["files"]]
-        self.assertEqual(["/media/a.jpg", "/media/b.mp4"], paths)
+        self.assertEqual(["/media/a.jpg?enquadre=1", "/media/b.mp4"], paths)
 
         assign = client.post(
             "/api/assign",
@@ -471,7 +471,7 @@ class PropagandasTvTest(unittest.TestCase):
         poll = client.get("/api/poll/10.0.0.8")
         self.assertEqual(200, poll.status_code)
         queue = poll.get_json()["queue"]
-        self.assertEqual(["/media/a.jpg", "/media/b.mp4"], [item["path"] for item in queue])
+        self.assertEqual(["/media/a.jpg?enquadre=1", "/media/b.mp4"], [item["path"] for item in queue])
         self.assertEqual(["image", "video"], [item["type"] for item in queue])
 
         clients = client.get("/api/clients").get_json()
@@ -588,6 +588,45 @@ class PropagandasTvTest(unittest.TestCase):
         self.assertEqual(200, fila.status_code, fila.get_json())
         self.assertEqual("Balcão", fila.get_json()["dispositivo"]["nome"])
         self.assertEqual([], fila.get_json()["queue"])
+
+    def test_media_vertical_ganha_laterais_em_tela_horizontal(self):
+        import os
+
+        from PIL import Image
+
+        with self.app.app_context():
+            folder = self.app.config["UPLOAD_FOLDER"]
+            os.makedirs(folder, exist_ok=True)
+            vertical = os.path.join(folder, "vertical-teste-tv.png")
+            horizontal = os.path.join(folder, "horizontal-teste-tv.jpg")
+            Image.new("RGB", (90, 160), (255, 0, 0)).save(vertical)
+            Image.new("RGB", (160, 90), (0, 255, 0)).save(horizontal, "JPEG")
+
+        try:
+            client = self.app.test_client()
+            portrait = client.get("/media/vertical-teste-tv.png")
+            self.assertEqual(200, portrait.status_code)
+            self.assertEqual("image/jpeg", portrait.mimetype)
+            img = Image.open(io.BytesIO(portrait.data))
+            self.assertAlmostEqual(img.width / img.height, 16 / 9, places=2)
+            centro = img.getpixel((img.width // 2, img.height // 2))
+            self.assertGreater(centro[0], 240)
+            self.assertLess(centro[1], 16)
+            self.assertLess(centro[2], 16)
+            self.assertEqual((0, 0, 0), img.getpixel((2, img.height // 2)))
+            img.close()
+            portrait.close()
+
+            landscape = client.get("/media/horizontal-teste-tv.jpg")
+            self.assertEqual(200, landscape.status_code)
+            original = Image.open(io.BytesIO(landscape.data))
+            self.assertEqual((160, 90), original.size)
+            original.close()
+            landscape.close()
+        finally:
+            for path in (vertical, horizontal):
+                if os.path.exists(path):
+                    os.remove(path)
 
 
 if __name__ == "__main__":

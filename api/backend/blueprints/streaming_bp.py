@@ -1,7 +1,12 @@
 """Compatibilidade com o APP_STREAMING: TVs antigas continuam em :5000/smart e /legacy."""
+import io
+import os
 from datetime import datetime
 
-from flask import Blueprint, current_app, jsonify, render_template, request, send_from_directory
+from flask import Blueprint, current_app, jsonify, render_template, request, send_file, send_from_directory
+from werkzeug.utils import safe_join
+
+from backend.utils import bytes_imagem_enquadrada_tv
 
 from backend.extensions import db
 from backend.models import TvDispositivo
@@ -35,8 +40,18 @@ def streaming_legacy():
     return render_template("streaming/client_legacy.html")
 
 
+_IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
+
+
 @streaming_bp.route("/media/<path:filename>")
 def serve_media(filename):
+    ext = os.path.splitext(filename)[1].lower()
+    if ext in _IMAGE_EXT:
+        filepath = safe_join(current_app.config["UPLOAD_FOLDER"], filename)
+        if filepath and os.path.isfile(filepath):
+            data = bytes_imagem_enquadrada_tv(filepath)
+            if data is not None:
+                return send_file(io.BytesIO(data), mimetype="image/jpeg", max_age=86400)
     return send_from_directory(current_app.config["UPLOAD_FOLDER"], filename)
 
 
