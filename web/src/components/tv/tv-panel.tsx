@@ -54,6 +54,9 @@ export function TvPanel({ initialCodigo }: Props) {
   const lastCallRef = useRef<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const configFpRef = useRef("");
+  const filaFpRef = useRef("");
+  const chamadasFpRef = useRef("");
   const [isFullscreen, setIsFullscreen] = useState(false);
 
   const imagens = useMemo(() => config?.imagens ?? [], [config?.imagens]);
@@ -73,8 +76,33 @@ export function TvPanel({ initialCodigo }: Props) {
   const syncFromAtendimentos = useCallback((lista: TvAtendimento[]) => {
     const n = lista.find((a) => a.tipo === "normal");
     const p = lista.find((a) => a.tipo === "preferencial");
-    if (n) setNormal({ senha: n.senha, foto: n.operador_foto ?? null });
-    if (p) setPreferencial({ senha: p.senha, foto: p.operador_foto ?? null });
+    if (n) {
+      const foto = n.operador_foto ?? null;
+      setNormal((current) =>
+        current.senha === n.senha && current.foto === foto ? current : { senha: n.senha, foto },
+      );
+    }
+    if (p) {
+      const foto = p.operador_foto ?? null;
+      setPreferencial((current) =>
+        current.senha === p.senha && current.foto === foto ? current : { senha: p.senha, foto },
+      );
+    }
+  }, []);
+
+  const applyConfig = useCallback((next: TvConfig, resetIndex: boolean) => {
+    const fp = tvConfigFingerprint(next);
+    const changed = fp !== configFpRef.current;
+    if (!changed && !resetIndex) return;
+    configFpRef.current = fp;
+    setConfig(next);
+    if (resetIndex) {
+      setImagemIndex(0);
+      return;
+    }
+    if (changed) {
+      setImagemIndex((i) => (next.imagens.length ? i % next.imagens.length : 0));
+    }
   }, []);
 
   const hydrate = useCallback(
@@ -99,16 +127,17 @@ export function TvPanel({ initialCodigo }: Props) {
       syncFromAtendimentos(fila.atendimentos ?? []);
       setPendentes(fila.pendentes ?? []);
       setChamadas(recentCalls.chamadas ?? []);
-      setConfig(tvConfig);
+      filaFpRef.current = tvFilaFingerprint(fila);
+      chamadasFpRef.current = tvChamadasFingerprint(recentCalls.chamadas ?? []);
+      applyConfig(tvConfig, true);
       setSetor((current) =>
         current ?? {
           id: fila.setor_id,
           nome: tvConfig.setor_nome || "Painel de atendimento",
         },
       );
-      setImagemIndex(0);
     },
-    [syncFromAtendimentos],
+    [syncFromAtendimentos, applyConfig],
   );
 
   useEffect(() => {
@@ -181,6 +210,9 @@ export function TvPanel({ initialCodigo }: Props) {
     const socket = connectTvSocket(token);
 
     socket.on("fila:atualizada", (data: { atendimentos?: TvAtendimento[]; pendentes?: TvSenha[] }) => {
+      const fp = tvFilaFingerprint(data);
+      if (fp === filaFpRef.current) return;
+      filaFpRef.current = fp;
       syncFromAtendimentos(data.atendimentos ?? []);
       setPendentes(data.pendentes ?? []);
     });
@@ -211,11 +243,11 @@ export function TvPanel({ initialCodigo }: Props) {
           ),
         ].slice(0, 8);
       });
+      chamadasFpRef.current = "";
     });
 
     socket.on("tv:config_atualizada", (next: TvConfig) => {
-      setConfig(next);
-      setImagemIndex((i) => (next.imagens.length ? i % next.imagens.length : 0));
+      applyConfig(next, false);
     });
 
     socket.on("auth:erro", (payload: { mensagem?: string }) => {
@@ -228,7 +260,7 @@ export function TvPanel({ initialCodigo }: Props) {
       socket.removeAllListeners();
       socket.disconnect();
     };
-  }, [token, syncFromAtendimentos, playCallSound]);
+  }, [token, syncFromAtendimentos, playCallSound, applyConfig]);
 
   // Reserva: se o socket falhar atrás do túnel, a TV ainda acompanha as chamadas.
   useEffect(() => {
@@ -236,12 +268,21 @@ export function TvPanel({ initialCodigo }: Props) {
     const refreshFila = () => {
       tvApiFetch<TvFila>("/api/v1/setor/fila", { token })
         .then((fila) => {
+          const fp = tvFilaFingerprint(fila);
+          if (fp === filaFpRef.current) return;
+          filaFpRef.current = fp;
           syncFromAtendimentos(fila.atendimentos ?? []);
           setPendentes(fila.pendentes ?? []);
         })
         .catch(() => undefined);
       tvApiFetch<TvRecentCallsResponse>("/api/v1/setor/tv_chamadas_recentes", { token })
-        .then((res) => setChamadas(res.chamadas ?? []))
+        .then((res) => {
+          const chamadas = res.chamadas ?? [];
+          const fp = tvChamadasFingerprint(chamadas);
+          if (fp === chamadasFpRef.current) return;
+          chamadasFpRef.current = fp;
+          setChamadas(chamadas);
+        })
         .catch(() => undefined);
     };
     const id = window.setInterval(refreshFila, 4000);
@@ -256,14 +297,11 @@ export function TvPanel({ initialCodigo }: Props) {
     if (!token) return;
     const id = window.setInterval(() => {
       tvApiFetch<TvConfig>("/api/v1/setor/tv_config", { token })
-        .then((next) => {
-          setConfig(next);
-          setImagemIndex((i) => (next.imagens.length ? i % next.imagens.length : 0));
-        })
+        .then((next) => applyConfig(next, false))
         .catch(() => undefined);
     }, 60_000);
     return () => window.clearInterval(id);
-  }, [token]);
+  }, [token, applyConfig]);
 
   async function onLogin(e: FormEvent) {
     e.preventDefault();
@@ -396,6 +434,31 @@ export function TvPanel({ initialCodigo }: Props) {
       />
     </div>
   );
+}
+
+function tvConfigFingerprint(config: TvConfig) {
+  const imagens = config.imagens
+    .map((item) => `${item.id}|${item.arquivo}|${item.tipo ?? "image"}`)
+    .join(";");
+  return [
+    config.layout_tv_web,
+    config.orientacao_tv ?? "horizontal",
+    config.intervalo_ms,
+    config.propagandas_ativas ? "1" : "0",
+    imagens,
+  ].join("#");
+}
+
+function tvFilaFingerprint(fila: { atendimentos?: TvAtendimento[]; pendentes?: TvSenha[] }) {
+  const atendimentos = (fila.atendimentos ?? [])
+    .map((item) => `${item.tipo}|${item.senha}|${item.operador_foto ?? ""}`)
+    .join(";");
+  const pendentes = (fila.pendentes ?? []).map((item) => `${item.id}|${item.senha}|${item.tipo}`).join(";");
+  return `${atendimentos}#${pendentes}`;
+}
+
+function tvChamadasFingerprint(chamadas: TvRecentCall[]) {
+  return chamadas.map((item) => `${item.senha_id}|${item.senha}|${item.status}|${item.chamada_em ?? ""}`).join(";");
 }
 
 type FullscreenElement = HTMLElement & {

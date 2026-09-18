@@ -25,6 +25,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -123,6 +124,7 @@ private fun MediaPane(
             .background(MediaPanel)
             .border(1.dp, Color.Black.copy(alpha = 0.10f), RoundedCornerShape(36.dp)),
     ) {
+        key(item?.id, item?.arquivo, item?.tipo) {
         TvMediaSlide(
             item = item,
             mediaUrl = mediaUrl,
@@ -133,6 +135,7 @@ private fun MediaPane(
             contentScale = ContentScale.Fit,
             modifier = Modifier.fillMaxSize(),
         )
+        }
     }
 }
 

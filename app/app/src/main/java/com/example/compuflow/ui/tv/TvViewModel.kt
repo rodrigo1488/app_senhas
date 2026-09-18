@@ -18,6 +18,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class TvViewModel : ViewModel() {
@@ -48,6 +49,9 @@ class TvViewModel : ViewModel() {
     var errorMessage by mutableStateOf<String?>(null)
 
     private var rotationJob: Job? = null
+    /** Playlist + intervalo. Poll/socket com o mesmo valor não reinicia o timer. */
+    private var mediaFingerprint: String = ""
+    private var lastAdvanceAtMs: Long = 0L
 
     val isFilaLayout: Boolean
         get() = layoutTvWeb == "fila"
@@ -58,33 +62,73 @@ class TvViewModel : ViewModel() {
             if (token != null) {
                 SocketManager.connectWithSessionToken(NetworkModule.currentHttpBaseUrl(), token)
             }
-            try {
-                val fila = NetworkModule.apiService().estadoFila()
-                pendentes = fila.pendentes
-                atendimentos = fila.atendimentos
-                syncFromAtendimentos(atendimentos)
-            } catch (e: Exception) {
-                errorMessage = e.toUserMessage("Não foi possível carregar a fila.")
+            refreshPainel(silent = false)
+        }
+        viewModelScope.launch {
+            SocketManager.events.collect { event ->
+                if (event is SocketEvent.Connected) {
+                    refreshPainel(silent = true)
+                } else {
+                    handleEvent(event)
+                }
             }
-            try {
-                val config = NetworkModule.apiService().tvConfig()
-                applyTvConfig(
-                    layout = config.layout_tv_web,
-                    orientacao = config.orientacao_tv,
-                    imgs = config.imagens,
-                    intervalo = config.intervalo_ms.coerceAtLeast(1_000L),
-                )
-            } catch (_: Exception) {
-                // Sem config de propaganda, mantém layout padrão.
-            }
-            try {
-                chamadas = NetworkModule.apiService().tvChamadasRecentes().chamadas
-            } catch (_: Exception) {
-                // Painel segue sem histórico até a primeira chamada ao vivo.
+        }
+        // Reserva se o socket não entregar fila/chamadas (túnel HTTPS).
+        viewModelScope.launch {
+            while (isActive) {
+                delay(4_000)
+                refreshFila(silent = true)
             }
         }
         viewModelScope.launch {
-            SocketManager.events.collect { event -> handleEvent(event) }
+            while (isActive) {
+                delay(60_000)
+                refreshConfig(silent = true)
+            }
+        }
+    }
+
+    private suspend fun refreshPainel(silent: Boolean) {
+        refreshFila(silent)
+        refreshConfig(silent)
+        refreshChamadas(silent)
+    }
+
+    private suspend fun refreshFila(silent: Boolean) {
+        try {
+            val fila = NetworkModule.apiService().estadoFila()
+            pendentes = fila.pendentes
+            atendimentos = fila.atendimentos
+            syncFromAtendimentos(fila.atendimentos)
+            if (!silent) errorMessage = null
+        } catch (e: Exception) {
+            if (!silent) errorMessage = e.toUserMessage("Não foi possível carregar a fila.")
+        }
+    }
+
+    private suspend fun refreshChamadas(silent: Boolean) {
+        try {
+            chamadas = NetworkModule.apiService().tvChamadasRecentes().chamadas
+        } catch (_: Exception) {
+            if (!silent) {
+                // Painel segue sem histórico até a primeira chamada ao vivo.
+            }
+        }
+    }
+
+    private suspend fun refreshConfig(silent: Boolean) {
+        try {
+            val config = NetworkModule.apiService().tvConfig()
+            applyTvConfig(
+                layout = config.layout_tv_web,
+                orientacao = config.orientacao_tv,
+                imgs = config.imagens,
+                intervalo = config.intervalo_ms.coerceAtLeast(1_000L),
+            )
+        } catch (_: Exception) {
+            if (!silent) {
+                // Sem config de propaganda, mantém layout padrão.
+            }
         }
     }
 
@@ -96,9 +140,28 @@ class TvViewModel : ViewModel() {
     ) {
         layoutTvWeb = if (layout == "fila") "fila" else "propaganda"
         orientacaoTv = if (orientacao == "vertical") "vertical" else "horizontal"
+        val fingerprint = buildString {
+            append(intervalo)
+            imgs.forEach { item ->
+                append('|')
+                append(item.id)
+                append(':')
+                append(item.arquivo)
+                append(':')
+                append(item.tipo)
+            }
+        }
+        if (fingerprint == mediaFingerprint) return
+        mediaFingerprint = fingerprint
         imagens = imgs
         intervaloMs = intervalo
-        imagemIndex = if (imgs.isEmpty()) 0 else imagemIndex % imgs.size
+        if (imgs.isEmpty()) {
+            imagemIndex = 0
+            rotationJob?.cancel()
+            rotationJob = null
+            return
+        }
+        if (imagemIndex >= imgs.size) imagemIndex = 0
         restartRotation()
     }
 
@@ -106,7 +169,7 @@ class TvViewModel : ViewModel() {
         rotationJob?.cancel()
         if (imagens.isEmpty()) return
         val atual = imagens.getOrNull(imagemIndex) ?: return
-        if (atual.tipo == "video") return
+        if (atual.tipo.equals("video", ignoreCase = true)) return
         if (imagens.size <= 1) return
         rotationJob = viewModelScope.launch {
             delay(intervaloMs)
@@ -117,6 +180,9 @@ class TvViewModel : ViewModel() {
 
     fun onMediaEnded() {
         if (imagens.size <= 1) return
+        val now = System.currentTimeMillis()
+        if (now - lastAdvanceAtMs < 800L) return
+        lastAdvanceAtMs = now
         imagemIndex = (imagemIndex + 1) % imagens.size
         restartRotation()
     }

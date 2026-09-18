@@ -18,6 +18,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -107,18 +108,24 @@ private fun PropagandaTvLayout(
     normalFoto: String?,
     vertical: Boolean = false,
 ) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        TvMediaSlide(
-            item = item,
-            mediaUrl = mediaUrl,
-            loop = loop,
-            onEnded = onEnded,
-            emptyLabel = "Sem mídia de propaganda",
-            contentScale = ContentScale.Fit,
+        Column(modifier = Modifier.fillMaxSize()) {
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(if (vertical) 0.62f else 0.78f),
-        )
+        ) {
+            key(item?.id, item?.arquivo, item?.tipo) {
+                TvMediaSlide(
+                    item = item,
+                    mediaUrl = mediaUrl,
+                    loop = loop,
+                    onEnded = onEnded,
+                    emptyLabel = "Sem mídia de propaganda",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
         if (vertical) {
             Column(
                 modifier = Modifier

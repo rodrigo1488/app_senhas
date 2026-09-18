@@ -156,12 +156,20 @@ private fun MutedVideoPlayer(
     }
     DisposableEffect(exoPlayer) {
         val listener = object : Player.Listener {
+            private var advanced = false
+
+            private fun advanceOnce() {
+                if (advanced || loop) return
+                advanced = true
+                onEnded()
+            }
+
             override fun onPlaybackStateChanged(playbackState: Int) {
-                if (playbackState == Player.STATE_ENDED && !loop) onEnded()
+                if (playbackState == Player.STATE_ENDED) advanceOnce()
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                onEnded()
+                advanceOnce()
             }
         }
         exoPlayer.addListener(listener)
