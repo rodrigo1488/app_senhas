@@ -23,7 +23,7 @@ import kotlinx.coroutines.launch
 class TvViewModel : ViewModel() {
     private val sessionRepository = AppGraph.sessionRepository
     private val soundDeduplicator = CallSoundDeduplicator()
-    private val _callSoundEvents = Channel<Unit>(capacity = Channel.BUFFERED)
+    private val _callSoundEvents = Channel<Unit>(capacity = Channel.CONFLATED)
     val callSoundEvents = _callSoundEvents.receiveAsFlow()
 
     var pendentes by mutableStateOf<List<SenhaDto>>(emptyList())
@@ -143,7 +143,7 @@ class TvViewModel : ViewModel() {
             operador_id = event.operadorId,
             operador_nome = event.operadorNome,
             operador_foto = event.operadorFoto,
-            chamada_em = null,
+            chamada_em = System.currentTimeMillis().toString(),
             status = "atual",
         )
         chamadas = listOf(next) + chamadas.filter { item ->
@@ -174,7 +174,7 @@ class TvViewModel : ViewModel() {
                     else -> Unit
                 }
                 prependChamada(event)
-                if (soundDeduplicator.isNewCall(event.senha)) {
+                if (soundDeduplicator.isNewCall(event.senha, event.senhaId)) {
                     _callSoundEvents.trySend(Unit)
                 }
             }

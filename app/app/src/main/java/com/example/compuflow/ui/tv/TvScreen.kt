@@ -13,9 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,7 +30,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import coil.compose.AsyncImage
 import com.example.compuflow.data.remote.dto.PropagandaImagemDto
 
 private val PreferencialPanel = Color(0xFF120B1E)
@@ -201,22 +197,13 @@ private fun TipoSenhaPanel(
                     .background(Color.White.copy(alpha = 0.15f)),
                 contentAlignment = Alignment.Center,
             ) {
-                val photoUrl = mediaUrl(foto)
-                if (photoUrl != null) {
-                    AsyncImage(
-                        model = photoUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    Icon(
-                        Icons.Filled.Person,
-                        contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.80f),
-                        modifier = Modifier.size(36.dp),
-                    )
-                }
+                TvOperatorPhoto(
+                    foto = foto,
+                    placeholderTint = Color.White.copy(alpha = 0.80f),
+                    placeholderSize = 36.dp,
+                    decodeSizePx = 160,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
             Text(
                 text = senha ?: "—",

@@ -1,9 +1,9 @@
 package com.example.compuflow.ui.tv
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -22,10 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -39,7 +36,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import coil.compose.AsyncImage
 import com.example.compuflow.data.remote.dto.PropagandaImagemDto
 import com.example.compuflow.data.remote.dto.SenhaDto
 import com.example.compuflow.data.remote.dto.TvChamadaRecenteDto
@@ -149,7 +145,7 @@ private fun QueuePane(
 ) {
     Column(
         modifier = modifier
-            .shadow(18.dp, RoundedCornerShape(36.dp), clip = false)
+            .shadow(6.dp, RoundedCornerShape(36.dp), clip = false)
             .clip(RoundedCornerShape(36.dp))
             .background(AsideBackground)
             .verticalScroll(rememberScrollState())
@@ -168,9 +164,9 @@ private fun QueuePane(
 
         AnimatedContent(
             targetState = atual,
-            contentKey = { it?.senha_id ?: 0 },
+            contentKey = { it?.let { call -> "${call.senha_id}:${call.chamada_em}" } ?: "none" },
             transitionSpec = {
-                (fadeIn() + slideInVertically { it / 2 }) togetherWith fadeOut()
+                fadeIn(tween(160)) togetherWith fadeOut(tween(100))
             },
             label = "chamada-atual",
             modifier = Modifier.padding(vertical = 16.dp),
@@ -272,22 +268,13 @@ private fun OperatorRow(nome: String?, foto: String?) {
                 .background(Color.White.copy(alpha = 0.15f)),
             contentAlignment = Alignment.Center,
         ) {
-            val photoUrl = mediaUrl(foto)
-            if (photoUrl != null) {
-                AsyncImage(
-                    model = photoUrl,
-                    contentDescription = null,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            } else {
-                Icon(
-                    Icons.Filled.Person,
-                    contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.75f),
-                    modifier = Modifier.size(22.dp),
-                )
-            }
+            TvOperatorPhoto(
+                foto = foto,
+                placeholderTint = Color.White.copy(alpha = 0.75f),
+                placeholderSize = 22.dp,
+                decodeSizePx = 96,
+                modifier = Modifier.fillMaxSize(),
+            )
         }
         Column(modifier = Modifier.padding(start = 12.dp)) {
             Text(
@@ -424,22 +411,13 @@ private fun OperatorPhoto(foto: String?) {
             .background(Color.Black.copy(alpha = 0.10f)),
         contentAlignment = Alignment.Center,
     ) {
-        val photoUrl = mediaUrl(foto)
-        if (photoUrl != null) {
-            AsyncImage(
-                model = photoUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
-            )
-        } else {
-            Icon(
-                Icons.Filled.Person,
-                contentDescription = null,
-                tint = Ink.copy(alpha = 0.35f),
-                modifier = Modifier.size(16.dp),
-            )
-        }
+        TvOperatorPhoto(
+            foto = foto,
+            placeholderTint = Ink.copy(alpha = 0.35f),
+            placeholderSize = 16.dp,
+            decodeSizePx = 72,
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
 
