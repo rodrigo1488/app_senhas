@@ -6,7 +6,7 @@ from datetime import datetime
 from flask import Blueprint, current_app, jsonify, render_template, request, send_file, send_from_directory
 from werkzeug.utils import safe_join
 
-from backend.utils import bytes_imagem_enquadrada_tv
+from backend.utils import bytes_imagem_enquadrada_tv, normalizar_orientacao_tv
 
 from backend.extensions import db
 from backend.models import TvDispositivo
@@ -49,9 +49,12 @@ def serve_media(filename):
     if ext in _IMAGE_EXT:
         filepath = safe_join(current_app.config["UPLOAD_FOLDER"], filename)
         if filepath and os.path.isfile(filepath):
-            data = bytes_imagem_enquadrada_tv(filepath)
-            if data is not None:
-                return send_file(io.BytesIO(data), mimetype="image/jpeg", max_age=86400)
+            bruto = (request.args.get("enquadre") or "1").strip().lower()
+            if bruto not in {"0", "false", "off", "none"}:
+                orientacao = normalizar_orientacao_tv(bruto)
+                data = bytes_imagem_enquadrada_tv(filepath, orientacao=orientacao)
+                if data is not None:
+                    return send_file(io.BytesIO(data), mimetype="image/jpeg", max_age=86400)
     return send_from_directory(current_app.config["UPLOAD_FOLDER"], filename)
 
 

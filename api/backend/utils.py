@@ -50,24 +50,33 @@ def process_propaganda_image(file) -> str | None:
     return process_image(file, max_size=(1920, 1920), quality=88)
 
 
-# Tela horizontal típica. O APK de propaganda usa recorte (crop); a imagem
-# já sai 16:9 para as laterais pretas aparecerem e o conteúdo vertical inteiro.
+# O APK de propaganda usa recorte (crop). Em tela deitada a imagem retrato
+# ganha laterais pretas 16:9; em tela em pé a paisagem ganha faixas 9:16.
+# Assim o aparelho já instalado preenche a orientação certa sem novo APK.
 _TV_HORIZONTAL_RATIO = 16 / 9
+_TV_VERTICAL_RATIO = 9 / 16
 _enquadre_cache: dict[tuple, bytes] = {}
 _enquadre_lock = threading.Lock()
 
 
-def bytes_imagem_enquadrada_tv(filepath: str) -> bytes | None:
-    """JPEG 16:9 com a imagem vertical centralizada e laterais pretas.
+def normalizar_orientacao_tv(valor: str | None) -> str:
+    return "vertical" if (valor or "").strip().lower() == "vertical" else "horizontal"
 
-    Retorna None se o arquivo já é horizontal/quadrado ou não for uma imagem.
+
+def bytes_imagem_enquadrada_tv(filepath: str, orientacao: str = "horizontal") -> bytes | None:
+    """Enquadra a imagem no ratio da TV sem cortar o conteúdo.
+
+    Horizontal: retrato vira JPEG 16:9 com laterais pretas.
+    Vertical: paisagem vira JPEG 9:16 com faixas pretas em cima/baixo.
+    Retorna None se o arquivo já está na orientação da tela (ou não é imagem).
     O original em disco não é alterado.
     """
     try:
         stat = os.stat(filepath)
     except OSError:
         return None
-    key = (os.path.abspath(filepath), stat.st_mtime_ns, stat.st_size)
+    modo = normalizar_orientacao_tv(orientacao)
+    key = (os.path.abspath(filepath), stat.st_mtime_ns, stat.st_size, modo)
     with _enquadre_lock:
         cached = _enquadre_cache.get(key)
     if cached is not None:
@@ -80,11 +89,23 @@ def bytes_imagem_enquadrada_tv(filepath: str) -> bytes | None:
         return None
 
     try:
-        if image.width >= image.height:
-            return None
+        retrato = image.height > image.width
+        if modo == "vertical":
+            if retrato:
+                return None
+            target_ratio = _TV_VERTICAL_RATIO
+        else:
+            if not retrato:
+                return None
+            target_ratio = _TV_HORIZONTAL_RATIO
         rgb, mask = _rgb_com_mascara(image)
-        canvas_h = rgb.height
-        canvas_w = max(rgb.width, round(canvas_h * _TV_HORIZONTAL_RATIO))
+        img_ratio = rgb.width / rgb.height
+        if img_ratio > target_ratio:
+            canvas_w = rgb.width
+            canvas_h = max(rgb.height, round(canvas_w / target_ratio))
+        else:
+            canvas_h = rgb.height
+            canvas_w = max(rgb.width, round(canvas_h * target_ratio))
         canvas = Image.new("RGB", (canvas_w, canvas_h), (0, 0, 0))
         x = (canvas_w - rgb.width) // 2
         y = (canvas_h - rgb.height) // 2

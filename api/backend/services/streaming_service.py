@@ -16,6 +16,7 @@ from backend.models import (
 )
 from backend.services.tv_config_service import INTERVALO_IMAGEM_MS, serializar_tv_config
 from backend.sockets.emitters import emit_tv_config_atualizada
+from backend.utils import normalizar_orientacao_tv
 
 connected_by_chave: dict[str, str] = {}
 chave_by_sid: dict[str, str] = {}
@@ -25,22 +26,31 @@ def chave_setor(setor_id: int) -> str:
     return f"setor:{setor_id}"
 
 
-def media_public_path(arquivo: str) -> str:
+def media_public_path(arquivo: str, orientacao: str = "horizontal") -> str:
     nome = (arquivo or "").replace("\\", "/").lstrip("/")
     if nome.startswith("uploads/"):
         nome = nome[len("uploads/") :]
     if nome.startswith("media/"):
         nome = nome[len("media/") :]
     path = f"/media/{nome}"
-    # Troca a URL das imagens para o APK já instalado buscar a versão enquadrada.
+    # Troca a URL das imagens para o APK já instalado buscar a versão enquadrada
+    # na orientação do setor (16:9 deitado ou 9:16 em pé).
     if not nome.lower().endswith(".mp4"):
-        path = f"{path}?enquadre=1"
+        modo = normalizar_orientacao_tv(orientacao)
+        path = f"{path}?enquadre={'vertical' if modo == 'vertical' else '1'}"
     return path
 
 
 def _tipo_arquivo(arquivo: str) -> str:
     nome = (arquivo or "").lower()
     return "video" if nome.endswith(".mp4") else "image"
+
+
+def _orientacao_do_dispositivo(dispositivo: TvDispositivo) -> str:
+    if not dispositivo.setor_id:
+        return "horizontal"
+    setor = db.session.get(Setor, dispositivo.setor_id)
+    return normalizar_orientacao_tv(setor.orientacao_tv if setor else None)
 
 
 def fila_streaming(dispositivo: TvDispositivo) -> list[dict]:
@@ -51,6 +61,7 @@ def fila_streaming(dispositivo: TvDispositivo) -> list[dict]:
     ).all()
     if not rows:
         return []
+    orientacao = _orientacao_do_dispositivo(dispositivo)
     by_id = {
         item.id: item
         for item in Propaganda.query.filter(Propaganda.id.in_([row.propaganda_id for row in rows])).all()
@@ -62,7 +73,7 @@ def fila_streaming(dispositivo: TvDispositivo) -> list[dict]:
             continue
         fila.append(
             {
-                "path": media_public_path(item.arquivo),
+                "path": media_public_path(item.arquivo, orientacao),
                 "type": item.tipo or _tipo_arquivo(item.arquivo),
                 "order": row.ordem,
                 "duration": INTERVALO_IMAGEM_MS,
@@ -110,6 +121,12 @@ def substituir_fila_dispositivo(dispositivo: TvDispositivo, propaganda_ids: list
 
 def emitir_fila_streaming(dispositivo: TvDispositivo) -> None:
     socketio.emit("queue_updated", {"queue": fila_streaming(dispositivo)}, room=dispositivo.chave)
+
+
+def emitir_filas_streaming_do_setor(setor_id: int) -> None:
+    dispositivos = TvDispositivo.query.filter_by(tipo="streaming", setor_id=setor_id).all()
+    for dispositivo in dispositivos:
+        emitir_fila_streaming(dispositivo)
 
 
 def marcar_online(chave: str, sid: str | None) -> None:

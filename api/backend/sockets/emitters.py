@@ -135,6 +135,9 @@ def emit_pedido_status(ticket_token: str, pedido: str, status: str, mensagem: st
 
 def emit_tv_config_atualizada(setor_id: int, payload: dict) -> None:
     socketio.emit(EV_TV_CONFIG_ATUALIZADA, payload, room=room_setor(setor_id))
+    from backend.services.streaming_service import emitir_filas_streaming_do_setor
+
+    emitir_filas_streaming_do_setor(setor_id)
 
 
 def emit_cliente_config_atualizada(setor_id: int, payload: dict) -> None:

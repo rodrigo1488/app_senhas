@@ -6,7 +6,7 @@ from unittest.mock import patch
 from backend import create_app
 from backend.auth import create_session_token
 from backend.extensions import db
-from backend.models import AtendimentoAtual, Finalizado, Operador, Propaganda, Senha, Setor, TvDispositivo
+from backend.models import AtendimentoAtual, Finalizado, Operador, Propaganda, Senha, Setor, TvDispositivo, dispositivo_propagandas
 from backend.services.fila_service import listar_chamadas_recentes
 from backend.services.streaming_service import chave_by_sid, connected_by_chave
 from backend.services.usuario_service import criar_ou_atualizar_admin
@@ -627,6 +627,81 @@ class PropagandasTvTest(unittest.TestCase):
             for path in (vertical, horizontal):
                 if os.path.exists(path):
                     os.remove(path)
+
+    def test_media_horizontal_ganha_faixas_em_tela_vertical(self):
+        import os
+
+        from PIL import Image
+
+        with self.app.app_context():
+            folder = self.app.config["UPLOAD_FOLDER"]
+            os.makedirs(folder, exist_ok=True)
+            vertical = os.path.join(folder, "vertical-tela-pe.png")
+            horizontal = os.path.join(folder, "horizontal-tela-pe.jpg")
+            Image.new("RGB", (90, 160), (255, 0, 0)).save(vertical)
+            Image.new("RGB", (160, 90), (0, 255, 0)).save(horizontal, "JPEG")
+
+        try:
+            client = self.app.test_client()
+            portrait = client.get("/media/vertical-tela-pe.png?enquadre=vertical")
+            self.assertEqual(200, portrait.status_code)
+            original = Image.open(io.BytesIO(portrait.data))
+            self.assertEqual((90, 160), original.size)
+            original.close()
+            portrait.close()
+
+            landscape = client.get("/media/horizontal-tela-pe.jpg?enquadre=vertical")
+            self.assertEqual(200, landscape.status_code)
+            self.assertEqual("image/jpeg", landscape.mimetype)
+            img = Image.open(io.BytesIO(landscape.data))
+            self.assertAlmostEqual(img.width / img.height, 9 / 16, places=2)
+            centro = img.getpixel((img.width // 2, img.height // 2))
+            self.assertLess(centro[0], 16)
+            self.assertGreater(centro[1], 240)
+            self.assertLess(centro[2], 16)
+            self.assertEqual((0, 0, 0), img.getpixel((img.width // 2, 2)))
+            img.close()
+            landscape.close()
+        finally:
+            for path in (vertical, horizontal):
+                if os.path.exists(path):
+                    os.remove(path)
+
+    def test_fila_streaming_usa_enquadre_vertical_do_setor(self):
+        from backend.models import TvDispositivo
+        from backend.services.streaming_service import fila_streaming, media_public_path
+
+        self.assertEqual("/media/a.jpg?enquadre=1", media_public_path("a.jpg"))
+        self.assertEqual(
+            "/media/a.jpg?enquadre=vertical",
+            media_public_path("a.jpg", "vertical"),
+        )
+        self.assertEqual("/media/b.mp4", media_public_path("b.mp4", "vertical"))
+
+        with self.app.app_context():
+            setor = db.session.get(Setor, self.setor_id)
+            setor.orientacao_tv = "vertical"
+            p1 = Propaganda(arquivo="retrato.jpg", tipo="image", ordem=1, ativo=True)
+            db.session.add(p1)
+            db.session.commit()
+            dispositivo = TvDispositivo(
+                tipo="streaming",
+                chave="apk:orientacao-teste",
+                nome="TV Vertical",
+                setor_id=self.setor_id,
+            )
+            db.session.add(dispositivo)
+            db.session.commit()
+            db.session.execute(
+                dispositivo_propagandas.insert().values(
+                    dispositivo_id=dispositivo.id,
+                    propaganda_id=p1.id,
+                    ordem=0,
+                )
+            )
+            db.session.commit()
+            fila = fila_streaming(dispositivo)
+            self.assertEqual(["/media/retrato.jpg?enquadre=vertical"], [item["path"] for item in fila])
 
 
 if __name__ == "__main__":
