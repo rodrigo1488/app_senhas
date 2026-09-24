@@ -38,6 +38,16 @@ data class SenhaDto(
     val tem_pedido: Boolean = false,
     val pedido: String? = null,
     val pedido_confirmado: Boolean = false,
+    val impressao: ImpressaoClienteDto? = null,
+)
+
+@Serializable
+data class ImpressaoClienteDto(
+    val via_cliente: Boolean = false,
+    val impressora_ip: String? = null,
+    val impressora_porta: Int = 9100,
+    val escpos_base64: String? = null,
+    val erro: String? = null,
 )
 
 @Serializable

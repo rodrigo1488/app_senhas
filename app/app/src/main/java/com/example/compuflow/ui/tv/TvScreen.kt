@@ -1,7 +1,5 @@
 package com.example.compuflow.ui.tv
 
-import android.app.Activity
-import android.content.pm.ActivityInfo
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.compuflow.data.remote.dto.PropagandaImagemDto
+import com.example.compuflow.ui.common.ForcedDisplayOrientation
 
 private val PreferencialPanel = Color(0xFF120B1E)
 private val NormalPanel = Color(0xFFE85D04)
@@ -53,45 +52,34 @@ fun TvScreen(viewModel: TvViewModel = viewModel()) {
     val loop = viewModel.imagens.size <= 1
     val vertical = viewModel.orientacaoTv == "vertical"
 
-    DisposableEffect(vertical) {
-        val activity = context as? Activity
-        val previous = activity?.requestedOrientation
-        activity?.requestedOrientation = if (vertical) {
-            ActivityInfo.SCREEN_ORIENTATION_SENSOR_PORTRAIT
-        } else {
-            ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
-        }
-        onDispose {
-            activity?.requestedOrientation = previous ?: ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        }
-    }
-
-    Surface(
-        color = if (viewModel.isFilaLayout) Color(0xFFE7E3DC) else Color.Black,
-        modifier = Modifier.fillMaxSize(),
-    ) {
-        if (viewModel.isFilaLayout) {
-            TvFlowLayout(
-                chamadas = viewModel.chamadas,
-                pendentes = viewModel.pendentes,
-                item = atual,
-                mediaUrl = url,
-                loop = loop,
-                onEnded = viewModel::onMediaEnded,
-                vertical = vertical,
-            )
-        } else {
-            PropagandaTvLayout(
-                item = atual,
-                mediaUrl = url,
-                loop = loop,
-                onEnded = viewModel::onMediaEnded,
-                preferencialSenha = viewModel.ultimaPreferencialSenha,
-                preferencialFoto = viewModel.ultimaPreferencialFoto,
-                normalSenha = viewModel.ultimaNormalSenha,
-                normalFoto = viewModel.ultimaNormalFoto,
-                vertical = vertical,
-            )
+    ForcedDisplayOrientation(portrait = vertical) {
+        Surface(
+            color = if (viewModel.isFilaLayout) Color(0xFFE7E3DC) else Color.Black,
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            if (viewModel.isFilaLayout) {
+                TvFlowLayout(
+                    chamadas = viewModel.chamadas,
+                    pendentes = viewModel.pendentes,
+                    item = atual,
+                    mediaUrl = url,
+                    loop = loop,
+                    onEnded = viewModel::onMediaEnded,
+                    vertical = vertical,
+                )
+            } else {
+                PropagandaTvLayout(
+                    item = atual,
+                    mediaUrl = url,
+                    loop = loop,
+                    onEnded = viewModel::onMediaEnded,
+                    preferencialSenha = viewModel.ultimaPreferencialSenha,
+                    preferencialFoto = viewModel.ultimaPreferencialFoto,
+                    normalSenha = viewModel.ultimaNormalSenha,
+                    normalFoto = viewModel.ultimaNormalFoto,
+                    vertical = vertical,
+                )
+            }
         }
     }
 }

@@ -35,7 +35,7 @@ import com.example.compuflow.ui.theme.VermelhoPreferencial
 import com.example.compuflow.ui.tv.TvMediaSlide
 import com.example.compuflow.ui.tv.mediaUrl
 
-/** Totem de retirada: emite, imprime no servidor e fica pronto para a próxima pessoa. */
+/** Totem de retirada: gera a senha na API e, se o setor pedir, imprime na LAN do tablet. */
 @Composable
 fun ClienteScreen(viewModel: ClienteViewModel = viewModel()) {
     Box(
@@ -102,6 +102,9 @@ private fun SelecaoTipoSenha(viewModel: ClienteViewModel) {
 
         if (viewModel.isLoading) {
             CircularProgressIndicator(color = Color.White, modifier = Modifier.padding(top = 32.dp))
+        }
+        viewModel.statusMessage?.let {
+            Text(it, color = Color.White.copy(alpha = 0.9f), modifier = Modifier.padding(top = 20.dp))
         }
         viewModel.errorMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(top = 20.dp))

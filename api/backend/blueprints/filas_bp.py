@@ -4,11 +4,12 @@ equivalentes Android estão em `api_bp.py` (`POST /api/v1/senha`) e no
 from flask import Blueprint, make_response, redirect, render_template, request, send_file, url_for
 
 from backend.auth import create_session_token, login_required
-from backend.models import Impressora, Operador, Senha, Setor
+from backend.models import Operador, Senha, Setor
 from backend.services.fila_service import FilaError, criar_senha, estado_atendimento_atual, verificar_senha
-from backend.services.impressao_service import imprimir_senha_com_ip
+from backend.services.impressao_service import despachar_impressao_senha
 from backend.sockets.emitters import broadcast_posicao_fila, emit_fila_atualizada
 from backend.utils import gerar_qr_code_bytes, get_notification_url
+
 
 filas_bp = Blueprint("filas", __name__)
 
@@ -26,31 +27,20 @@ def retirar_senha(tipo):
     if not setor_id:
         return "Setor não selecionado."
 
-    impressora_ip = request.cookies.get("end_impressora_local")
-    if not impressora_ip:
-        impressora = Impressora.query.filter_by(setor_id=setor_id).first()
-        impressora_ip = impressora.ip if impressora else None
-
     try:
         senha = criar_senha(int(setor_id), tipo)
     except FilaError as exc:
         return str(exc), 400
 
     setor = Setor.query.get(int(setor_id))
-    if impressora_ip:
-        imprimir_senha_com_ip(
-            senha.senha, impressora_ip,
-            nome_setor=setor.nome if setor else "Setor",
-            descricao_setor=setor.descricao if setor else "",
-            token_unico=senha.token_unico,
-        )
+    # Web legado: impressão via cliente só funciona no APK; aqui só imprime no servidor
+    # quando o setor NÃO está em modo impressao_via_cliente.
+    despachar_impressao_senha(setor, senha)
 
     emit_fila_atualizada(int(setor_id))
     broadcast_posicao_fila(int(setor_id))
 
     resp = make_response(redirect(url_for("filas.render_senhas")))
-    if impressora_ip:
-        resp.set_cookie("end_impressora_local", impressora_ip)
     resp.set_cookie("setor_id", str(setor_id))
     return resp
 

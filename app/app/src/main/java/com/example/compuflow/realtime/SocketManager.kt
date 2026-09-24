@@ -2,6 +2,7 @@ package com.example.compuflow.realtime
 
 import android.util.Log
 import com.example.compuflow.data.remote.dto.AtendimentoDto
+import com.example.compuflow.data.remote.dto.ImpressaoClienteDto
 import com.example.compuflow.data.remote.dto.PropagandaImagemDto
 import com.example.compuflow.data.remote.dto.SenhaDto
 import com.example.compuflow.data.remote.dto.StreamingQueueItemDto
@@ -255,6 +256,16 @@ private fun JSONObject.optIntOrNull(key: String): Int? =
 
 private fun JSONObject?.toSenhaDto(): SenhaDto {
     val obj = this ?: JSONObject()
+    val impressaoObj = obj.optJSONObject("impressao")
+    val impressao = impressaoObj?.let {
+        ImpressaoClienteDto(
+            via_cliente = it.optBoolean("via_cliente", false),
+            impressora_ip = it.optStringOrNull("impressora_ip"),
+            impressora_porta = it.optInt("impressora_porta", 9100),
+            escpos_base64 = it.optStringOrNull("escpos_base64"),
+            erro = it.optStringOrNull("erro"),
+        )
+    }
     return SenhaDto(
         id = obj.optInt("id"),
         senha = obj.optString("senha"),
@@ -265,6 +276,7 @@ private fun JSONObject?.toSenhaDto(): SenhaDto {
         tem_pedido = obj.optBoolean("tem_pedido", false),
         pedido = obj.optStringOrNull("pedido"),
         pedido_confirmado = obj.optBoolean("pedido_confirmado", false),
+        impressao = impressao,
     )
 }
 

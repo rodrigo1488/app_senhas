@@ -262,6 +262,7 @@ def _init_database(app: Flask) -> None:
     _migrate_tv_layout_column()
     _migrate_tv_orientacao_column()
     _migrate_tipo_setor_column()
+    _migrate_impressao_via_cliente_column()
     _migrate_usuario_papeis()
 
     is_sqlite = db.engine.dialect.name == "sqlite"
@@ -420,6 +421,27 @@ def _migrate_tipo_setor_column() -> None:
                 "WHERE tipo_setor IS NULL OR tipo_setor = ''"
             )
         )
+
+
+def _migrate_impressao_via_cliente_column() -> None:
+    """Toggle por setor: impressão do cupom pelo tablet do cliente (LAN local)."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    if "setores" not in inspector.get_table_names():
+        return
+    setores_columns = {column["name"] for column in inspector.get_columns("setores")}
+    if_not_exists = "IF NOT EXISTS " if db.engine.dialect.name == "postgresql" else ""
+    bool_default = "FALSE" if db.engine.dialect.name == "postgresql" else "0"
+
+    with db.engine.begin() as conn:
+        if "impressao_via_cliente" not in setores_columns:
+            conn.execute(
+                text(
+                    f"ALTER TABLE setores ADD COLUMN {if_not_exists}"
+                    f"impressao_via_cliente BOOLEAN NOT NULL DEFAULT {bool_default}"
+                )
+            )
 
 
 def _backfill_setor_propagandas() -> None:

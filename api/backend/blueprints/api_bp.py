@@ -23,7 +23,7 @@ from backend.auth import (
     create_operator_action_token,
     create_session_token,
 )
-from backend.models import AtendimentoAtual, Impressora, Operador, Senha, Setor, setor_eh_streaming
+from backend.models import AtendimentoAtual, Operador, Senha, Setor, setor_eh_streaming
 from backend.services.tv_config_service import serializar_cliente_config, serializar_tv_config
 from backend.services.avaliacao_service import (
     AvaliacaoError,
@@ -43,7 +43,7 @@ from backend.services.fila_service import (
     salvar_pedido,
     serializar_fila,
 )
-from backend.services.impressao_service import imprimir_senha_em_background
+from backend.services.impressao_service import despachar_impressao_senha
 from backend.services.operador_pin_service import identificar_operador_por_pin
 from backend.sockets.emitters import (
     broadcast_posicao_fila,
@@ -358,19 +358,15 @@ def criar_senha_route(session_payload):
         return jsonify({"error": str(exc)}), 400
 
     setor = Setor.query.get(setor_id)
-    impressora = Impressora.query.filter_by(setor_id=setor_id).first()
-    if impressora:
-        imprimir_senha_em_background(
-            senha.senha, impressora.ip,
-            nome_setor=setor.nome if setor else "Setor",
-            descricao_setor=setor.descricao if setor else "",
-            token_unico=senha.token_unico,
-        )
+    payload = senha.to_dict()
+    impressao = despachar_impressao_senha(setor, senha)
+    if impressao is not None:
+        payload["impressao"] = impressao
 
     emit_fila_atualizada(setor_id)
     broadcast_posicao_fila(setor_id)
 
-    return jsonify(senha.to_dict())
+    return jsonify(payload)
 
 
 @api_bp.route("/senha/pedido", methods=["POST"])

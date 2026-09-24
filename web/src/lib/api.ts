@@ -78,6 +78,7 @@ export type Setor = {
   modo_identificacao_operador: "foto" | "pin";
   propagandas_ativas: boolean;
   propagandas_cliente_ativas?: boolean;
+  impressao_via_cliente?: boolean;
   propaganda_ids_cliente?: number[];
   layout_tv_web: "propaganda" | "fila";
   orientacao_tv: "horizontal" | "vertical";

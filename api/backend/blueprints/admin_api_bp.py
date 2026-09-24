@@ -118,6 +118,7 @@ def _setor_admin_dict(setor: Setor, *, ocultar_senha: bool = False) -> dict:
         "modo_identificacao_operador": setor.modo_identificacao_operador or "foto",
         "propagandas_ativas": bool(setor.propagandas_ativas),
         "propagandas_cliente_ativas": bool(setor.propagandas_cliente_ativas),
+        "impressao_via_cliente": bool(setor.impressao_via_cliente),
         "propaganda_ids_cliente": propaganda_ids_cliente(setor.id),
         "layout_tv_web": setor.layout_tv_web or "propaganda",
         "orientacao_tv": setor.orientacao_tv or "horizontal",
@@ -540,6 +541,9 @@ def create_setor():
         modo_identificacao_operador=modo,
         propagandas_ativas=bool(data.get("propagandas_ativas", False)),
         propagandas_cliente_ativas=cliente_ativas,
+        impressao_via_cliente=False if tipo_setor == TIPO_SETOR_STREAMING else bool(
+            data.get("impressao_via_cliente", False)
+        ),
         layout_tv_web=layout_tv_web,
         orientacao_tv=orientacao_tv,
     )
@@ -563,6 +567,7 @@ def update_setor(setor_id: int):
         allowed = {
             "propagandas_ativas",
             "propagandas_cliente_ativas",
+            "impressao_via_cliente",
             "layout_tv_web",
             "orientacao_tv",
             "modo_identificacao_operador",
@@ -591,6 +596,7 @@ def update_setor(setor_id: int):
             setor.layout_tv_web = "propaganda"
             setor.modo_identificacao_operador = "foto"
             setor.propagandas_cliente_ativas = False
+            setor.impressao_via_cliente = False
         setor.tipo_setor = tipo_setor
     if "modo_identificacao_operador" in data and not setor_eh_streaming(setor):
         try:
@@ -604,6 +610,8 @@ def update_setor(setor_id: int):
         setor.propagandas_ativas = bool(data.get("propagandas_ativas"))
     if "propagandas_cliente_ativas" in data and not setor_eh_streaming(setor):
         setor.propagandas_cliente_ativas = bool(data.get("propagandas_cliente_ativas"))
+    if "impressao_via_cliente" in data and not setor_eh_streaming(setor):
+        setor.impressao_via_cliente = bool(data.get("impressao_via_cliente"))
     if "layout_tv_web" in data and not setor_eh_streaming(setor):
         try:
             setor.layout_tv_web = _layout_tv_web(data.get("layout_tv_web"))

@@ -12,6 +12,7 @@ import com.example.compuflow.data.remote.NetworkModule
 import com.example.compuflow.data.remote.dto.CriarSenhaRequest
 import com.example.compuflow.data.remote.dto.PropagandaImagemDto
 import com.example.compuflow.data.remote.toUserMessage
+import com.example.compuflow.print.ThermalNetworkPrinter
 import com.example.compuflow.realtime.SocketEvent
 import com.example.compuflow.realtime.SocketManager
 import kotlinx.coroutines.Job
@@ -24,6 +25,8 @@ class ClienteViewModel : ViewModel() {
     var isLoading by mutableStateOf(false)
         private set
     var errorMessage by mutableStateOf<String?>(null)
+        private set
+    var statusMessage by mutableStateOf<String?>(null)
         private set
     var imagens by mutableStateOf<List<PropagandaImagemDto>>(emptyList())
         private set
@@ -57,10 +60,18 @@ class ClienteViewModel : ViewModel() {
     fun criarSenha(tipoSenha: String) {
         if (isLoading) return
         errorMessage = null
+        statusMessage = null
         isLoading = true
         viewModelScope.launch {
             try {
-                NetworkModule.apiService().criarSenha(CriarSenhaRequest(tipoSenha))
+                val criada = NetworkModule.apiService().criarSenha(CriarSenhaRequest(tipoSenha))
+                val printResult = ThermalNetworkPrinter.enviarSeNecessario(criada.impressao)
+                if (printResult.isFailure) {
+                    errorMessage = printResult.exceptionOrNull()?.message
+                        ?: "Senha gerada, mas a impressão falhou."
+                } else if (criada.impressao?.via_cliente == true) {
+                    statusMessage = "Senha ${criada.senha} impressa"
+                }
             } catch (e: Exception) {
                 errorMessage = e.toUserMessage("Não foi possível retirar a senha.")
             } finally {

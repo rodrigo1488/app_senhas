@@ -37,8 +37,10 @@ def emit_fila_atualizada(setor_id: int) -> None:
     )
 
 
-def emit_senha_criada(senha: Senha, to_sid: str | None = None) -> None:
+def emit_senha_criada(senha: Senha, to_sid: str | None = None, impressao: dict | None = None) -> None:
     payload = senha.to_dict()
+    if impressao is not None:
+        payload["impressao"] = impressao
     if to_sid:
         socketio.emit(EV_SENHA_CRIADA, payload, room=to_sid)
     else:

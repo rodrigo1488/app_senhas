@@ -13,7 +13,7 @@ from flask_socketio import emit, join_room
 
 from backend.auth import decode_session_token
 from backend.extensions import socketio
-from backend.models import AtendimentoAtual, Impressora, Operador, Senha, Setor
+from backend.models import AtendimentoAtual, Operador, Senha, Setor
 from backend.services.avaliacao_service import AvaliacaoError, registrar_avaliacao
 from backend.services.fila_service import (
     FilaError,
@@ -24,7 +24,7 @@ from backend.services.fila_service import (
     posicao_na_fila,
     salvar_pedido,
 )
-from backend.services.impressao_service import imprimir_senha_com_ip
+from backend.services.impressao_service import despachar_impressao_senha
 from backend.sockets.emitters import (
     broadcast_posicao_fila,
     emit_avaliacao_solicitada,
@@ -189,19 +189,11 @@ def handle_cliente_criar_senha(data):
     tipo = (data or {}).get("tipo", "normal")
     senha = criar_senha(setor_id, tipo)
     join_room(room_ticket(senha.token_unico))
-    emit_senha_criada(senha, to_sid=request.sid)
+    setor = Setor.query.get(setor_id)
+    impressao = despachar_impressao_senha(setor, senha)
+    emit_senha_criada(senha, to_sid=request.sid, impressao=impressao)
     emit_fila_atualizada(setor_id)
     broadcast_posicao_fila(setor_id)
-
-    impressora = Impressora.query.filter_by(setor_id=setor_id).first()
-    if impressora:
-        setor = Setor.query.get(setor_id)
-        imprimir_senha_com_ip(
-            senha.senha, impressora.ip,
-            nome_setor=setor.nome if setor else "Setor",
-            descricao_setor=setor.descricao if setor else "",
-            token_unico=senha.token_unico,
-        )
 
 
 @socketio.on("cliente:salvar_pedido")

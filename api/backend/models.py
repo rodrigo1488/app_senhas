@@ -57,6 +57,9 @@ class Setor(db.Model):
     modo_identificacao_operador = db.Column(db.String(10), nullable=False, default="foto")
     propagandas_ativas = db.Column(db.Boolean, nullable=False, default=False)
     propagandas_cliente_ativas = db.Column(db.Boolean, nullable=False, default=False)
+    # Quando True, o tablet do cliente (APK) envia o cupom à impressora na LAN
+    # local; o servidor (ex.: atrás de túnel) não tenta abrir TCP na impressora.
+    impressao_via_cliente = db.Column(db.Boolean, nullable=False, default=False)
     layout_tv_web = db.Column(db.String(20), nullable=False, default="propaganda")
     orientacao_tv = db.Column(db.String(20), nullable=False, default="horizontal")
 
@@ -87,6 +90,7 @@ class Setor(db.Model):
             "modo_identificacao_operador": self.modo_identificacao_operador or "foto",
             "propagandas_ativas": bool(self.propagandas_ativas),
             "propagandas_cliente_ativas": bool(self.propagandas_cliente_ativas),
+            "impressao_via_cliente": bool(self.impressao_via_cliente),
             "layout_tv_web": self.layout_tv_web or "propaganda",
             "orientacao_tv": self.orientacao_tv or "horizontal",
         }

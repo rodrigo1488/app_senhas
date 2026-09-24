@@ -17,6 +17,7 @@ export default function SetoresPage() {
   const [modoIdentificacao, setModoIdentificacao] = useState<"foto" | "pin">("foto");
   const [propagandasAtivas, setPropagandasAtivas] = useState(false);
   const [propagandasClienteAtivas, setPropagandasClienteAtivas] = useState(false);
+  const [impressaoViaCliente, setImpressaoViaCliente] = useState(false);
   const [layoutTvWeb, setLayoutTvWeb] = useState<"propaganda" | "fila">("propaganda");
   const [orientacaoTv, setOrientacaoTv] = useState<"horizontal" | "vertical">("horizontal");
   const [tipoSetor, setTipoSetor] = useState<"atendimento" | "streaming">("atendimento");
@@ -39,6 +40,7 @@ export default function SetoresPage() {
     setModoIdentificacao(setor.modo_identificacao_operador || "foto");
     setPropagandasAtivas(Boolean(setor.propagandas_ativas));
     setPropagandasClienteAtivas(Boolean(setor.propagandas_cliente_ativas));
+    setImpressaoViaCliente(Boolean(setor.impressao_via_cliente));
     setLayoutTvWeb(setor.layout_tv_web || "propaganda");
     setOrientacaoTv(setor.orientacao_tv || "horizontal");
     setTipoSetor(setor.tipo_setor === "streaming" ? "streaming" : "atendimento");
@@ -52,6 +54,7 @@ export default function SetoresPage() {
     setModoIdentificacao("foto");
     setPropagandasAtivas(false);
     setPropagandasClienteAtivas(false);
+    setImpressaoViaCliente(false);
     setLayoutTvWeb("propaganda");
     setOrientacaoTv("horizontal");
     setTipoSetor("atendimento");
@@ -70,6 +73,7 @@ export default function SetoresPage() {
         modo_identificacao_operador: tipoSetor === "streaming" ? "foto" : modoIdentificacao,
         propagandas_ativas: propagandasAtivas,
         propagandas_cliente_ativas: tipoSetor === "streaming" ? false : propagandasClienteAtivas,
+        impressao_via_cliente: tipoSetor === "streaming" ? false : impressaoViaCliente,
         layout_tv_web: tipoSetor === "streaming" ? "propaganda" : layoutTvWeb,
         orientacao_tv: orientacaoTv,
       });
@@ -182,6 +186,7 @@ export default function SetoresPage() {
               <Label htmlFor="propagandas_ativas">Propagandas na TV</Label>
             </div>
             {tipoSetor === "atendimento" ? (
+            <>
             <div className="flex items-center gap-3 space-y-0 pt-8">
               <input
                 id="propagandas_cliente_ativas"
@@ -192,6 +197,23 @@ export default function SetoresPage() {
               />
               <Label htmlFor="propagandas_cliente_ativas">Propagandas na espera do cliente</Label>
             </div>
+            <div className="flex items-center gap-3 space-y-0 pt-8 md:col-span-2">
+              <input
+                id="impressao_via_cliente"
+                type="checkbox"
+                className="h-4 w-4 rounded border"
+                checked={impressaoViaCliente}
+                onChange={(e) => setImpressaoViaCliente(e.target.checked)}
+              />
+              <div>
+                <Label htmlFor="impressao_via_cliente">Imprimir senhas pelo tablet do cliente</Label>
+                <p className="text-sm text-muted-foreground">
+                  Use quando a API está atrás de um túnel e não enxerga a impressora. O APK
+                  envia o cupom pela rede local do tablet (cadastre a impressora do setor).
+                </p>
+              </div>
+            </div>
+            </>
             ) : null}
             {tipoSetor === "atendimento" ? (
             <fieldset className="space-y-3 md:col-span-2">
