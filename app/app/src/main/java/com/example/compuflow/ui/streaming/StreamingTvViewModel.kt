@@ -25,6 +25,7 @@ class StreamingTvViewModel : ViewModel() {
     var queue by mutableStateOf<List<StreamingQueueItemDto>>(emptyList())
     var intervaloMs by mutableLongStateOf(15_000L)
     var imagemIndex by mutableIntStateOf(0)
+    var orientacaoTv by mutableStateOf("horizontal")
     var errorMessage by mutableStateOf<String?>(null)
 
     private var rotationJob: Job? = null
@@ -33,6 +34,9 @@ class StreamingTvViewModel : ViewModel() {
 
     val currentItem: StreamingQueueItemDto?
         get() = queue.getOrNull(imagemIndex)
+
+    val isVertical: Boolean
+        get() = orientacaoTv == "vertical"
 
     init {
         viewModelScope.launch {
@@ -45,7 +49,10 @@ class StreamingTvViewModel : ViewModel() {
         viewModelScope.launch {
             SocketManager.events.collect { event ->
                 when (event) {
-                    is SocketEvent.QueueUpdated -> applyQueue(event.queue)
+                    is SocketEvent.QueueUpdated -> {
+                        applyOrientacao(event.orientacaoTv)
+                        applyQueue(event.queue)
+                    }
                     is SocketEvent.Connected -> refreshFila(silent = true)
                     else -> Unit
                 }
@@ -65,6 +72,7 @@ class StreamingTvViewModel : ViewModel() {
             val response = NetworkModule.apiService().tvStreamingFila()
             tvNome = response.dispositivo?.nome.orEmpty().ifBlank { tvNome }
             intervaloMs = response.intervalo_ms.coerceAtLeast(1_000L)
+            applyOrientacao(response.orientacao_tv)
             applyQueue(response.queue)
             errorMessage = null
         } catch (e: Exception) {
@@ -72,6 +80,10 @@ class StreamingTvViewModel : ViewModel() {
                 errorMessage = e.toUserMessage("Não foi possível carregar as mídias.")
             }
         }
+    }
+
+    private fun applyOrientacao(valor: String?) {
+        orientacaoTv = if (valor.equals("vertical", ignoreCase = true)) "vertical" else "horizontal"
     }
 
     private fun applyQueue(items: List<StreamingQueueItemDto>) {

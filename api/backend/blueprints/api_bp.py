@@ -292,6 +292,7 @@ def setor_tv_streaming_entrar(session_payload):
             ),
             "queue": fila_streaming(dispositivo),
             "intervalo_ms": INTERVALO_IMAGEM_MS,
+            "orientacao_tv": setor.orientacao_tv or "horizontal",
         }
     )
 
@@ -318,6 +319,7 @@ def setor_tv_streaming_fila(session_payload):
         return jsonify({"error": "TV de streaming não encontrada"}), 404
 
     marcar_online(dispositivo.chave, None)
+    setor = Setor.query.get(dispositivo.setor_id) if dispositivo.setor_id else None
     return jsonify(
         {
             "dispositivo": {
@@ -327,6 +329,7 @@ def setor_tv_streaming_fila(session_payload):
             },
             "queue": fila_streaming(dispositivo),
             "intervalo_ms": INTERVALO_IMAGEM_MS,
+            "orientacao_tv": (setor.orientacao_tv if setor else None) or "horizontal",
         }
     )
 

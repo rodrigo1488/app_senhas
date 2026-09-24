@@ -224,6 +224,7 @@ data class StreamingEntrarResponse(
     val dispositivo: StreamingDispositivoDto,
     val queue: List<StreamingQueueItemDto> = emptyList(),
     val intervalo_ms: Long = 15_000,
+    val orientacao_tv: String = "horizontal",
 )
 
 @Serializable
@@ -231,6 +232,7 @@ data class StreamingFilaResponse(
     val dispositivo: StreamingDispositivoDto? = null,
     val queue: List<StreamingQueueItemDto> = emptyList(),
     val intervalo_ms: Long = 15_000,
+    val orientacao_tv: String = "horizontal",
 )
 
 @Serializable

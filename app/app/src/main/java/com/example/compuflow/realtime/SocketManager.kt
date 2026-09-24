@@ -106,6 +106,7 @@ object SocketManager {
             _events.tryEmit(
                 SocketEvent.QueueUpdated(
                     queue = obj.optJSONArray("queue").toStreamingQueueList(),
+                    orientacaoTv = obj.optString("orientacao_tv", "horizontal").ifBlank { "horizontal" },
                 )
             )
         })

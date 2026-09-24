@@ -120,7 +120,12 @@ def substituir_fila_dispositivo(dispositivo: TvDispositivo, propaganda_ids: list
 
 
 def emitir_fila_streaming(dispositivo: TvDispositivo) -> None:
-    socketio.emit("queue_updated", {"queue": fila_streaming(dispositivo)}, room=dispositivo.chave)
+    orientacao = _orientacao_do_dispositivo(dispositivo)
+    socketio.emit(
+        "queue_updated",
+        {"queue": fila_streaming(dispositivo), "orientacao_tv": orientacao},
+        room=dispositivo.chave,
+    )
 
 
 def emitir_filas_streaming_do_setor(setor_id: int) -> None:

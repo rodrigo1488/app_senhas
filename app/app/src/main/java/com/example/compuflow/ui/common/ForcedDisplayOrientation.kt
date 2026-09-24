@@ -17,9 +17,13 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 
 /**
- * Trava a Activity na orientação pedida e, se o TV box ignorar a rotação do
- * sistema (comum: framebuffer continua landscape), gira o conteúdo em Compose
- * para a tela fisicamente vertical/horizontal bater com o layout.
+ * Quando [portrait] é true: tenta travar a Activity em retrato e, se o TV box
+ * ignorar a rotação do sistema (framebuffer continua landscape), gira o
+ * conteúdo em Compose −90° para preencher o monitor em pé.
+ *
+ * Quando [portrait] é false: não força landscape (em vários TV boxes isso
+ * cortava a tela) — só libera qualquer travamento anterior e desenha em
+ * tela cheia como antes.
  */
 @Composable
 fun ForcedDisplayOrientation(
@@ -30,11 +34,10 @@ fun ForcedDisplayOrientation(
     DisposableEffect(portrait) {
         val activity = context.findActivity()
         val previous = activity?.requestedOrientation
-        // Travado (não SENSOR): TV box costuma não ter acelerômetro.
-        activity?.requestedOrientation = if (portrait) {
-            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        if (portrait) {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         } else {
-            ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
         onDispose {
             activity?.requestedOrientation =
@@ -42,23 +45,25 @@ fun ForcedDisplayOrientation(
         }
     }
 
+    if (!portrait) {
+        content()
+        return
+    }
+
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        val windowIsPortrait = maxHeight >= maxWidth
-        val needsSoftwareRotate = portrait != windowIsPortrait
-        if (!needsSoftwareRotate) {
+        val windowIsLandscape = maxWidth > maxHeight
+        if (!windowIsLandscape) {
             content()
             return@BoxWithConstraints
         }
 
-        // Monitor em pé + SO em landscape: gira o UI -90° para o "topo" do
-        // layout apontar para o topo físico do monitor (montagem CW típica).
-        val rotation = if (portrait) -90f else 90f
+        // Monitor em pé + SO em landscape: gira o UI −90° (montagem CW típica).
         Box(
             modifier = Modifier
                 .requiredWidth(maxHeight)
                 .requiredHeight(maxWidth)
                 .align(Alignment.Center)
-                .graphicsLayer { rotationZ = rotation },
+                .graphicsLayer { rotationZ = -90f },
         ) {
             content()
         }

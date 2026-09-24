@@ -9,12 +9,14 @@ import androidx.compose.runtime.key
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.compuflow.data.remote.NetworkModule
 import com.example.compuflow.data.remote.dto.PropagandaImagemDto
 import com.example.compuflow.data.remote.dto.StreamingQueueItemDto
+import com.example.compuflow.ui.common.ForcedDisplayOrientation
 import com.example.compuflow.ui.tv.TvMediaSlide
 
 @Composable
@@ -23,45 +25,50 @@ fun StreamingTvScreen(viewModel: StreamingTvViewModel = viewModel()) {
     val index = viewModel.imagemIndex
     val queue = viewModel.queue
     val item = queue.getOrNull(index)
+    val vertical = viewModel.isVertical
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Black),
-        contentAlignment = Alignment.Center,
-    ) {
-        when {
-            viewModel.errorMessage != null && queue.isEmpty() -> {
-                Text(
-                    text = viewModel.errorMessage ?: "",
-                    color = Color.White.copy(alpha = 0.8f),
-                    fontSize = 20.sp,
-                    textAlign = TextAlign.Center,
-                )
-            }
-            item == null -> {
-                Text(
-                    text = if (viewModel.tvNome.isNotBlank()) {
-                        "TV ${viewModel.tvNome}\nAguardando mídias do admin…"
-                    } else {
-                        "Aguardando mídias do admin…"
-                    },
-                    color = Color.White.copy(alpha = 0.55f),
-                    fontSize = 22.sp,
-                    textAlign = TextAlign.Center,
-                )
-            }
-            else -> {
-                key(index, item.path, item.type) {
-                    val slide = item.toPropagandaDto(index)
-                    TvMediaSlide(
-                        item = slide,
-                        mediaUrl = streamingMediaUrl(item.path),
-                        loop = queue.size <= 1,
-                        onEnded = { viewModel.onMediaEnded() },
-                        emptyLabel = "Sem mídia",
-                        modifier = Modifier.fillMaxSize(),
+    ForcedDisplayOrientation(portrait = vertical) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Black),
+            contentAlignment = Alignment.Center,
+        ) {
+            when {
+                viewModel.errorMessage != null && queue.isEmpty() -> {
+                    Text(
+                        text = viewModel.errorMessage ?: "",
+                        color = Color.White.copy(alpha = 0.8f),
+                        fontSize = 20.sp,
+                        textAlign = TextAlign.Center,
                     )
+                }
+                item == null -> {
+                    Text(
+                        text = if (viewModel.tvNome.isNotBlank()) {
+                            "TV ${viewModel.tvNome}\nAguardando mídias do admin…"
+                        } else {
+                            "Aguardando mídias do admin…"
+                        },
+                        color = Color.White.copy(alpha = 0.55f),
+                        fontSize = 22.sp,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                else -> {
+                    key(index, item.path, item.type, vertical) {
+                        val slide = item.toPropagandaDto(index)
+                        TvMediaSlide(
+                            item = slide,
+                            mediaUrl = streamingMediaUrl(item.path),
+                            loop = queue.size <= 1,
+                            onEnded = { viewModel.onMediaEnded() },
+                            emptyLabel = "Sem mídia",
+                            // Fit: com enquadramento 9:16/16:9 no backend, preenche sem cortar.
+                            contentScale = ContentScale.Fit,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
             }
         }

@@ -73,6 +73,7 @@ sealed class SocketEvent {
 
     data class QueueUpdated(
         val queue: List<StreamingQueueItemDto>,
+        val orientacaoTv: String = "horizontal",
     ) : SocketEvent()
 
     data class AuthErro(val mensagem: String?) : SocketEvent()
