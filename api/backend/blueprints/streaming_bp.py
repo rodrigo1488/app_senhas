@@ -6,7 +6,7 @@ from datetime import datetime
 from flask import Blueprint, current_app, jsonify, render_template, request, send_file, send_from_directory
 from werkzeug.utils import safe_join
 
-from backend.utils import bytes_imagem_enquadrada_tv, normalizar_orientacao_tv
+from backend.utils import bytes_imagem_enquadrada_tv, normalizar_orientacao_tv, video_enquadrado_tv
 
 from backend.extensions import db
 from backend.models import TvDispositivo
@@ -41,20 +41,25 @@ def streaming_legacy():
 
 
 _IMAGE_EXT = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
+_VIDEO_EXT = {".mp4"}
 
 
 @streaming_bp.route("/media/<path:filename>")
 def serve_media(filename):
     ext = os.path.splitext(filename)[1].lower()
-    if ext in _IMAGE_EXT:
-        filepath = safe_join(current_app.config["UPLOAD_FOLDER"], filename)
-        if filepath and os.path.isfile(filepath):
-            bruto = (request.args.get("enquadre") or "1").strip().lower()
-            if bruto not in {"0", "false", "off", "none"}:
-                orientacao = normalizar_orientacao_tv(bruto)
-                data = bytes_imagem_enquadrada_tv(filepath, orientacao=orientacao)
-                if data is not None:
-                    return send_file(io.BytesIO(data), mimetype="image/jpeg", max_age=86400)
+    filepath = safe_join(current_app.config["UPLOAD_FOLDER"], filename)
+    bruto = (request.args.get("enquadre") or "1").strip().lower()
+    aplicar = bruto not in {"0", "false", "off", "none"}
+    if aplicar and filepath and os.path.isfile(filepath):
+        orientacao = normalizar_orientacao_tv(bruto)
+        if ext in _IMAGE_EXT:
+            data = bytes_imagem_enquadrada_tv(filepath, orientacao=orientacao)
+            if data is not None:
+                return send_file(io.BytesIO(data), mimetype="image/jpeg", max_age=86400)
+        elif ext in _VIDEO_EXT:
+            transcoded = video_enquadrado_tv(filepath, orientacao=orientacao)
+            if transcoded:
+                return send_file(transcoded, mimetype="video/mp4", max_age=86400, conditional=True)
     return send_from_directory(current_app.config["UPLOAD_FOLDER"], filename)
 
 

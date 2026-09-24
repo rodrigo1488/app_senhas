@@ -33,11 +33,14 @@ def media_public_path(arquivo: str, orientacao: str = "horizontal") -> str:
     if nome.startswith("media/"):
         nome = nome[len("media/") :]
     path = f"/media/{nome}"
-    # Troca a URL das imagens para o APK já instalado buscar a versão enquadrada
-    # na orientação do setor (16:9 deitado ou 9:16 em pé).
-    if not nome.lower().endswith(".mp4"):
-        modo = normalizar_orientacao_tv(orientacao)
-        path = f"{path}?enquadre={'vertical' if modo == 'vertical' else '1'}"
+    # Troca a URL para o APK já instalado (landscape + crop) buscar a versão
+    # enquadrada. Em vertical o backend gira −90° e entrega 16:9 (imagem e MP4).
+    modo = normalizar_orientacao_tv(orientacao)
+    if nome.lower().endswith(".mp4"):
+        if modo == "vertical":
+            path = f"{path}?enquadre=vertical"
+        return path
+    path = f"{path}?enquadre={'vertical' if modo == 'vertical' else '1'}"
     return path
 
 

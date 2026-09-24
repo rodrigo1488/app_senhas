@@ -25,6 +25,7 @@ RUN apt-get update \
         libpq-dev \
         fonts-dejavu-core \
         tzdata \
+        ffmpeg \
     && ln -snf /usr/share/zoneinfo/$TZ /etc/localtime \
     && echo $TZ > /etc/timezone \
     && rm -rf /var/lib/apt/lists/*

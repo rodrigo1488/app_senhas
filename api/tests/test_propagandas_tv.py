@@ -638,28 +638,37 @@ class PropagandasTvTest(unittest.TestCase):
             os.makedirs(folder, exist_ok=True)
             vertical = os.path.join(folder, "vertical-tela-pe.png")
             horizontal = os.path.join(folder, "horizontal-tela-pe.jpg")
-            Image.new("RGB", (90, 160), (255, 0, 0)).save(vertical)
+            retrato = Image.new("RGB", (90, 160), (0, 0, 255))
+            for y in range(10):
+                for x in range(90):
+                    retrato.putpixel((x, y), (255, 0, 0))
+            retrato.save(vertical)
             Image.new("RGB", (160, 90), (0, 255, 0)).save(horizontal, "JPEG")
 
         try:
             client = self.app.test_client()
             portrait = client.get("/media/vertical-tela-pe.png?enquadre=vertical")
             self.assertEqual(200, portrait.status_code)
-            original = Image.open(io.BytesIO(portrait.data))
-            self.assertEqual((90, 160), original.size)
-            original.close()
+            self.assertEqual("image/jpeg", portrait.mimetype)
+            img = Image.open(io.BytesIO(portrait.data))
+            self.assertAlmostEqual(img.width / img.height, 16 / 9, places=2)
+            # Topo do retrato (vermelho) vira a esquerda após −90°, como na TV de senhas.
+            self.assertGreater(img.getpixel((2, img.height // 2))[0], 240)
+            self.assertLess(img.getpixel((img.width // 2, img.height // 2))[0], 16)
+            self.assertGreater(img.getpixel((img.width // 2, img.height // 2))[2], 240)
+            img.close()
             portrait.close()
 
             landscape = client.get("/media/horizontal-tela-pe.jpg?enquadre=vertical")
             self.assertEqual(200, landscape.status_code)
             self.assertEqual("image/jpeg", landscape.mimetype)
             img = Image.open(io.BytesIO(landscape.data))
-            self.assertAlmostEqual(img.width / img.height, 9 / 16, places=2)
+            self.assertAlmostEqual(img.width / img.height, 16 / 9, places=2)
             centro = img.getpixel((img.width // 2, img.height // 2))
             self.assertLess(centro[0], 16)
             self.assertGreater(centro[1], 240)
             self.assertLess(centro[2], 16)
-            self.assertEqual((0, 0, 0), img.getpixel((img.width // 2, 2)))
+            self.assertEqual((0, 0, 0), img.getpixel((2, img.height // 2)))
             img.close()
             landscape.close()
         finally:
@@ -676,7 +685,8 @@ class PropagandasTvTest(unittest.TestCase):
             "/media/a.jpg?enquadre=vertical",
             media_public_path("a.jpg", "vertical"),
         )
-        self.assertEqual("/media/b.mp4", media_public_path("b.mp4", "vertical"))
+        self.assertEqual("/media/b.mp4", media_public_path("b.mp4"))
+        self.assertEqual("/media/b.mp4?enquadre=vertical", media_public_path("b.mp4", "vertical"))
 
         with self.app.app_context():
             setor = db.session.get(Setor, self.setor_id)

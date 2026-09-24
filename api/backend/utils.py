@@ -1,6 +1,8 @@
 """Utilitários diversos: imagens, QR Code, IP local, nome da empresa/ngrok."""
 import io
 import os
+import shutil
+import subprocess
 import threading
 import uuid
 
@@ -50,9 +52,9 @@ def process_propaganda_image(file) -> str | None:
     return process_image(file, max_size=(1920, 1920), quality=88)
 
 
-# O APK de propaganda usa recorte (crop). Em tela deitada a imagem retrato
-# ganha laterais pretas 16:9; em tela em pé a paisagem ganha faixas 9:16.
-# Assim o aparelho já instalado preenche a orientação certa sem novo APK.
+# TVs de mídia já instaladas ficam em landscape e recortam (crop). Sem novo APK:
+# horizontal = retrato vira JPEG 16:9 com laterais pretas;
+# vertical   = conteúdo em 9:16, girado −90° (igual à TV de senhas) e servido em 16:9.
 _TV_HORIZONTAL_RATIO = 16 / 9
 _TV_VERTICAL_RATIO = 9 / 16
 _enquadre_cache: dict[tuple, bytes] = {}
@@ -64,12 +66,12 @@ def normalizar_orientacao_tv(valor: str | None) -> str:
 
 
 def bytes_imagem_enquadrada_tv(filepath: str, orientacao: str = "horizontal") -> bytes | None:
-    """Enquadra a imagem no ratio da TV sem cortar o conteúdo.
+    """Enquadra a imagem para o APK de mídia (landscape + crop) sem cortar.
 
     Horizontal: retrato vira JPEG 16:9 com laterais pretas.
-    Vertical: paisagem vira JPEG 9:16 com faixas pretas em cima/baixo.
-    Retorna None se o arquivo já está na orientação da tela (ou não é imagem).
-    O original em disco não é alterado.
+    Vertical: monta 9:16, gira −90° (CW do monitor, igual à tela de senhas) e
+    devolve JPEG 16:9 — o aparelho preenche a tela deitada e o conteúdo aparece
+    em pé. O original em disco não é alterado.
     """
     try:
         stat = os.stat(filepath)
@@ -89,30 +91,15 @@ def bytes_imagem_enquadrada_tv(filepath: str, orientacao: str = "horizontal") ->
         return None
 
     try:
-        retrato = image.height > image.width
-        if modo == "vertical":
-            if retrato:
-                return None
-            target_ratio = _TV_VERTICAL_RATIO
-        else:
-            if not retrato:
-                return None
-            target_ratio = _TV_HORIZONTAL_RATIO
         rgb, mask = _rgb_com_mascara(image)
-        img_ratio = rgb.width / rgb.height
-        if img_ratio > target_ratio:
-            canvas_w = rgb.width
-            canvas_h = max(rgb.height, round(canvas_w / target_ratio))
+        if modo == "vertical":
+            canvas = _conter_em_ratio(rgb, mask, _TV_VERTICAL_RATIO)
+            # Mesmo −90° da tela de senhas (ForcedDisplayOrientation).
+            canvas = canvas.transpose(Image.Transpose.ROTATE_90)
         else:
-            canvas_h = rgb.height
-            canvas_w = max(rgb.width, round(canvas_h * target_ratio))
-        canvas = Image.new("RGB", (canvas_w, canvas_h), (0, 0, 0))
-        x = (canvas_w - rgb.width) // 2
-        y = (canvas_h - rgb.height) // 2
-        if mask is not None:
-            canvas.paste(rgb, (x, y), mask)
-        else:
-            canvas.paste(rgb, (x, y))
+            if rgb.height <= rgb.width:
+                return None
+            canvas = _conter_em_ratio(rgb, mask, _TV_HORIZONTAL_RATIO)
         buffer = io.BytesIO()
         canvas.save(buffer, format="JPEG", quality=88, optimize=True)
         data = buffer.getvalue()
@@ -127,6 +114,108 @@ def bytes_imagem_enquadrada_tv(filepath: str, orientacao: str = "horizontal") ->
             _enquadre_cache.clear()
         _enquadre_cache[key] = data
     return data
+
+
+def _conter_em_ratio(
+    rgb: Image.Image,
+    mask: Image.Image | None,
+    target_ratio: float,
+) -> Image.Image:
+    img_ratio = rgb.width / rgb.height
+    if img_ratio > target_ratio:
+        canvas_w = rgb.width
+        canvas_h = max(rgb.height, round(canvas_w / target_ratio))
+    else:
+        canvas_h = rgb.height
+        canvas_w = max(rgb.width, round(canvas_h * target_ratio))
+    canvas = Image.new("RGB", (canvas_w, canvas_h), (0, 0, 0))
+    x = (canvas_w - rgb.width) // 2
+    y = (canvas_h - rgb.height) // 2
+    if mask is not None:
+        canvas.paste(rgb, (x, y), mask)
+    else:
+        canvas.paste(rgb, (x, y))
+    return canvas
+
+
+def video_enquadrado_tv(filepath: str, orientacao: str = "horizontal") -> str | None:
+    """Transcodifica MP4 vertical para 16:9 girado −90°, com cache em disco.
+
+    Retorna o caminho do arquivo cacheado, ou None se não precisar / falhar.
+    """
+    if normalizar_orientacao_tv(orientacao) != "vertical":
+        return None
+    if not os.path.isfile(filepath):
+        return None
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        current_app.logger.warning("ffmpeg ausente; vídeo da TV vertical segue sem rotação")
+        return None
+
+    try:
+        stat = os.stat(filepath)
+    except OSError:
+        return None
+
+    cache_dir = os.path.join(os.path.dirname(filepath), ".enquadre")
+    os.makedirs(cache_dir, exist_ok=True)
+    base = os.path.basename(filepath)
+    cache_path = os.path.join(cache_dir, f"{base}.{stat.st_mtime_ns}.vertical.mp4")
+    if os.path.isfile(cache_path) and os.path.getsize(cache_path) > 0:
+        return cache_path
+
+    prefix = f"{base}."
+    for nome in os.listdir(cache_dir):
+        if nome.startswith(prefix) and nome.endswith(".vertical.mp4"):
+            antigo = os.path.join(cache_dir, nome)
+            if antigo != cache_path:
+                try:
+                    os.remove(antigo)
+                except OSError:
+                    pass
+
+    tmp_path = f"{cache_path}.tmp"
+    # 9:16 com contain + transpose=2 (90° anti-horário) = 16:9, igual à imagem.
+    filtro = (
+        "scale=1080:1920:force_original_aspect_ratio=decrease,"
+        "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,"
+        "transpose=2"
+    )
+    comando = [
+        ffmpeg,
+        "-y",
+        "-i",
+        filepath,
+        "-vf",
+        filtro,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "23",
+        "-an",
+        "-movflags",
+        "+faststart",
+        tmp_path,
+    ]
+    try:
+        subprocess.run(
+            comando,
+            check=True,
+            capture_output=True,
+            timeout=120,
+        )
+        os.replace(tmp_path, cache_path)
+    except Exception as exc:
+        current_app.logger.error(f"Erro ao girar vídeo de propaganda: {exc}")
+        try:
+            if os.path.isfile(tmp_path):
+                os.remove(tmp_path)
+        except OSError:
+            pass
+        return None
+    return cache_path
 
 
 def _rgb_com_mascara(image: Image.Image) -> tuple[Image.Image, Image.Image | None]:
