@@ -21,13 +21,14 @@ import com.example.compuflow.ui.tv.TvMediaSlide
 
 @Composable
 fun StreamingTvScreen(viewModel: StreamingTvViewModel = viewModel()) {
-    // Ler estados explicitamente para o Compose recompor ao avançar o índice.
     val index = viewModel.imagemIndex
     val queue = viewModel.queue
-    val item = queue.getOrNull(index)
-    val vertical = viewModel.isVertical
+    val preview = viewModel.previewItem
+    val item = preview ?: queue.getOrNull(index)
+    val rotation = viewModel.rotacaoTv
+    val showingPreview = preview != null
 
-    ForcedDisplayOrientation(portrait = vertical) {
+    ForcedDisplayOrientation(rotationDegrees = rotation) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
@@ -35,7 +36,7 @@ fun StreamingTvScreen(viewModel: StreamingTvViewModel = viewModel()) {
             contentAlignment = Alignment.Center,
         ) {
             when {
-                viewModel.errorMessage != null && queue.isEmpty() -> {
+                viewModel.errorMessage != null && queue.isEmpty() && preview == null -> {
                     Text(
                         text = viewModel.errorMessage ?: "",
                         color = Color.White.copy(alpha = 0.8f),
@@ -56,15 +57,21 @@ fun StreamingTvScreen(viewModel: StreamingTvViewModel = viewModel()) {
                     )
                 }
                 else -> {
-                    key(index, item.path, item.type, vertical) {
-                        val slide = item.toPropagandaDto(index)
+                    key(showingPreview, index, item.path, item.type, rotation) {
+                        val slide = item.toPropagandaDto(if (showingPreview) -1 else index)
                         TvMediaSlide(
                             item = slide,
                             mediaUrl = streamingMediaUrl(item.path),
-                            loop = queue.size <= 1,
-                            onEnded = { viewModel.onMediaEnded() },
+                            loop = !showingPreview && queue.size <= 1,
+                            onEnded = {
+                                if (showingPreview) {
+                                    viewModel.onPreviewEnded()
+                                } else {
+                                    viewModel.onMediaEnded()
+                                }
+                            },
                             emptyLabel = "Sem mídia",
-                            // Fit: mídia original; orientação física via ForcedDisplayOrientation.
+                            // Fit: mídia original; rotação física via ForcedDisplayOrientation.
                             contentScale = ContentScale.Fit,
                             modifier = Modifier.fillMaxSize(),
                         )

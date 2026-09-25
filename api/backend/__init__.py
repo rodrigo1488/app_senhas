@@ -264,6 +264,7 @@ def _init_database(app: Flask) -> None:
     _migrate_tipo_setor_column()
     _migrate_impressao_via_cliente_column()
     _migrate_tv_dispositivo_orientacao_column()
+    _migrate_tv_dispositivo_rotacao_column()
     _migrate_usuario_papeis()
 
     is_sqlite = db.engine.dialect.name == "sqlite"
@@ -497,6 +498,39 @@ def _migrate_tv_dispositivo_orientacao_column() -> None:
                         """
                     )
                 )
+
+
+def _migrate_tv_dispositivo_rotacao_column() -> None:
+    """Ângulo 0/90/180/270 por TV; migra a partir de orientacao_tv (vertical→90)."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    if "tv_dispositivos" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("tv_dispositivos")}
+    if "rotacao_tv" in columns:
+        return
+    if_not_exists = "IF NOT EXISTS " if db.engine.dialect.name == "postgresql" else ""
+
+    with db.engine.begin() as conn:
+        conn.execute(
+            text(
+                f"ALTER TABLE tv_dispositivos ADD COLUMN {if_not_exists}"
+                "rotacao_tv INTEGER NOT NULL DEFAULT 0"
+            )
+        )
+        if "orientacao_tv" in columns:
+            conn.execute(
+                text(
+                    """
+                    UPDATE tv_dispositivos
+                    SET rotacao_tv = CASE
+                        WHEN lower(trim(orientacao_tv)) = 'vertical' THEN 90
+                        ELSE 0
+                    END
+                    """
+                )
+            )
 
 
 def _backfill_setor_propagandas() -> None:

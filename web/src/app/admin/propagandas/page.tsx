@@ -23,6 +23,8 @@ export default function PropagandasPage() {
   const [tvAtiva, setTvAtiva] = useState<TvAdmin | null>(null);
   const [midiasTv, setMidiasTv] = useState<Set<number>>(new Set());
   const [savingTv, setSavingTv] = useState(false);
+  const [previewingTv, setPreviewingTv] = useState(false);
+  const [previewMsg, setPreviewMsg] = useState<string | null>(null);
   const [clienteAtivo, setClienteAtivo] = useState<Setor | null>(null);
   const [midiasCliente, setMidiasCliente] = useState<Set<number>>(new Set());
   const [savingCliente, setSavingCliente] = useState(false);
@@ -108,8 +110,15 @@ export default function PropagandasPage() {
   }
 
   function abrirTv(tv: TvAdmin) {
-    setTvAtiva(tv);
+    const rotacao =
+      tv.rotacao_tv === 90 || tv.rotacao_tv === 180 || tv.rotacao_tv === 270
+        ? tv.rotacao_tv
+        : tv.orientacao_tv === "vertical"
+          ? 90
+          : 0;
+    setTvAtiva({ ...tv, rotacao_tv: rotacao });
     setMidiasTv(new Set(tv.propaganda_ids));
+    setPreviewMsg(null);
   }
 
   function toggleMidiaTv(id: number) {
@@ -119,6 +128,11 @@ export default function PropagandasPage() {
       else next.add(id);
       return next;
     });
+  }
+
+  function rotacaoTvAtual(tv: TvAdmin): 0 | 90 | 180 | 270 {
+    if (tv.rotacao_tv === 90 || tv.rotacao_tv === 180 || tv.rotacao_tv === 270) return tv.rotacao_tv;
+    return tv.orientacao_tv === "vertical" ? 90 : 0;
   }
 
   async function salvarTv() {
@@ -131,11 +145,9 @@ export default function PropagandasPage() {
           method: "PUT",
           body: JSON.stringify({ setor_id: tvAtiva.setor_id ?? null }),
         });
-        await apiFetch(`/api/v1/admin/tvs/${tvAtiva.id}/orientacao`, {
+        await apiFetch(`/api/v1/admin/tvs/${tvAtiva.id}/rotacao`, {
           method: "PUT",
-          body: JSON.stringify({
-            orientacao_tv: tvAtiva.orientacao_tv === "vertical" ? "vertical" : "horizontal",
-          }),
+          body: JSON.stringify({ rotacao_tv: rotacaoTvAtual(tvAtiva) }),
         });
       }
       await apiFetch("/api/v1/admin/tvs/midias", {
@@ -152,6 +164,35 @@ export default function PropagandasPage() {
       setError(err instanceof Error ? err.message : "Erro ao enviar mídias para a TV");
     } finally {
       setSavingTv(false);
+    }
+  }
+
+  async function previewNaTv(propagandaId?: number) {
+    if (!tvAtiva || tvAtiva.tipo !== "streaming") return;
+    setPreviewingTv(true);
+    setPreviewMsg(null);
+    setError(null);
+    try {
+      // Garante rotação salva antes do preview (APK aplica o ângulo do evento).
+      await apiFetch(`/api/v1/admin/tvs/${tvAtiva.id}/rotacao`, {
+        method: "PUT",
+        body: JSON.stringify({ rotacao_tv: rotacaoTvAtual(tvAtiva) }),
+      });
+      const body: { propaganda_id?: number } = {};
+      if (propagandaId != null) body.propaganda_id = propagandaId;
+      await apiFetch(`/api/v1/admin/tvs/${tvAtiva.id}/preview`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      setPreviewMsg(
+        propagandaId != null
+          ? "Pré-visualização enviada para a TV (mídia selecionada)."
+          : "Pré-visualização enviada para a TV (primeira da fila).",
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao pré-visualizar na TV");
+    } finally {
+      setPreviewingTv(false);
     }
   }
 
@@ -532,24 +573,78 @@ export default function PropagandasPage() {
                     </select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="tv-orientacao">Orientação desta TV</Label>
+                    <Label htmlFor="tv-rotacao">Rotação desta TV</Label>
                     <select
-                      id="tv-orientacao"
+                      id="tv-rotacao"
                       className="flex h-10 w-full rounded-lg border border-input bg-card px-3 text-sm"
-                      value={tvAtiva.orientacao_tv === "vertical" ? "vertical" : "horizontal"}
-                      onChange={(e) =>
+                      value={String(rotacaoTvAtual(tvAtiva))}
+                      onChange={(e) => {
+                        const value = Number(e.target.value) as 0 | 90 | 180 | 270;
                         setTvAtiva({
                           ...tvAtiva,
-                          orientacao_tv: e.target.value === "vertical" ? "vertical" : "horizontal",
-                        })
-                      }
+                          rotacao_tv: value,
+                          orientacao_tv: value === 90 || value === 270 ? "vertical" : "horizontal",
+                        });
+                      }}
                     >
-                      <option value="horizontal">Horizontal (paisagem)</option>
-                      <option value="vertical">Vertical (retrato)</option>
+                      <option value="0">0° (paisagem)</option>
+                      <option value="90">90° (retrato CW)</option>
+                      <option value="180">180°</option>
+                      <option value="270">270° (retrato CCW)</option>
                     </select>
                     <p className="text-xs text-muted-foreground">
-                      Independente do setor. A imagem não é reenquadrada no servidor.
+                      Independente do setor. O APK aplica o ângulo com ForcedDisplayOrientation.
                     </p>
+                  </div>
+                </div>
+              ) : null}
+              {tvAtiva.tipo === "streaming" && midiasTv.size > 0 ? (
+                <div className="rounded-xl border bg-muted/30 p-3">
+                  <p className="mb-2 text-xs font-medium text-muted-foreground">
+                    Pré-visualização local (mesma rotação da TV)
+                  </p>
+                  <div className="flex justify-center overflow-hidden rounded-lg bg-black p-4">
+                    {(() => {
+                      const firstId = itens.find((item) => item.ativo && midiasTv.has(item.id))?.id;
+                      const first = itens.find((item) => item.id === firstId);
+                      if (!first) return <p className="text-sm text-muted-foreground">Sem mídia marcada</p>;
+                      const rot = rotacaoTvAtual(tvAtiva);
+                      const swapped = rot === 90 || rot === 270;
+                      return (
+                        <div
+                          className="flex items-center justify-center"
+                          style={{
+                            width: swapped ? 180 : 320,
+                            height: swapped ? 320 : 180,
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: 320,
+                              height: 180,
+                              transform: `rotate(${rot}deg)`,
+                              transformOrigin: "center center",
+                            }}
+                          >
+                            {midiaTipo(first) === "video" ? (
+                              <video
+                                src={`/uploads/${first.arquivo}`}
+                                muted
+                                playsInline
+                                className="h-full w-full object-contain"
+                              />
+                            ) : (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img
+                                src={`/uploads/${first.arquivo}`}
+                                alt=""
+                                className="h-full w-full object-contain"
+                              />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               ) : null}
@@ -557,49 +652,78 @@ export default function PropagandasPage() {
                 {itens.filter((item) => item.ativo).map((item) => {
                   const checked = midiasTv.has(item.id);
                   return (
-                    <button
+                    <div
                       key={item.id}
-                      type="button"
-                      onClick={() => toggleMidiaTv(item.id)}
-                      className={`overflow-hidden rounded-xl border text-left ${
+                      className={`overflow-hidden rounded-xl border ${
                         checked ? "border-primary ring-2 ring-primary/20" : ""
                       }`}
                     >
-                      {midiaTipo(item) === "video" ? (
-                        <video
-                          src={`/uploads/${item.arquivo}`}
-                          muted
-                          className="aspect-video w-full object-cover bg-muted"
-                        />
-                      ) : (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={`/uploads/${item.arquivo}`}
-                          alt=""
-                          className="aspect-video w-full object-cover bg-muted"
-                        />
-                      )}
-                      <div className="flex items-center gap-2 p-2 text-sm">
-                        <span
-                          className={`flex h-5 w-5 items-center justify-center rounded border ${
-                            checked ? "border-primary bg-primary text-primary-foreground" : "border-input"
-                          }`}
-                        >
-                          {checked && <Check className="h-3.5 w-3.5" />}
-                        </span>
-                        {midiaTipo(item) === "video" ? "Vídeo" : "Imagem"} {item.id}
-                      </div>
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleMidiaTv(item.id)}
+                        className="w-full text-left"
+                      >
+                        {midiaTipo(item) === "video" ? (
+                          <video
+                            src={`/uploads/${item.arquivo}`}
+                            muted
+                            className="aspect-video w-full object-cover bg-muted"
+                          />
+                        ) : (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={`/uploads/${item.arquivo}`}
+                            alt=""
+                            className="aspect-video w-full object-cover bg-muted"
+                          />
+                        )}
+                        <div className="flex items-center gap-2 p-2 text-sm">
+                          <span
+                            className={`flex h-5 w-5 items-center justify-center rounded border ${
+                              checked ? "border-primary bg-primary text-primary-foreground" : "border-input"
+                            }`}
+                          >
+                            {checked && <Check className="h-3.5 w-3.5" />}
+                          </span>
+                          {midiaTipo(item) === "video" ? "Vídeo" : "Imagem"} {item.id}
+                        </div>
+                      </button>
+                      {tvAtiva.tipo === "streaming" ? (
+                        <div className="border-t px-2 pb-2">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 w-full text-xs"
+                            disabled={previewingTv}
+                            onClick={() => previewNaTv(item.id)}
+                          >
+                            Pré-visualizar na TV
+                          </Button>
+                        </div>
+                      ) : null}
+                    </div>
                   );
                 })}
               </div>
               {!itens.filter((item) => item.ativo).length && (
                 <p className="text-sm text-muted-foreground">Cadastre mídias na biblioteca primeiro.</p>
               )}
+              {previewMsg ? <p className="text-sm text-emerald-700">{previewMsg}</p> : null}
               <div className="flex flex-wrap gap-2">
                 <Button onClick={salvarTv} disabled={savingTv}>
                   {savingTv ? "Salvando..." : "Enviar para a TV"}
                 </Button>
+                {tvAtiva.tipo === "streaming" ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={previewingTv}
+                    onClick={() => previewNaTv()}
+                  >
+                    {previewingTv ? "Enviando…" : "Pré-visualizar fila na TV"}
+                  </Button>
+                ) : null}
                 <Button variant="outline" onClick={() => setTvAtiva(null)}>
                   Cancelar
                 </Button>
@@ -750,7 +874,13 @@ function TvGroup({
                       : tv.device_name || "Streaming avulsa"}{" "}
                   · {tv.propaganda_ids.length} mídia(s)
                   {tv.tipo === "streaming"
-                    ? ` · ${tv.orientacao_tv === "vertical" ? "vertical" : "horizontal"}`
+                    ? ` · ${
+                        tv.rotacao_tv === 90 || tv.rotacao_tv === 180 || tv.rotacao_tv === 270
+                          ? `${tv.rotacao_tv}°`
+                          : tv.orientacao_tv === "vertical"
+                            ? "90°"
+                            : "0°"
+                      }`
                     : ""}
                 </p>
               </button>

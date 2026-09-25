@@ -106,7 +106,18 @@ def handle_connect(auth=None):
             marcar_online(tv_chave, request.sid)
             dispositivo = TvDispositivo.query.filter_by(chave=tv_chave).first()
             if dispositivo:
-                emit("queue_updated", {"queue": fila_streaming(dispositivo)})
+                from backend.services.streaming_service import rotacao_do_dispositivo
+                from backend.utils import orientacao_de_rotacao
+
+                rotacao = rotacao_do_dispositivo(dispositivo)
+                emit(
+                    "queue_updated",
+                    {
+                        "queue": fila_streaming(dispositivo),
+                        "rotacao_tv": rotacao,
+                        "orientacao_tv": orientacao_de_rotacao(rotacao),
+                    },
+                )
         return True
 
     if setor_id:
@@ -150,7 +161,12 @@ def handle_streaming_register(data):
     if not ip_address:
         emit("error", {"message": "IP address é obrigatório"})
         return
-    from backend.services.streaming_service import fila_streaming, registrar_streaming
+    from backend.services.streaming_service import (
+        fila_streaming,
+        registrar_streaming,
+        rotacao_do_dispositivo,
+    )
+    from backend.utils import orientacao_de_rotacao
 
     dispositivo = registrar_streaming(
         ip_address=ip_address,
@@ -160,7 +176,15 @@ def handle_streaming_register(data):
         sid=request.sid,
     )
     join_room(dispositivo.chave)
-    emit("queue_updated", {"queue": fila_streaming(dispositivo)})
+    rotacao = rotacao_do_dispositivo(dispositivo)
+    emit(
+        "queue_updated",
+        {
+            "queue": fila_streaming(dispositivo),
+            "rotacao_tv": rotacao,
+            "orientacao_tv": orientacao_de_rotacao(rotacao),
+        },
+    )
 
 
 @socketio.on("ticket:seguir")

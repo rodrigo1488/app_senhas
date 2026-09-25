@@ -65,6 +65,39 @@ def normalizar_orientacao_tv(valor: str | None) -> str:
     return "vertical" if (valor or "").strip().lower() == "vertical" else "horizontal"
 
 
+ROTACOES_TV_VALIDAS = (0, 90, 180, 270)
+
+
+def normalizar_rotacao_tv(valor) -> int:
+    """Ângulo de rotação física da TV: 0 | 90 | 180 | 270."""
+    if isinstance(valor, str):
+        texto = valor.strip().lower()
+        if texto == "vertical":
+            return 90
+        if texto == "horizontal":
+            return 0
+        try:
+            valor = int(texto)
+        except ValueError as exc:
+            raise ValueError("rotacao_tv deve ser 0, 90, 180 ou 270") from exc
+    try:
+        angulo = int(valor)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("rotacao_tv deve ser 0, 90, 180 ou 270") from exc
+    if angulo not in ROTACOES_TV_VALIDAS:
+        raise ValueError("rotacao_tv deve ser 0, 90, 180 ou 270")
+    return angulo
+
+
+def orientacao_de_rotacao(rotacao: int) -> str:
+    """Compat: 90/270 → vertical; 0/180 → horizontal."""
+    return "vertical" if int(rotacao) in (90, 270) else "horizontal"
+
+
+def rotacao_de_orientacao(orientacao: str | None) -> int:
+    return 90 if normalizar_orientacao_tv(orientacao) == "vertical" else 0
+
+
 def bytes_imagem_enquadrada_tv(filepath: str, orientacao: str = "horizontal") -> bytes | None:
     """Enquadra a imagem para o APK de mídia (landscape + crop) sem cortar.
 

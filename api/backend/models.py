@@ -329,8 +329,10 @@ class TvDispositivo(db.Model):
     user_agent = db.Column(db.Text)
     last_seen = db.Column(db.DateTime, default=agora_sp)
     is_online = db.Column(db.Boolean, nullable=False, default=False)
-    # Orientação física desta TV de streaming (independente do setor).
+    # Legado binário; mantido sincronizado com rotacao_tv (0/180→horizontal, 90/270→vertical).
     orientacao_tv = db.Column(db.String(20), nullable=False, default="horizontal")
+    # Ângulo físico desta TV de streaming: 0 | 90 | 180 | 270 (independente do setor).
+    rotacao_tv = db.Column(db.Integer, nullable=False, default=0)
     setor_id = db.Column(db.Integer, db.ForeignKey("setores.id", ondelete="SET NULL"))
     criado_em = db.Column(db.DateTime, default=agora_sp)
 
@@ -342,6 +344,12 @@ class TvDispositivo(db.Model):
     )
 
     def to_admin_dict(self, *, online: bool | None = None, propaganda_ids: list[int] | None = None):
+        from backend.utils import normalizar_rotacao_tv, orientacao_de_rotacao
+
+        try:
+            rotacao = normalizar_rotacao_tv(getattr(self, "rotacao_tv", None))
+        except ValueError:
+            rotacao = 0
         return {
             "id": self.id,
             "tipo": self.tipo,
@@ -351,7 +359,8 @@ class TvDispositivo(db.Model):
             "user_agent": self.user_agent or "",
             "last_seen": self.last_seen.isoformat() if self.last_seen else None,
             "is_online": bool(self.is_online if online is None else online),
-            "orientacao_tv": self.orientacao_tv or "horizontal",
+            "rotacao_tv": rotacao,
+            "orientacao_tv": orientacao_de_rotacao(rotacao),
             "setor_id": self.setor_id,
             "setor_nome": self.setor.nome if self.setor else None,
             "tipo_setor": (self.setor.tipo_setor or TIPO_SETOR_ATENDIMENTO) if self.setor else None,

@@ -283,6 +283,10 @@ def setor_tv_streaming_entrar(session_payload):
         tv_chave=dispositivo.chave,
         dispositivo_id=dispositivo.id,
     )
+    from backend.services.streaming_service import rotacao_do_dispositivo
+    from backend.utils import orientacao_de_rotacao
+
+    rotacao = rotacao_do_dispositivo(dispositivo)
     return jsonify(
         {
             "session_token": token,
@@ -292,7 +296,8 @@ def setor_tv_streaming_entrar(session_payload):
             ),
             "queue": fila_streaming(dispositivo),
             "intervalo_ms": INTERVALO_IMAGEM_MS,
-            "orientacao_tv": dispositivo.orientacao_tv or "horizontal",
+            "rotacao_tv": rotacao,
+            "orientacao_tv": orientacao_de_rotacao(rotacao),
         }
     )
 
@@ -319,17 +324,23 @@ def setor_tv_streaming_fila(session_payload):
         return jsonify({"error": "TV de streaming não encontrada"}), 404
 
     marcar_online(dispositivo.chave, None)
+    from backend.services.streaming_service import rotacao_do_dispositivo
+    from backend.utils import orientacao_de_rotacao
+
+    rotacao = rotacao_do_dispositivo(dispositivo)
     return jsonify(
         {
             "dispositivo": {
                 "id": dispositivo.id,
                 "nome": dispositivo.nome,
                 "chave": dispositivo.chave,
-                "orientacao_tv": dispositivo.orientacao_tv or "horizontal",
+                "rotacao_tv": rotacao,
+                "orientacao_tv": orientacao_de_rotacao(rotacao),
             },
             "queue": fila_streaming(dispositivo),
             "intervalo_ms": INTERVALO_IMAGEM_MS,
-            "orientacao_tv": dispositivo.orientacao_tv or "horizontal",
+            "rotacao_tv": rotacao,
+            "orientacao_tv": orientacao_de_rotacao(rotacao),
         }
     )
 

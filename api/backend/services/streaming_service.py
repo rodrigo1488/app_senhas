@@ -16,7 +16,12 @@ from backend.models import (
 )
 from backend.services.tv_config_service import INTERVALO_IMAGEM_MS, serializar_tv_config
 from backend.sockets.emitters import emit_tv_config_atualizada
-from backend.utils import normalizar_orientacao_tv
+from backend.utils import (
+    normalizar_orientacao_tv,
+    normalizar_rotacao_tv,
+    orientacao_de_rotacao,
+    rotacao_de_orientacao,
+)
 
 connected_by_chave: dict[str, str] = {}
 chave_by_sid: dict[str, str] = {}
@@ -33,7 +38,7 @@ def media_public_path(arquivo: str, orientacao: str = "horizontal") -> str:
     if nome.startswith("media/"):
         nome = nome[len("media/") :]
     # Sem letterbox/rotação no servidor: o APK usa Fit + ForcedDisplayOrientation
-    # conforme `orientacao_tv` do dispositivo (evitar imagem "bichada" por dupla rotação).
+    # conforme `rotacao_tv` do dispositivo (evitar imagem "bichada" por dupla rotação).
     _ = normalizar_orientacao_tv(orientacao)
     return f"/media/{nome}"
 
@@ -43,9 +48,22 @@ def _tipo_arquivo(arquivo: str) -> str:
     return "video" if nome.endswith(".mp4") else "image"
 
 
+def rotacao_do_dispositivo(dispositivo: TvDispositivo) -> int:
+    """Ângulo físico desta TV (campo do dispositivo, não do setor)."""
+    try:
+        return normalizar_rotacao_tv(getattr(dispositivo, "rotacao_tv", None))
+    except ValueError:
+        return rotacao_de_orientacao(getattr(dispositivo, "orientacao_tv", None))
+
+
 def _orientacao_do_dispositivo(dispositivo: TvDispositivo) -> str:
-    """Orientação física desta TV (campo do dispositivo, não do setor)."""
-    return normalizar_orientacao_tv(getattr(dispositivo, "orientacao_tv", None))
+    """Compat binária derivada de rotacao_tv."""
+    return orientacao_de_rotacao(rotacao_do_dispositivo(dispositivo))
+
+
+def _aplicar_rotacao(dispositivo: TvDispositivo, rotacao: int) -> None:
+    dispositivo.rotacao_tv = rotacao
+    dispositivo.orientacao_tv = orientacao_de_rotacao(rotacao)
 
 
 def fila_streaming(dispositivo: TvDispositivo) -> list[dict]:
@@ -72,9 +90,21 @@ def fila_streaming(dispositivo: TvDispositivo) -> list[dict]:
                 "type": item.tipo or _tipo_arquivo(item.arquivo),
                 "order": row.ordem,
                 "duration": INTERVALO_IMAGEM_MS,
+                "propaganda_id": item.id,
             }
         )
     return fila
+
+
+def item_fila_de_propaganda(dispositivo: TvDispositivo, propaganda: Propaganda) -> dict:
+    orientacao = _orientacao_do_dispositivo(dispositivo)
+    return {
+        "path": media_public_path(propaganda.arquivo, orientacao),
+        "type": propaganda.tipo or _tipo_arquivo(propaganda.arquivo),
+        "order": 0,
+        "duration": INTERVALO_IMAGEM_MS,
+        "propaganda_id": propaganda.id,
+    }
 
 
 def propaganda_ids_dispositivo(dispositivo_id: int) -> list[int]:
@@ -115,12 +145,53 @@ def substituir_fila_dispositivo(dispositivo: TvDispositivo, propaganda_ids: list
 
 
 def emitir_fila_streaming(dispositivo: TvDispositivo) -> None:
-    orientacao = _orientacao_do_dispositivo(dispositivo)
+    rotacao = rotacao_do_dispositivo(dispositivo)
     socketio.emit(
         "queue_updated",
-        {"queue": fila_streaming(dispositivo), "orientacao_tv": orientacao},
+        {
+            "queue": fila_streaming(dispositivo),
+            "rotacao_tv": rotacao,
+            "orientacao_tv": orientacao_de_rotacao(rotacao),
+        },
         room=dispositivo.chave,
     )
+
+
+PREVIEW_DURATION_MS = 20_000
+
+
+def emitir_preview_streaming(
+    dispositivo: TvDispositivo,
+    *,
+    propaganda_id: int | None = None,
+    duration_ms: int = PREVIEW_DURATION_MS,
+) -> dict:
+    """Emite `media_preview` na room da TV para fullscreen temporário."""
+    if dispositivo.tipo != "streaming":
+        raise ValueError("Pré-visualização só está disponível para TVs de streaming")
+
+    item = None
+    if propaganda_id is not None:
+        propaganda = db.session.get(Propaganda, propaganda_id)
+        if not propaganda or not propaganda.ativo:
+            raise ValueError("Mídia não encontrada ou inativa")
+        item = item_fila_de_propaganda(dispositivo, propaganda)
+    else:
+        fila = fila_streaming(dispositivo)
+        if not fila:
+            raise ValueError("Esta TV não tem mídias na fila para pré-visualizar")
+        item = fila[0]
+
+    duracao = max(3_000, min(int(duration_ms or PREVIEW_DURATION_MS), 120_000))
+    rotacao = rotacao_do_dispositivo(dispositivo)
+    payload = {
+        "item": item,
+        "duration_ms": duracao,
+        "rotacao_tv": rotacao,
+        "orientacao_tv": orientacao_de_rotacao(rotacao),
+    }
+    socketio.emit("media_preview", payload, room=dispositivo.chave)
+    return payload
 
 
 def emitir_filas_streaming_do_setor(setor_id: int) -> None:
@@ -200,8 +271,10 @@ def registrar_streaming_apk(
         dispositivo.user_agent = user_agent
         dispositivo.last_seen = datetime.now()
         dispositivo.is_online = True
-        if not (dispositivo.orientacao_tv or "").strip():
-            dispositivo.orientacao_tv = "horizontal"
+        if getattr(dispositivo, "rotacao_tv", None) is None:
+            _aplicar_rotacao(dispositivo, 0)
+        elif not (dispositivo.orientacao_tv or "").strip():
+            dispositivo.orientacao_tv = orientacao_de_rotacao(rotacao_do_dispositivo(dispositivo))
         db.session.commit()
         marcar_online(chave, sid)
         return dispositivo
@@ -216,6 +289,7 @@ def registrar_streaming_apk(
         user_agent=user_agent,
         setor_id=setor.id,
         orientacao_tv="horizontal",
+        rotacao_tv=0,
         last_seen=datetime.now(),
         is_online=True,
     )
@@ -254,6 +328,7 @@ def registrar_streaming(
             chave=ip_address,
             nome=nome_final,
             orientacao_tv="horizontal",
+            rotacao_tv=0,
         )
         db.session.add(dispositivo)
     else:
@@ -266,8 +341,10 @@ def registrar_streaming(
     dispositivo.user_agent = user_agent
     dispositivo.last_seen = datetime.now()
     dispositivo.is_online = True
-    if not (dispositivo.orientacao_tv or "").strip():
-        dispositivo.orientacao_tv = "horizontal"
+    if getattr(dispositivo, "rotacao_tv", None) is None:
+        _aplicar_rotacao(dispositivo, 0)
+    elif not (dispositivo.orientacao_tv or "").strip():
+        dispositivo.orientacao_tv = orientacao_de_rotacao(rotacao_do_dispositivo(dispositivo))
     db.session.commit()
     marcar_online(dispositivo.chave, sid)
     return dispositivo
@@ -419,19 +496,26 @@ def vincular_tv_streaming_ao_setor(dispositivo: TvDispositivo, setor_id: int | N
     )
 
 
-def definir_orientacao_tv_streaming(dispositivo: TvDispositivo, orientacao: str) -> dict:
+def definir_rotacao_tv_streaming(dispositivo: TvDispositivo, rotacao) -> dict:
     if dispositivo.tipo != "streaming":
-        raise ValueError("Apenas TVs de streaming têm orientação própria")
-    valor = (orientacao or "").strip().lower()
-    if valor not in {"horizontal", "vertical"}:
-        raise ValueError("orientacao_tv deve ser 'horizontal' ou 'vertical'")
-    dispositivo.orientacao_tv = valor
+        raise ValueError("Apenas TVs de streaming têm rotação própria")
+    # Aceita rotacao_tv numérico ou legado orientacao_tv ("horizontal"/"vertical").
+    valor = normalizar_rotacao_tv(rotacao)
+    _aplicar_rotacao(dispositivo, valor)
     db.session.commit()
     emitir_fila_streaming(dispositivo)
     return dispositivo.to_admin_dict(
         online=esta_online(dispositivo.chave),
         propaganda_ids=propaganda_ids_dispositivo(dispositivo.id),
     )
+
+
+def definir_orientacao_tv_streaming(dispositivo: TvDispositivo, orientacao: str) -> dict:
+    """Compat: mapeia horizontal→0 / vertical→90."""
+    valor = (orientacao or "").strip().lower()
+    if valor not in {"horizontal", "vertical"}:
+        raise ValueError("orientacao_tv deve ser 'horizontal' ou 'vertical'")
+    return definir_rotacao_tv_streaming(dispositivo, rotacao_de_orientacao(valor))
 
 
 def remover_tv_streaming(dispositivo: TvDispositivo) -> None:

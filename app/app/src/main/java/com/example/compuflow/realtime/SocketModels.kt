@@ -73,6 +73,14 @@ sealed class SocketEvent {
 
     data class QueueUpdated(
         val queue: List<StreamingQueueItemDto>,
+        val rotacaoTv: Int = 0,
+        val orientacaoTv: String = "horizontal",
+    ) : SocketEvent()
+
+    data class MediaPreview(
+        val item: StreamingQueueItemDto,
+        val durationMs: Long = 20_000L,
+        val rotacaoTv: Int = 0,
         val orientacaoTv: String = "horizontal",
     ) : SocketEvent()
 

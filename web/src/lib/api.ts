@@ -113,6 +113,9 @@ export type TvAdmin = {
   device_name?: string;
   is_online: boolean;
   last_seen?: string | null;
+  /** Ângulo físico da TV de streaming: 0 | 90 | 180 | 270 */
+  rotacao_tv?: 0 | 90 | 180 | 270;
+  /** Compat binária derivada de rotacao_tv */
   orientacao_tv?: "horizontal" | "vertical";
   setor_id?: number | null;
   setor_nome?: string | null;

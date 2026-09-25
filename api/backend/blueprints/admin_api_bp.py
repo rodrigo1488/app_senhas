@@ -929,20 +929,53 @@ def update_tv_setor(dispositivo_id: int):
 
 
 @admin_api_bp.route("/tvs/<int:dispositivo_id>/orientacao", methods=["PUT"])
+@admin_api_bp.route("/tvs/<int:dispositivo_id>/rotacao", methods=["PUT"])
 @api_login_required
 @require_admin_ou_marketing
-def update_tv_orientacao(dispositivo_id: int):
-    from backend.services.streaming_service import definir_orientacao_tv_streaming
+def update_tv_rotacao(dispositivo_id: int):
+    from backend.services.streaming_service import definir_rotacao_tv_streaming
 
     data = request.get_json(silent=True) or {}
     dispositivo = db.session.get(TvDispositivo, dispositivo_id)
     if not dispositivo or dispositivo.tipo != "streaming":
         return jsonify({"error": "TV de streaming não encontrada"}), 404
+    # Preferir rotacao_tv; aceitar orientacao_tv legado (horizontal/vertical).
+    valor = data.get("rotacao_tv", data.get("orientacao_tv"))
     try:
-        result = definir_orientacao_tv_streaming(dispositivo, data.get("orientacao_tv"))
+        result = definir_rotacao_tv_streaming(dispositivo, valor)
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     return jsonify(result)
+
+
+@admin_api_bp.route("/tvs/<int:dispositivo_id>/preview", methods=["POST"])
+@api_login_required
+@require_admin_ou_marketing
+def preview_tv_streaming(dispositivo_id: int):
+    from backend.services.streaming_service import emitir_preview_streaming
+
+    data = request.get_json(silent=True) or {}
+    dispositivo = db.session.get(TvDispositivo, dispositivo_id)
+    if not dispositivo or dispositivo.tipo != "streaming":
+        return jsonify({"error": "TV de streaming não encontrada"}), 404
+    propaganda_id = data.get("propaganda_id")
+    if propaganda_id in ("", None):
+        propaganda_id = None
+    else:
+        try:
+            propaganda_id = int(propaganda_id)
+        except (TypeError, ValueError):
+            return jsonify({"error": "propaganda_id inválido"}), 400
+    try:
+        payload = emitir_preview_streaming(
+            dispositivo,
+            propaganda_id=propaganda_id,
+            duration_ms=data.get("duration_ms"),
+        )
+    except ValueError as exc:
+        status = 404 if "não encontrad" in str(exc).lower() else 400
+        return jsonify({"error": str(exc)}), status
+    return jsonify({"ok": True, **payload})
 
 
 @admin_api_bp.route("/tvs/<int:dispositivo_id>", methods=["DELETE"])

@@ -18,6 +18,7 @@ object SocketEvents {
     const val TV_CONFIG_ATUALIZADA = "tv:config_atualizada"
     const val CLIENTE_CONFIG_ATUALIZADA = "cliente:config_atualizada"
     const val QUEUE_UPDATED = "queue_updated"
+    const val MEDIA_PREVIEW = "media_preview"
 
     // Cliente -> servidor
     const val OPERADOR_CHAMAR_PROXIMA = "operador:chamar_proxima"

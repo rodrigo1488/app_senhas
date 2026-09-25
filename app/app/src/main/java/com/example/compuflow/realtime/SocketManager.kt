@@ -106,6 +106,25 @@ object SocketManager {
             _events.tryEmit(
                 SocketEvent.QueueUpdated(
                     queue = obj.optJSONArray("queue").toStreamingQueueList(),
+                    rotacaoTv = obj.optRotationDegrees(),
+                    orientacaoTv = obj.optString("orientacao_tv", "horizontal").ifBlank { "horizontal" },
+                )
+            )
+        })
+
+        newSocket.on(SocketEvents.MEDIA_PREVIEW, listener { args ->
+            val obj = args.jsonObjectOrNull(0) ?: return@listener
+            val itemObj = obj.optJSONObject("item") ?: return@listener
+            _events.tryEmit(
+                SocketEvent.MediaPreview(
+                    item = StreamingQueueItemDto(
+                        path = itemObj.optString("path"),
+                        type = itemObj.optString("type", "image").ifBlank { "image" },
+                        order = itemObj.optInt("order"),
+                        duration = itemObj.optLong("duration", 15_000L).coerceAtLeast(1_000L),
+                    ),
+                    durationMs = obj.optLong("duration_ms", 20_000L).coerceAtLeast(3_000L),
+                    rotacaoTv = obj.optRotationDegrees(),
                     orientacaoTv = obj.optString("orientacao_tv", "horizontal").ifBlank { "horizontal" },
                 )
             )
@@ -305,6 +324,14 @@ private fun JSONArray?.toStreamingQueueList(): List<StreamingQueueItemDto> {
             duration = obj.optLong("duration", 15_000L).coerceAtLeast(1_000L),
         )
     }
+}
+
+private fun JSONObject.optRotationDegrees(): Int {
+    if (has("rotacao_tv") && !isNull("rotacao_tv")) {
+        val value = optInt("rotacao_tv", -1)
+        if (value in listOf(0, 90, 180, 270)) return value
+    }
+    return if (optString("orientacao_tv", "horizontal").equals("vertical", ignoreCase = true)) 90 else 0
 }
 
 private fun JSONArray?.toSenhaList(): List<SenhaDto> {

@@ -208,6 +208,7 @@ data class StreamingDispositivoDto(
     val nome: String = "",
     val device_name: String = "",
     val is_online: Boolean = false,
+    val rotacao_tv: Int = 0,
     val orientacao_tv: String = "horizontal",
     val setor_id: Int? = null,
     val propaganda_ids: List<Int> = emptyList(),
@@ -225,6 +226,7 @@ data class StreamingEntrarResponse(
     val dispositivo: StreamingDispositivoDto,
     val queue: List<StreamingQueueItemDto> = emptyList(),
     val intervalo_ms: Long = 15_000,
+    val rotacao_tv: Int = 0,
     val orientacao_tv: String = "horizontal",
 )
 
@@ -233,6 +235,7 @@ data class StreamingFilaResponse(
     val dispositivo: StreamingDispositivoDto? = null,
     val queue: List<StreamingQueueItemDto> = emptyList(),
     val intervalo_ms: Long = 15_000,
+    val rotacao_tv: Int = 0,
     val orientacao_tv: String = "horizontal",
 )
 

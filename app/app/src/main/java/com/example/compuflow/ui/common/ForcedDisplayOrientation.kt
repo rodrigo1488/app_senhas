@@ -17,27 +17,34 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 
 /**
- * Quando [portrait] é true: tenta travar a Activity em retrato e, se o TV box
- * ignorar a rotação do sistema (framebuffer continua landscape), gira o
- * conteúdo em Compose −90° para preencher o monitor em pé.
+ * Aplica rotação física da TV: 0 | 90 | 180 | 270.
  *
- * Quando [portrait] é false: não força landscape (em vários TV boxes isso
- * cortava a tela) — só libera qualquer travamento anterior e desenha em
- * tela cheia como antes.
+ * Em TV boxes que ignoram a orientação do sistema (framebuffer landscape),
+ * usa [graphicsLayer] para girar o conteúdo e preencher o monitor.
+ *
+ * Compat: [portrait] true ≡ 90°, false ≡ 0° (painéis de senha).
  */
 @Composable
 fun ForcedDisplayOrientation(
     portrait: Boolean,
     content: @Composable () -> Unit,
 ) {
+    ForcedDisplayOrientation(rotationDegrees = if (portrait) 90 else 0, content = content)
+}
+
+@Composable
+fun ForcedDisplayOrientation(
+    rotationDegrees: Int,
+    content: @Composable () -> Unit,
+) {
+    val rotation = normalizeRotation(rotationDegrees)
     val context = LocalContext.current
-    DisposableEffect(portrait) {
+    DisposableEffect(rotation) {
         val activity = context.findActivity()
         val previous = activity?.requestedOrientation
-        if (portrait) {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        } else {
-            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        activity?.requestedOrientation = when (rotation) {
+            90, 270 -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            else -> ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         }
         onDispose {
             activity?.requestedOrientation =
@@ -45,28 +52,55 @@ fun ForcedDisplayOrientation(
         }
     }
 
-    if (!portrait) {
+    if (rotation == 0) {
         content()
         return
     }
 
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val windowIsLandscape = maxWidth > maxHeight
-        if (!windowIsLandscape) {
+        val needsSwap = rotation == 90 || rotation == 270
+
+        // Se o SO já aplicou retrato e pedimos 90°, desenha sem transform extra.
+        if (needsSwap && !windowIsLandscape && rotation == 90) {
             content()
             return@BoxWithConstraints
         }
 
-        // Monitor em pé + SO em landscape: gira o UI −90° (montagem CW típica).
-        Box(
-            modifier = Modifier
-                .requiredWidth(maxHeight)
-                .requiredHeight(maxWidth)
-                .align(Alignment.Center)
-                .graphicsLayer { rotationZ = -90f },
-        ) {
-            content()
+        val layerRotation = when (rotation) {
+            90 -> -90f // montagem CW típica (igual ao portrait legado)
+            180 -> 180f
+            270 -> 90f
+            else -> 0f
         }
+
+        if (needsSwap) {
+            Box(
+                modifier = Modifier
+                    .requiredWidth(maxHeight)
+                    .requiredHeight(maxWidth)
+                    .align(Alignment.Center)
+                    .graphicsLayer { rotationZ = layerRotation },
+            ) {
+                content()
+            }
+        } else {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { rotationZ = layerRotation },
+            ) {
+                content()
+            }
+        }
+    }
+}
+
+fun normalizeRotation(degrees: Int): Int {
+    val mod = ((degrees % 360) + 360) % 360
+    return when (mod) {
+        90, 180, 270 -> mod
+        else -> 0
     }
 }
 

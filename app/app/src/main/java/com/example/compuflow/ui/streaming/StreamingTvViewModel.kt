@@ -13,6 +13,7 @@ import com.example.compuflow.data.remote.dto.StreamingQueueItemDto
 import com.example.compuflow.data.remote.toUserMessage
 import com.example.compuflow.realtime.SocketEvent
 import com.example.compuflow.realtime.SocketManager
+import com.example.compuflow.ui.common.normalizeRotation
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -25,18 +26,17 @@ class StreamingTvViewModel : ViewModel() {
     var queue by mutableStateOf<List<StreamingQueueItemDto>>(emptyList())
     var intervaloMs by mutableLongStateOf(15_000L)
     var imagemIndex by mutableIntStateOf(0)
-    var orientacaoTv by mutableStateOf("horizontal")
+    var rotacaoTv by mutableIntStateOf(0)
+    var previewItem by mutableStateOf<StreamingQueueItemDto?>(null)
     var errorMessage by mutableStateOf<String?>(null)
 
     private var rotationJob: Job? = null
+    private var previewJob: Job? = null
     /** Evita reiniciar o timer a cada poll (travava na 1ª mídia). */
     private var queueFingerprint: String = ""
 
     val currentItem: StreamingQueueItemDto?
-        get() = queue.getOrNull(imagemIndex)
-
-    val isVertical: Boolean
-        get() = orientacaoTv == "vertical"
+        get() = previewItem ?: queue.getOrNull(imagemIndex)
 
     init {
         viewModelScope.launch {
@@ -50,8 +50,12 @@ class StreamingTvViewModel : ViewModel() {
             SocketManager.events.collect { event ->
                 when (event) {
                     is SocketEvent.QueueUpdated -> {
-                        applyOrientacao(event.orientacaoTv)
+                        applyRotacao(event.rotacaoTv, event.orientacaoTv)
                         applyQueue(event.queue)
+                    }
+                    is SocketEvent.MediaPreview -> {
+                        applyRotacao(event.rotacaoTv, event.orientacaoTv)
+                        showPreview(event.item, event.durationMs)
                     }
                     is SocketEvent.Connected -> refreshFila(silent = true)
                     else -> Unit
@@ -72,7 +76,7 @@ class StreamingTvViewModel : ViewModel() {
             val response = NetworkModule.apiService().tvStreamingFila()
             tvNome = response.dispositivo?.nome.orEmpty().ifBlank { tvNome }
             intervaloMs = response.intervalo_ms.coerceAtLeast(1_000L)
-            applyOrientacao(response.orientacao_tv)
+            applyRotacao(response.rotacao_tv, response.orientacao_tv)
             applyQueue(response.queue)
             errorMessage = null
         } catch (e: Exception) {
@@ -82,8 +86,45 @@ class StreamingTvViewModel : ViewModel() {
         }
     }
 
-    private fun applyOrientacao(valor: String?) {
-        orientacaoTv = if (valor.equals("vertical", ignoreCase = true)) "vertical" else "horizontal"
+    private fun applyRotacao(rotacao: Int?, orientacao: String?) {
+        val normalized = normalizeRotation(rotacao ?: 0)
+        // APIs antigas sem rotacao_tv: kotlinx defaulta 0; vertical legado → 90.
+        rotacaoTv = if (normalized == 0 && orientacao.equals("vertical", ignoreCase = true)) {
+            90
+        } else {
+            normalized
+        }
+    }
+
+    private fun showPreview(item: StreamingQueueItemDto, durationMs: Long) {
+        previewJob?.cancel()
+        rotationJob?.cancel()
+        previewItem = item
+        val duration = durationMs.coerceAtLeast(3_000L)
+        if (item.type.equals("video", ignoreCase = true)) {
+            // Vídeo encerra no onEnded do player; timeout de segurança.
+            previewJob = viewModelScope.launch {
+                delay(duration.coerceAtMost(120_000L))
+                clearPreview()
+            }
+            return
+        }
+        previewJob = viewModelScope.launch {
+            delay(duration)
+            clearPreview()
+        }
+    }
+
+    fun onPreviewEnded() {
+        clearPreview()
+    }
+
+    private fun clearPreview() {
+        previewJob?.cancel()
+        previewJob = null
+        if (previewItem == null) return
+        previewItem = null
+        restartRotation()
     }
 
     private fun applyQueue(items: List<StreamingQueueItemDto>) {
@@ -96,26 +137,31 @@ class StreamingTvViewModel : ViewModel() {
         if (sorted.isEmpty()) {
             queueFingerprint = ""
             imagemIndex = 0
-            rotationJob?.cancel()
-            rotationJob = null
+            if (previewItem == null) {
+                rotationJob?.cancel()
+                rotationJob = null
+            }
             return
         }
 
         if (changed) {
             queueFingerprint = fingerprint
             imagemIndex = 0
-            restartRotation()
+            if (previewItem == null) restartRotation()
             return
         }
 
         if (imagemIndex >= sorted.size) {
             imagemIndex = 0
-            restartRotation()
+            if (previewItem == null) restartRotation()
         }
-        // Fila igual: não cancela o timer — senão a 1ª mídia nunca termina.
     }
 
     fun onMediaEnded() {
+        if (previewItem != null) {
+            clearPreview()
+            return
+        }
         advance()
     }
 
@@ -127,9 +173,9 @@ class StreamingTvViewModel : ViewModel() {
 
     private fun restartRotation() {
         rotationJob?.cancel()
-        val item = currentItem ?: return
+        if (previewItem != null) return
+        val item = queue.getOrNull(imagemIndex) ?: return
         if (item.type.equals("video", ignoreCase = true)) {
-            // Vídeo avança no onEnded do player.
             return
         }
         if (queue.size <= 1) return
@@ -143,6 +189,7 @@ class StreamingTvViewModel : ViewModel() {
     override fun onCleared() {
         super.onCleared()
         rotationJob?.cancel()
+        previewJob?.cancel()
         SocketManager.disconnect()
     }
 }

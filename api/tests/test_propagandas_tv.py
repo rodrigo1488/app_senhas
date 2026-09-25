@@ -721,6 +721,7 @@ class PropagandasTvTest(unittest.TestCase):
                 nome="TV Vertical",
                 setor_id=self.setor_id,
                 orientacao_tv="vertical",
+                rotacao_tv=90,
             )
             db.session.add(dispositivo)
             db.session.commit()
@@ -733,45 +734,124 @@ class PropagandasTvTest(unittest.TestCase):
             )
             db.session.commit()
             fila = fila_streaming(dispositivo)
-            # Sem ?enquadre: orientação fica no dispositivo/APK (Fit + ForcedDisplayOrientation).
+            # Sem ?enquadre: rotação fica no dispositivo/APK (Fit + ForcedDisplayOrientation).
             self.assertEqual(["/media/retrato.jpg"], [item["path"] for item in fila])
+            self.assertEqual(90, dispositivo.rotacao_tv)
             self.assertEqual("vertical", dispositivo.orientacao_tv)
 
-    def test_admin_define_orientacao_por_tv_streaming(self):
+    def test_admin_define_rotacao_por_tv_streaming(self):
         client = self._admin_client()
         with self.app.app_context():
             dispositivo = TvDispositivo(
                 tipo="streaming",
-                chave="apk:orientacao-admin",
-                nome="TV Orient",
+                chave="apk:rotacao-admin",
+                nome="TV Rot",
                 setor_id=self.setor_id,
                 orientacao_tv="horizontal",
+                rotacao_tv=0,
             )
             db.session.add(dispositivo)
             db.session.commit()
             dispositivo_id = dispositivo.id
 
         response = client.put(
+            f"/api/v1/admin/tvs/{dispositivo_id}/rotacao",
+            json={"rotacao_tv": 90},
+        )
+        self.assertEqual(200, response.status_code)
+        body = response.get_json()
+        self.assertEqual(90, body["rotacao_tv"])
+        self.assertEqual("vertical", body["orientacao_tv"])
+
+        response_180 = client.put(
+            f"/api/v1/admin/tvs/{dispositivo_id}/rotacao",
+            json={"rotacao_tv": 180},
+        )
+        self.assertEqual(200, response_180.status_code)
+        self.assertEqual(180, response_180.get_json()["rotacao_tv"])
+        self.assertEqual("horizontal", response_180.get_json()["orientacao_tv"])
+
+        # Compat: endpoint/campo legado ainda aceita vertical → 90.
+        response_legado = client.put(
             f"/api/v1/admin/tvs/{dispositivo_id}/orientacao",
             json={"orientacao_tv": "vertical"},
         )
-        self.assertEqual(200, response.status_code)
-        self.assertEqual("vertical", response.get_json()["orientacao_tv"])
+        self.assertEqual(200, response_legado.status_code)
+        self.assertEqual(90, response_legado.get_json()["rotacao_tv"])
 
         invalid = client.put(
-            f"/api/v1/admin/tvs/{dispositivo_id}/orientacao",
-            json={"orientacao_tv": "diagonal"},
+            f"/api/v1/admin/tvs/{dispositivo_id}/rotacao",
+            json={"rotacao_tv": 45},
         )
         self.assertEqual(400, invalid.status_code)
 
         with self.app.app_context():
             dispositivo = db.session.get(TvDispositivo, dispositivo_id)
+            self.assertEqual(90, dispositivo.rotacao_tv)
             self.assertEqual("vertical", dispositivo.orientacao_tv)
 
         listagem = client.get("/api/v1/admin/tvs")
         self.assertEqual(200, listagem.status_code)
         tv = next(t for t in listagem.get_json() if t["id"] == dispositivo_id and t["tipo"] == "streaming")
+        self.assertEqual(90, tv["rotacao_tv"])
         self.assertEqual("vertical", tv["orientacao_tv"])
+
+    def test_admin_preview_emite_para_tv_streaming(self):
+        from unittest.mock import patch
+
+        client = self._admin_client()
+        with self.app.app_context():
+            p1 = Propaganda(arquivo="preview.jpg", tipo="image", ordem=1, ativo=True)
+            db.session.add(p1)
+            db.session.commit()
+            dispositivo = TvDispositivo(
+                tipo="streaming",
+                chave="apk:preview-admin",
+                nome="TV Preview",
+                setor_id=self.setor_id,
+                orientacao_tv="horizontal",
+                rotacao_tv=270,
+            )
+            db.session.add(dispositivo)
+            db.session.commit()
+            db.session.execute(
+                dispositivo_propagandas.insert().values(
+                    dispositivo_id=dispositivo.id,
+                    propaganda_id=p1.id,
+                    ordem=0,
+                )
+            )
+            db.session.commit()
+            dispositivo_id = dispositivo.id
+            propaganda_id = p1.id
+
+        with patch("backend.services.streaming_service.socketio.emit") as emit_mock:
+            response = client.post(
+                f"/api/v1/admin/tvs/{dispositivo_id}/preview",
+                json={"propaganda_id": propaganda_id},
+            )
+            self.assertEqual(200, response.status_code)
+            payload = response.get_json()
+            self.assertTrue(payload["ok"])
+            self.assertEqual(270, payload["rotacao_tv"])
+            self.assertEqual("/media/preview.jpg", payload["item"]["path"])
+            emit_mock.assert_called()
+            args, kwargs = emit_mock.call_args
+            self.assertEqual("media_preview", args[0])
+            self.assertEqual("apk:preview-admin", kwargs.get("room"))
+
+        # Sem mídia na fila e sem propaganda_id → 400
+        with self.app.app_context():
+            dispositivo = db.session.get(TvDispositivo, dispositivo_id)
+            db.session.execute(
+                dispositivo_propagandas.delete().where(
+                    dispositivo_propagandas.c.dispositivo_id == dispositivo.id
+                )
+            )
+            db.session.commit()
+
+        empty = client.post(f"/api/v1/admin/tvs/{dispositivo_id}/preview", json={})
+        self.assertEqual(400, empty.status_code)
 
 
 if __name__ == "__main__":

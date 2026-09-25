@@ -12,6 +12,8 @@ EV_AVALIACAO_SOLICITADA = "avaliacao:solicitada"
 EV_AUTH_ERRO = "auth:erro"
 EV_TV_CONFIG_ATUALIZADA = "tv:config_atualizada"
 EV_CLIENTE_CONFIG_ATUALIZADA = "cliente:config_atualizada"
+EV_MEDIA_PREVIEW = "media_preview"
+EV_QUEUE_UPDATED = "queue_updated"
 
 # Eventos cliente -> servidor
 EV_OPERADOR_CHAMAR_PROXIMA = "operador:chamar_proxima"
