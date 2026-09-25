@@ -208,6 +208,7 @@ data class StreamingDispositivoDto(
     val nome: String = "",
     val device_name: String = "",
     val is_online: Boolean = false,
+    val orientacao_tv: String = "horizontal",
     val setor_id: Int? = null,
     val propaganda_ids: List<Int> = emptyList(),
 )

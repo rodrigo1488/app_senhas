@@ -928,6 +928,39 @@ def update_tv_setor(dispositivo_id: int):
     return jsonify(result)
 
 
+@admin_api_bp.route("/tvs/<int:dispositivo_id>/orientacao", methods=["PUT"])
+@api_login_required
+@require_admin_ou_marketing
+def update_tv_orientacao(dispositivo_id: int):
+    from backend.services.streaming_service import definir_orientacao_tv_streaming
+
+    data = request.get_json(silent=True) or {}
+    dispositivo = db.session.get(TvDispositivo, dispositivo_id)
+    if not dispositivo or dispositivo.tipo != "streaming":
+        return jsonify({"error": "TV de streaming não encontrada"}), 404
+    try:
+        result = definir_orientacao_tv_streaming(dispositivo, data.get("orientacao_tv"))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(result)
+
+
+@admin_api_bp.route("/tvs/<int:dispositivo_id>", methods=["DELETE"])
+@api_login_required
+@require_admin_ou_marketing
+def delete_tv_streaming(dispositivo_id: int):
+    from backend.services.streaming_service import remover_tv_streaming
+
+    dispositivo = db.session.get(TvDispositivo, dispositivo_id)
+    if not dispositivo or dispositivo.tipo != "streaming":
+        return jsonify({"error": "TV de streaming não encontrada"}), 404
+    try:
+        remover_tv_streaming(dispositivo)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"ok": True})
+
+
 # --- Operadores -------------------------------------------------------------
 
 

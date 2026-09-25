@@ -64,7 +64,7 @@ fun StreamingTvScreen(viewModel: StreamingTvViewModel = viewModel()) {
                             loop = queue.size <= 1,
                             onEnded = { viewModel.onMediaEnded() },
                             emptyLabel = "Sem mídia",
-                            // Fit: com enquadramento 9:16/16:9 no backend, preenche sem cortar.
+                            // Fit: mídia original; orientação física via ForcedDisplayOrientation.
                             contentScale = ContentScale.Fit,
                             modifier = Modifier.fillMaxSize(),
                         )

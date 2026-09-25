@@ -112,12 +112,13 @@ export type TvAdmin = {
   nome: string;
   device_name?: string;
   is_online: boolean;
+  last_seen?: string | null;
+  orientacao_tv?: "horizontal" | "vertical";
   setor_id?: number | null;
   setor_nome?: string | null;
   tipo_setor?: "atendimento" | "streaming" | null;
   propaganda_ids: number[];
   layout_tv_web?: "propaganda" | "fila";
-  orientacao_tv?: "horizontal" | "vertical";
 };
 
 export type Operador = {

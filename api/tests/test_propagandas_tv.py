@@ -454,7 +454,7 @@ class PropagandasTvTest(unittest.TestCase):
         media = client.get("/api/media")
         self.assertEqual(200, media.status_code)
         paths = [item["path"] for item in media.get_json()["files"]]
-        self.assertEqual(["/media/a.jpg?enquadre=1", "/media/b.mp4"], paths)
+        self.assertEqual(["/media/a.jpg", "/media/b.mp4"], paths)
 
         assign = client.post(
             "/api/assign",
@@ -471,7 +471,7 @@ class PropagandasTvTest(unittest.TestCase):
         poll = client.get("/api/poll/10.0.0.8")
         self.assertEqual(200, poll.status_code)
         queue = poll.get_json()["queue"]
-        self.assertEqual(["/media/a.jpg?enquadre=1", "/media/b.mp4"], [item["path"] for item in queue])
+        self.assertEqual(["/media/a.jpg", "/media/b.mp4"], [item["path"] for item in queue])
         self.assertEqual(["image", "video"], [item["type"] for item in queue])
 
         clients = client.get("/api/clients").get_json()
@@ -589,7 +589,7 @@ class PropagandasTvTest(unittest.TestCase):
         self.assertEqual("Balcão", fila.get_json()["dispositivo"]["nome"])
         self.assertEqual([], fila.get_json()["queue"])
 
-    def test_media_vertical_ganha_laterais_em_tela_horizontal(self):
+    def test_media_sem_enquadre_serve_arquivo_original(self):
         import os
 
         from PIL import Image
@@ -606,14 +606,9 @@ class PropagandasTvTest(unittest.TestCase):
             client = self.app.test_client()
             portrait = client.get("/media/vertical-teste-tv.png")
             self.assertEqual(200, portrait.status_code)
-            self.assertEqual("image/jpeg", portrait.mimetype)
+            self.assertEqual("image/png", portrait.mimetype)
             img = Image.open(io.BytesIO(portrait.data))
-            self.assertAlmostEqual(img.width / img.height, 16 / 9, places=2)
-            centro = img.getpixel((img.width // 2, img.height // 2))
-            self.assertGreater(centro[0], 240)
-            self.assertLess(centro[1], 16)
-            self.assertLess(centro[2], 16)
-            self.assertEqual((0, 0, 0), img.getpixel((2, img.height // 2)))
+            self.assertEqual((90, 160), img.size)
             img.close()
             portrait.close()
 
@@ -627,6 +622,35 @@ class PropagandasTvTest(unittest.TestCase):
             for path in (vertical, horizontal):
                 if os.path.exists(path):
                     os.remove(path)
+
+    def test_media_com_enquadre_explicito_letterbox_horizontal(self):
+        import os
+
+        from PIL import Image
+
+        with self.app.app_context():
+            folder = self.app.config["UPLOAD_FOLDER"]
+            os.makedirs(folder, exist_ok=True)
+            vertical = os.path.join(folder, "vertical-enquadre-tv.png")
+            Image.new("RGB", (90, 160), (255, 0, 0)).save(vertical)
+
+        try:
+            client = self.app.test_client()
+            portrait = client.get("/media/vertical-enquadre-tv.png?enquadre=1")
+            self.assertEqual(200, portrait.status_code)
+            self.assertEqual("image/jpeg", portrait.mimetype)
+            img = Image.open(io.BytesIO(portrait.data))
+            self.assertAlmostEqual(img.width / img.height, 16 / 9, places=2)
+            centro = img.getpixel((img.width // 2, img.height // 2))
+            self.assertGreater(centro[0], 240)
+            self.assertLess(centro[1], 16)
+            self.assertLess(centro[2], 16)
+            self.assertEqual((0, 0, 0), img.getpixel((2, img.height // 2)))
+            img.close()
+            portrait.close()
+        finally:
+            if os.path.exists(vertical):
+                os.remove(vertical)
 
     def test_media_horizontal_ganha_faixas_em_tela_vertical(self):
         import os
@@ -676,17 +700,14 @@ class PropagandasTvTest(unittest.TestCase):
                 if os.path.exists(path):
                     os.remove(path)
 
-    def test_fila_streaming_usa_enquadre_vertical_do_setor(self):
+    def test_fila_streaming_nao_aplica_enquadre_no_path(self):
         from backend.models import TvDispositivo
         from backend.services.streaming_service import fila_streaming, media_public_path
 
-        self.assertEqual("/media/a.jpg?enquadre=1", media_public_path("a.jpg"))
-        self.assertEqual(
-            "/media/a.jpg?enquadre=vertical",
-            media_public_path("a.jpg", "vertical"),
-        )
+        self.assertEqual("/media/a.jpg", media_public_path("a.jpg"))
+        self.assertEqual("/media/a.jpg", media_public_path("a.jpg", "vertical"))
         self.assertEqual("/media/b.mp4", media_public_path("b.mp4"))
-        self.assertEqual("/media/b.mp4?enquadre=vertical", media_public_path("b.mp4", "vertical"))
+        self.assertEqual("/media/b.mp4", media_public_path("b.mp4", "vertical"))
 
         with self.app.app_context():
             setor = db.session.get(Setor, self.setor_id)
@@ -699,6 +720,7 @@ class PropagandasTvTest(unittest.TestCase):
                 chave="apk:orientacao-teste",
                 nome="TV Vertical",
                 setor_id=self.setor_id,
+                orientacao_tv="vertical",
             )
             db.session.add(dispositivo)
             db.session.commit()
@@ -711,7 +733,45 @@ class PropagandasTvTest(unittest.TestCase):
             )
             db.session.commit()
             fila = fila_streaming(dispositivo)
-            self.assertEqual(["/media/retrato.jpg?enquadre=vertical"], [item["path"] for item in fila])
+            # Sem ?enquadre: orientação fica no dispositivo/APK (Fit + ForcedDisplayOrientation).
+            self.assertEqual(["/media/retrato.jpg"], [item["path"] for item in fila])
+            self.assertEqual("vertical", dispositivo.orientacao_tv)
+
+    def test_admin_define_orientacao_por_tv_streaming(self):
+        client = self._admin_client()
+        with self.app.app_context():
+            dispositivo = TvDispositivo(
+                tipo="streaming",
+                chave="apk:orientacao-admin",
+                nome="TV Orient",
+                setor_id=self.setor_id,
+                orientacao_tv="horizontal",
+            )
+            db.session.add(dispositivo)
+            db.session.commit()
+            dispositivo_id = dispositivo.id
+
+        response = client.put(
+            f"/api/v1/admin/tvs/{dispositivo_id}/orientacao",
+            json={"orientacao_tv": "vertical"},
+        )
+        self.assertEqual(200, response.status_code)
+        self.assertEqual("vertical", response.get_json()["orientacao_tv"])
+
+        invalid = client.put(
+            f"/api/v1/admin/tvs/{dispositivo_id}/orientacao",
+            json={"orientacao_tv": "diagonal"},
+        )
+        self.assertEqual(400, invalid.status_code)
+
+        with self.app.app_context():
+            dispositivo = db.session.get(TvDispositivo, dispositivo_id)
+            self.assertEqual("vertical", dispositivo.orientacao_tv)
+
+        listagem = client.get("/api/v1/admin/tvs")
+        self.assertEqual(200, listagem.status_code)
+        tv = next(t for t in listagem.get_json() if t["id"] == dispositivo_id and t["tipo"] == "streaming")
+        self.assertEqual("vertical", tv["orientacao_tv"])
 
 
 if __name__ == "__main__":

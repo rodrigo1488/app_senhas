@@ -1,12 +1,13 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ImageIcon, MonitorPlay, Smartphone, Tv } from "lucide-react";
+import { Check, ChevronDown, ImageIcon, MonitorPlay, Search, Smartphone, Trash2, Tv } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch, setorEhStreaming, type Propaganda, type Setor, type TvAdmin } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 function midiaTipo(item: Propaganda): "image" | "video" {
   return item.tipo === "video" ? "video" : "image";
@@ -25,6 +26,14 @@ export default function PropagandasPage() {
   const [clienteAtivo, setClienteAtivo] = useState<Setor | null>(null);
   const [midiasCliente, setMidiasCliente] = useState<Set<number>>(new Set());
   const [savingCliente, setSavingCliente] = useState(false);
+  const [filtroBusca, setFiltroBusca] = useState("");
+  const [filtroStatus, setFiltroStatus] = useState<"todos" | "online" | "offline">("todos");
+  const [filtroTipo, setFiltroTipo] = useState<"todos" | "setor" | "streaming">("todos");
+  const [filtroSetorId, setFiltroSetorId] = useState("");
+  const [secoesAbertas, setSecoesAbertas] = useState<Record<string, boolean>>({
+    senha: true,
+    avulsas: true,
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function load() {
@@ -122,6 +131,12 @@ export default function PropagandasPage() {
           method: "PUT",
           body: JSON.stringify({ setor_id: tvAtiva.setor_id ?? null }),
         });
+        await apiFetch(`/api/v1/admin/tvs/${tvAtiva.id}/orientacao`, {
+          method: "PUT",
+          body: JSON.stringify({
+            orientacao_tv: tvAtiva.orientacao_tv === "vertical" ? "vertical" : "horizontal",
+          }),
+        });
       }
       await apiFetch("/api/v1/admin/tvs/midias", {
         method: "PUT",
@@ -138,6 +153,22 @@ export default function PropagandasPage() {
     } finally {
       setSavingTv(false);
     }
+  }
+
+  async function removerTv(tv: TvAdmin) {
+    if (tv.tipo !== "streaming") return;
+    if (!confirm(`Remover o cadastro da TV "${tv.nome}"?`)) return;
+    try {
+      await apiFetch(`/api/v1/admin/tvs/${tv.id}`, { method: "DELETE" });
+      if (tvAtiva?.id === tv.id) setTvAtiva(null);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao remover TV");
+    }
+  }
+
+  function toggleSecao(key: string) {
+    setSecoesAbertas((current) => ({ ...current, [key]: !current[key] }));
   }
 
   function abrirCliente(setor: Setor) {
@@ -175,8 +206,28 @@ export default function PropagandasPage() {
     }
   }
 
-  const tvsSenha = useMemo(() => tvs.filter((tv) => tv.tipo === "setor"), [tvs]);
-  const streaming = useMemo(() => tvs.filter((tv) => tv.tipo === "streaming"), [tvs]);
+  const tvsFiltradas = useMemo(() => {
+    const q = filtroBusca.trim().toLowerCase();
+    return tvs.filter((tv) => {
+      if (filtroTipo !== "todos" && tv.tipo !== filtroTipo) return false;
+      if (filtroStatus === "online" && !tv.is_online) return false;
+      if (filtroStatus === "offline" && tv.is_online) return false;
+      if (filtroSetorId) {
+        const sid = Number(filtroSetorId);
+        if (tv.tipo === "setor" && tv.id !== sid) return false;
+        if (tv.tipo === "streaming" && tv.setor_id !== sid) return false;
+      }
+      if (!q) return true;
+      const hay = [tv.nome, tv.device_name, tv.setor_nome, tv.chave]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }, [tvs, filtroBusca, filtroStatus, filtroTipo, filtroSetorId]);
+
+  const tvsSenha = useMemo(() => tvsFiltradas.filter((tv) => tv.tipo === "setor"), [tvsFiltradas]);
+  const streaming = useMemo(() => tvsFiltradas.filter((tv) => tv.tipo === "streaming"), [tvsFiltradas]);
   const setoresEspera = useMemo(
     () => setoresCadastro.filter((setor) => !setorEhStreaming(setor)),
     [setoresCadastro],
@@ -201,6 +252,16 @@ export default function PropagandasPage() {
     });
     return grupos;
   }, [streaming, setoresStreaming]);
+
+  useEffect(() => {
+    setSecoesAbertas((current) => {
+      const next = { ...current };
+      for (const grupo of gruposStreaming) {
+        if (next[grupo.key] === undefined) next[grupo.key] = true;
+      }
+      return next;
+    });
+  }, [gruposStreaming]);
 
   return (
     <div className="space-y-6">
@@ -255,26 +316,89 @@ export default function PropagandasPage() {
         </CardContent>
       </Card>
 
-      <TvGroup
-        title="TVs de senha (setores de atendimento)"
-        empty="Cadastre um setor de atendimento. Ao abrir o painel da TV, ela fica online e você escolhe as mídias aqui."
-        tvs={tvsSenha}
-        onSelect={abrirTv}
-      />
+      <Card>
+        <CardHeader>
+          <CardTitle>TVs cadastradas</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="relative sm:col-span-2 lg:col-span-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="pl-9"
+                placeholder="Buscar por nome, dispositivo…"
+                value={filtroBusca}
+                onChange={(e) => setFiltroBusca(e.target.value)}
+              />
+            </div>
+            <select
+              className="flex h-10 w-full rounded-lg border border-input bg-card px-3 text-sm"
+              value={filtroTipo}
+              onChange={(e) => setFiltroTipo(e.target.value as typeof filtroTipo)}
+            >
+              <option value="todos">Todos os tipos</option>
+              <option value="setor">Senha</option>
+              <option value="streaming">Streaming</option>
+            </select>
+            <select
+              className="flex h-10 w-full rounded-lg border border-input bg-card px-3 text-sm"
+              value={filtroStatus}
+              onChange={(e) => setFiltroStatus(e.target.value as typeof filtroStatus)}
+            >
+              <option value="todos">Online e offline</option>
+              <option value="online">Só online</option>
+              <option value="offline">Só offline</option>
+            </select>
+            <select
+              className="flex h-10 w-full rounded-lg border border-input bg-card px-3 text-sm"
+              value={filtroSetorId}
+              onChange={(e) => setFiltroSetorId(e.target.value)}
+            >
+              <option value="">Todos os setores</option>
+              {setoresCadastro.map((setor) => (
+                <option key={setor.id} value={setor.id}>
+                  {setor.nome}
+                  {setorEhStreaming(setor) ? " · streaming" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            {tvsFiltradas.length} TV(s) · orientação de streaming é por dispositivo
+          </p>
+        </CardContent>
+      </Card>
 
-      {gruposStreaming.map((grupo) => (
+      {(filtroTipo === "todos" || filtroTipo === "setor") && (
         <TvGroup
-          key={grupo.key}
-          title={grupo.title}
-          empty={
-            grupo.key === "avulsas"
-              ? "Nenhuma TV avulsa. No app, abra TV DE PROPAGANDAS ou use /smart|/legacy. Depois associe a um setor de streaming se quiser."
-              : "Nenhuma TV vinculada a este setor. Conecte uma TV de streaming e associe-a aqui."
-          }
-          tvs={grupo.tvs}
+          sectionKey="senha"
+          open={secoesAbertas.senha !== false}
+          onToggle={() => toggleSecao("senha")}
+          title="TVs de senha (setores de atendimento)"
+          empty="Cadastre um setor de atendimento. Ao abrir o painel da TV, ela fica online e você escolhe as mídias aqui."
+          tvs={tvsSenha}
           onSelect={abrirTv}
         />
-      ))}
+      )}
+
+      {(filtroTipo === "todos" || filtroTipo === "streaming") &&
+        gruposStreaming.map((grupo) => (
+          <TvGroup
+            key={grupo.key}
+            sectionKey={grupo.key}
+            open={secoesAbertas[grupo.key] !== false}
+            onToggle={() => toggleSecao(grupo.key)}
+            title={grupo.title}
+            empty={
+              grupo.key === "avulsas"
+                ? "Nenhuma TV avulsa. No app, abra TV DE PROPAGANDAS ou use /smart|/legacy. Depois associe a um setor de streaming se quiser."
+                : "Nenhuma TV vinculada a este setor. Conecte uma TV de streaming e associe-a aqui."
+            }
+            tvs={grupo.tvs}
+            onSelect={abrirTv}
+            onRemove={removerTv}
+          />
+        ))}
 
       <Card>
         <CardHeader>
@@ -384,27 +508,49 @@ export default function PropagandasPage() {
                 Marque o que deve aparecer nesta TV e salve. A ordem segue a da biblioteca.
               </p>
               {tvAtiva.tipo === "streaming" ? (
-                <div className="space-y-2">
-                  <Label htmlFor="tv-setor">Setor</Label>
-                  <select
-                    id="tv-setor"
-                    className="flex h-10 w-full rounded-lg border border-input bg-card px-3 text-sm"
-                    value={tvAtiva.setor_id ? String(tvAtiva.setor_id) : ""}
-                    onChange={(e) =>
-                      setTvAtiva({
-                        ...tvAtiva,
-                        setor_id: e.target.value ? Number(e.target.value) : null,
-                      })
-                    }
-                  >
-                    <option value="">Avulsa (sem setor)</option>
-                    {setoresCadastro.map((setor) => (
-                      <option key={setor.id} value={setor.id}>
-                        {setor.nome}
-                        {setorEhStreaming(setor) ? " · streaming" : ""}
-                      </option>
-                    ))}
-                  </select>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="tv-setor">Setor</Label>
+                    <select
+                      id="tv-setor"
+                      className="flex h-10 w-full rounded-lg border border-input bg-card px-3 text-sm"
+                      value={tvAtiva.setor_id ? String(tvAtiva.setor_id) : ""}
+                      onChange={(e) =>
+                        setTvAtiva({
+                          ...tvAtiva,
+                          setor_id: e.target.value ? Number(e.target.value) : null,
+                        })
+                      }
+                    >
+                      <option value="">Avulsa (sem setor)</option>
+                      {setoresCadastro.map((setor) => (
+                        <option key={setor.id} value={setor.id}>
+                          {setor.nome}
+                          {setorEhStreaming(setor) ? " · streaming" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="tv-orientacao">Orientação desta TV</Label>
+                    <select
+                      id="tv-orientacao"
+                      className="flex h-10 w-full rounded-lg border border-input bg-card px-3 text-sm"
+                      value={tvAtiva.orientacao_tv === "vertical" ? "vertical" : "horizontal"}
+                      onChange={(e) =>
+                        setTvAtiva({
+                          ...tvAtiva,
+                          orientacao_tv: e.target.value === "vertical" ? "vertical" : "horizontal",
+                        })
+                      }
+                    >
+                      <option value="horizontal">Horizontal (paisagem)</option>
+                      <option value="vertical">Vertical (retrato)</option>
+                    </select>
+                    <p className="text-xs text-muted-foreground">
+                      Independente do setor. A imagem não é reenquadrada no servidor.
+                    </p>
+                  </div>
                 </div>
               ) : null}
               <div className="grid gap-3 sm:grid-cols-2">
@@ -536,54 +682,97 @@ export default function PropagandasPage() {
 }
 
 function TvGroup({
+  sectionKey,
+  open,
+  onToggle,
   title,
   empty,
   tvs,
   onSelect,
+  onRemove,
 }: {
+  sectionKey: string;
+  open: boolean;
+  onToggle: () => void;
   title: string;
   empty: string;
   tvs: TvAdmin[];
   onSelect: (tv: TvAdmin) => void;
+  onRemove?: (tv: TvAdmin) => void;
 }) {
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
+      <CardHeader className="pb-3">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex w-full items-center justify-between gap-3 text-left"
+          aria-expanded={open}
+          aria-controls={`tv-group-${sectionKey}`}
+        >
+          <CardTitle className="flex items-center gap-2">
+            {title}
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-normal text-muted-foreground">
+              {tvs.length}
+            </span>
+          </CardTitle>
+          <ChevronDown
+            className={cn("h-5 w-5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")}
+          />
+        </button>
       </CardHeader>
-      <CardContent className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {tvs.map((tv) => (
-          <button
-            key={`${tv.tipo}-${tv.id}`}
-            type="button"
-            onClick={() => onSelect(tv)}
-            className="rounded-xl border p-4 text-left transition hover:border-primary"
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Tv className="h-5 w-5 text-primary" />
-                <span className="font-semibold">{tv.nome}</span>
-              </div>
-              <span
-                className={`rounded-full px-2 py-0.5 text-xs ${
-                  tv.is_online ? "bg-emerald-100 text-emerald-800" : "bg-muted text-muted-foreground"
-                }`}
-              >
-                {tv.is_online ? "Online" : "Offline"}
-              </span>
+      {open ? (
+        <CardContent id={`tv-group-${sectionKey}`} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {tvs.map((tv) => (
+            <div
+              key={`${tv.tipo}-${tv.id}`}
+              className="rounded-xl border p-4 transition hover:border-primary"
+            >
+              <button type="button" onClick={() => onSelect(tv)} className="w-full text-left">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <Tv className="h-5 w-5 text-primary" />
+                    <span className="font-semibold">{tv.nome}</span>
+                  </div>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs ${
+                      tv.is_online ? "bg-emerald-100 text-emerald-800" : "bg-muted text-muted-foreground"
+                    }`}
+                  >
+                    {tv.is_online ? "Online" : "Offline"}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {tv.tipo === "setor"
+                    ? "Painel de senhas"
+                    : tv.setor_nome
+                      ? `${tv.device_name || "Streaming"} · ${tv.setor_nome}`
+                      : tv.device_name || "Streaming avulsa"}{" "}
+                  · {tv.propaganda_ids.length} mídia(s)
+                  {tv.tipo === "streaming"
+                    ? ` · ${tv.orientacao_tv === "vertical" ? "vertical" : "horizontal"}`
+                    : ""}
+                </p>
+              </button>
+              {tv.tipo === "streaming" && onRemove ? (
+                <div className="mt-3 flex justify-end">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 gap-1 text-destructive hover:text-destructive"
+                    onClick={() => onRemove(tv)}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Remover
+                  </Button>
+                </div>
+              ) : null}
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">
-              {tv.tipo === "setor"
-                ? "Painel de senhas"
-                : tv.setor_nome
-                  ? `${tv.device_name || "Streaming"} · ${tv.setor_nome}`
-                  : tv.device_name || "Streaming avulsa"}{" "}
-              · {tv.propaganda_ids.length} mídia(s)
-            </p>
-          </button>
-        ))}
-        {!tvs.length && <p className="col-span-full text-sm text-muted-foreground">{empty}</p>}
-      </CardContent>
+          ))}
+          {!tvs.length && <p className="col-span-full text-sm text-muted-foreground">{empty}</p>}
+        </CardContent>
+      ) : null}
     </Card>
   );
 }

@@ -263,6 +263,7 @@ def _init_database(app: Flask) -> None:
     _migrate_tv_orientacao_column()
     _migrate_tipo_setor_column()
     _migrate_impressao_via_cliente_column()
+    _migrate_tv_dispositivo_orientacao_column()
     _migrate_usuario_papeis()
 
     is_sqlite = db.engine.dialect.name == "sqlite"
@@ -442,6 +443,60 @@ def _migrate_impressao_via_cliente_column() -> None:
                     f"impressao_via_cliente BOOLEAN NOT NULL DEFAULT {bool_default}"
                 )
             )
+
+
+def _migrate_tv_dispositivo_orientacao_column() -> None:
+    """Orientação por TV de streaming (não herda mais do setor)."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    if "tv_dispositivos" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("tv_dispositivos")}
+    if_not_exists = "IF NOT EXISTS " if db.engine.dialect.name == "postgresql" else ""
+
+    with db.engine.begin() as conn:
+        if "orientacao_tv" not in columns:
+            conn.execute(
+                text(
+                    f"ALTER TABLE tv_dispositivos ADD COLUMN {if_not_exists}"
+                    "orientacao_tv VARCHAR(20) NOT NULL DEFAULT 'horizontal'"
+                )
+            )
+            # Copia uma vez a orientação do setor vinculado (quando existir).
+            if db.engine.dialect.name == "postgresql":
+                conn.execute(
+                    text(
+                        """
+                        UPDATE tv_dispositivos AS tv
+                        SET orientacao_tv = s.orientacao_tv
+                        FROM setores AS s
+                        WHERE tv.setor_id = s.id
+                          AND tv.tipo = 'streaming'
+                          AND s.orientacao_tv IN ('horizontal', 'vertical')
+                        """
+                    )
+                )
+            else:
+                conn.execute(
+                    text(
+                        """
+                        UPDATE tv_dispositivos
+                        SET orientacao_tv = (
+                            SELECT setores.orientacao_tv FROM setores
+                            WHERE setores.id = tv_dispositivos.setor_id
+                              AND setores.orientacao_tv IN ('horizontal', 'vertical')
+                        )
+                        WHERE tipo = 'streaming'
+                          AND setor_id IS NOT NULL
+                          AND EXISTS (
+                            SELECT 1 FROM setores
+                            WHERE setores.id = tv_dispositivos.setor_id
+                              AND setores.orientacao_tv IN ('horizontal', 'vertical')
+                          )
+                        """
+                    )
+                )
 
 
 def _backfill_setor_propagandas() -> None:

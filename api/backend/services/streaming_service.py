@@ -32,16 +32,10 @@ def media_public_path(arquivo: str, orientacao: str = "horizontal") -> str:
         nome = nome[len("uploads/") :]
     if nome.startswith("media/"):
         nome = nome[len("media/") :]
-    path = f"/media/{nome}"
-    # Troca a URL para o APK já instalado (landscape + crop) buscar a versão
-    # enquadrada. Em vertical o backend gira −90° e entrega 16:9 (imagem e MP4).
-    modo = normalizar_orientacao_tv(orientacao)
-    if nome.lower().endswith(".mp4"):
-        if modo == "vertical":
-            path = f"{path}?enquadre=vertical"
-        return path
-    path = f"{path}?enquadre={'vertical' if modo == 'vertical' else '1'}"
-    return path
+    # Sem letterbox/rotação no servidor: o APK usa Fit + ForcedDisplayOrientation
+    # conforme `orientacao_tv` do dispositivo (evitar imagem "bichada" por dupla rotação).
+    _ = normalizar_orientacao_tv(orientacao)
+    return f"/media/{nome}"
 
 
 def _tipo_arquivo(arquivo: str) -> str:
@@ -50,10 +44,8 @@ def _tipo_arquivo(arquivo: str) -> str:
 
 
 def _orientacao_do_dispositivo(dispositivo: TvDispositivo) -> str:
-    if not dispositivo.setor_id:
-        return "horizontal"
-    setor = db.session.get(Setor, dispositivo.setor_id)
-    return normalizar_orientacao_tv(setor.orientacao_tv if setor else None)
+    """Orientação física desta TV (campo do dispositivo, não do setor)."""
+    return normalizar_orientacao_tv(getattr(dispositivo, "orientacao_tv", None))
 
 
 def fila_streaming(dispositivo: TvDispositivo) -> list[dict]:
@@ -208,20 +200,28 @@ def registrar_streaming_apk(
         dispositivo.user_agent = user_agent
         dispositivo.last_seen = datetime.now()
         dispositivo.is_online = True
+        if not (dispositivo.orientacao_tv or "").strip():
+            dispositivo.orientacao_tv = "horizontal"
         db.session.commit()
         marcar_online(chave, sid)
         return dispositivo
 
     nome = proximo_nome_streaming_setor(setor.nome)
-    dispositivo = registrar_streaming(
-        ip_address=chave,
+    # Cria só por chave — sem merge por nome (evita duplicar/roubar TV legada).
+    dispositivo = TvDispositivo(
+        tipo="streaming",
+        chave=chave,
+        nome=nome,
         device_name=device_name,
         user_agent=user_agent,
-        nome=nome,
-        sid=sid,
+        setor_id=setor.id,
+        orientacao_tv="horizontal",
+        last_seen=datetime.now(),
+        is_online=True,
     )
-    dispositivo.setor_id = setor.id
+    db.session.add(dispositivo)
     db.session.commit()
+    marcar_online(chave, sid)
     return dispositivo
 
 
@@ -233,23 +233,32 @@ def registrar_streaming(
     nome: str | None = None,
     sid: str | None = None,
 ) -> TvDispositivo:
-    nome_final = (nome or device_name or "TV").strip() or "TV"
-    existente_por_nome = TvDispositivo.query.filter_by(tipo="streaming", nome=nome_final).first()
+    nome_desejado = (nome or device_name or "TV").strip() or "TV"
     dispositivo = TvDispositivo.query.filter_by(chave=ip_address).first()
 
-    if existente_por_nome and existente_por_nome.chave != ip_address:
-        if dispositivo and dispositivo.id != existente_por_nome.id:
-            db.session.delete(dispositivo)
-        existente_por_nome.chave = ip_address
-        dispositivo = existente_por_nome
-
     if not dispositivo:
+        # Colisão de nome: gera sufixo em vez de sequestrar outra TV.
+        nome_final = nome_desejado
+        nomes = {
+            (d.nome or "").strip()
+            for d in TvDispositivo.query.filter_by(tipo="streaming").all()
+            if d.nome
+        }
+        if nome_final in nomes:
+            n = 2
+            while f"{n} {nome_desejado}" in nomes:
+                n += 1
+            nome_final = f"{n} {nome_desejado}"
         dispositivo = TvDispositivo(
             tipo="streaming",
             chave=ip_address,
             nome=nome_final,
+            orientacao_tv="horizontal",
         )
         db.session.add(dispositivo)
+    else:
+        # Reconexão pela mesma chave: mantém o nome já cadastrado.
+        nome_final = dispositivo.nome or nome_desejado
 
     dispositivo.tipo = "streaming"
     dispositivo.nome = nome_final
@@ -257,6 +266,8 @@ def registrar_streaming(
     dispositivo.user_agent = user_agent
     dispositivo.last_seen = datetime.now()
     dispositivo.is_online = True
+    if not (dispositivo.orientacao_tv or "").strip():
+        dispositivo.orientacao_tv = "horizontal"
     db.session.commit()
     marcar_online(dispositivo.chave, sid)
     return dispositivo
@@ -406,6 +417,33 @@ def vincular_tv_streaming_ao_setor(dispositivo: TvDispositivo, setor_id: int | N
         online=esta_online(dispositivo.chave),
         propaganda_ids=propaganda_ids_dispositivo(dispositivo.id),
     )
+
+
+def definir_orientacao_tv_streaming(dispositivo: TvDispositivo, orientacao: str) -> dict:
+    if dispositivo.tipo != "streaming":
+        raise ValueError("Apenas TVs de streaming têm orientação própria")
+    valor = (orientacao or "").strip().lower()
+    if valor not in {"horizontal", "vertical"}:
+        raise ValueError("orientacao_tv deve ser 'horizontal' ou 'vertical'")
+    dispositivo.orientacao_tv = valor
+    db.session.commit()
+    emitir_fila_streaming(dispositivo)
+    return dispositivo.to_admin_dict(
+        online=esta_online(dispositivo.chave),
+        propaganda_ids=propaganda_ids_dispositivo(dispositivo.id),
+    )
+
+
+def remover_tv_streaming(dispositivo: TvDispositivo) -> None:
+    if dispositivo.tipo != "streaming":
+        raise ValueError("Apenas TVs de streaming podem ser removidas por aqui")
+    chave = dispositivo.chave
+    connected_by_chave.pop(chave, None)
+    db.session.execute(
+        delete(dispositivo_propagandas).where(dispositivo_propagandas.c.dispositivo_id == dispositivo.id)
+    )
+    db.session.delete(dispositivo)
+    db.session.commit()
 
 
 def biblioteca_como_media_files() -> dict:

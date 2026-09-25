@@ -329,6 +329,8 @@ class TvDispositivo(db.Model):
     user_agent = db.Column(db.Text)
     last_seen = db.Column(db.DateTime, default=agora_sp)
     is_online = db.Column(db.Boolean, nullable=False, default=False)
+    # Orientação física desta TV de streaming (independente do setor).
+    orientacao_tv = db.Column(db.String(20), nullable=False, default="horizontal")
     setor_id = db.Column(db.Integer, db.ForeignKey("setores.id", ondelete="SET NULL"))
     criado_em = db.Column(db.DateTime, default=agora_sp)
 
@@ -349,6 +351,7 @@ class TvDispositivo(db.Model):
             "user_agent": self.user_agent or "",
             "last_seen": self.last_seen.isoformat() if self.last_seen else None,
             "is_online": bool(self.is_online if online is None else online),
+            "orientacao_tv": self.orientacao_tv or "horizontal",
             "setor_id": self.setor_id,
             "setor_nome": self.setor.nome if self.setor else None,
             "tipo_setor": (self.setor.tipo_setor or TIPO_SETOR_ATENDIMENTO) if self.setor else None,

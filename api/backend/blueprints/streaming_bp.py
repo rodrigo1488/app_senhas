@@ -48,18 +48,20 @@ _VIDEO_EXT = {".mp4"}
 def serve_media(filename):
     ext = os.path.splitext(filename)[1].lower()
     filepath = safe_join(current_app.config["UPLOAD_FOLDER"], filename)
-    bruto = (request.args.get("enquadre") or "1").strip().lower()
-    aplicar = bruto not in {"0", "false", "off", "none"}
-    if aplicar and filepath and os.path.isfile(filepath):
-        orientacao = normalizar_orientacao_tv(bruto)
-        if ext in _IMAGE_EXT:
-            data = bytes_imagem_enquadrada_tv(filepath, orientacao=orientacao)
-            if data is not None:
-                return send_file(io.BytesIO(data), mimetype="image/jpeg", max_age=86400)
-        elif ext in _VIDEO_EXT:
-            transcoded = video_enquadrado_tv(filepath, orientacao=orientacao)
-            if transcoded:
-                return send_file(transcoded, mimetype="video/mp4", max_age=86400, conditional=True)
+    # Letterbox/rotação só com `enquadre` explícito (legado). Sem parâmetro = original.
+    bruto = request.args.get("enquadre")
+    if bruto is not None and filepath and os.path.isfile(filepath):
+        valor = bruto.strip().lower()
+        if valor not in {"0", "false", "off", "none", ""}:
+            orientacao = normalizar_orientacao_tv(valor)
+            if ext in _IMAGE_EXT:
+                data = bytes_imagem_enquadrada_tv(filepath, orientacao=orientacao)
+                if data is not None:
+                    return send_file(io.BytesIO(data), mimetype="image/jpeg", max_age=86400)
+            elif ext in _VIDEO_EXT:
+                transcoded = video_enquadrado_tv(filepath, orientacao=orientacao)
+                if transcoded:
+                    return send_file(transcoded, mimetype="video/mp4", max_age=86400, conditional=True)
     return send_from_directory(current_app.config["UPLOAD_FOLDER"], filename)
 
 

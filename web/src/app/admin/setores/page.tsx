@@ -75,7 +75,7 @@ export default function SetoresPage() {
         propagandas_cliente_ativas: tipoSetor === "streaming" ? false : propagandasClienteAtivas,
         impressao_via_cliente: tipoSetor === "streaming" ? false : impressaoViaCliente,
         layout_tv_web: tipoSetor === "streaming" ? "propaganda" : layoutTvWeb,
-        orientacao_tv: orientacaoTv,
+        orientacao_tv: tipoSetor === "streaming" ? "horizontal" : orientacaoTv,
       });
       if (editing) {
         await apiFetch(`/api/v1/admin/setores/${editing.id}`, { method: "PUT", body });
@@ -241,11 +241,12 @@ export default function SetoresPage() {
               </div>
             </fieldset>
             ) : null}
+            {tipoSetor !== "streaming" ? (
             <fieldset className="space-y-3 md:col-span-2">
               <div>
                 <Label>Orientação da tela</Label>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  Use horizontal para TVs deitadas e vertical para telas em pé.
+                  Use horizontal para TVs deitadas e vertical para telas em pé (painel de senhas deste setor).
                 </p>
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
@@ -265,6 +266,11 @@ export default function SetoresPage() {
                 />
               </div>
             </fieldset>
+            ) : (
+              <p className="text-sm text-muted-foreground md:col-span-2">
+                A orientação de cada TV de streaming é definida em Mídias → TVs cadastradas (por dispositivo).
+              </p>
+            )}
             <div className="space-y-2 md:col-span-2">
               <Label>Descrição</Label>
               <Input value={descricao} onChange={(e) => setDescricao(e.target.value)} />
@@ -308,9 +314,7 @@ export default function SetoresPage() {
                 <p className="text-xs text-muted-foreground">
                   {setorEhStreaming(s) ? (
                     <>
-                      TVs de streaming
-                      {" · "}
-                      Tela: {s.orientacao_tv === "vertical" ? "Vertical" : "Horizontal"}
+                      TVs de streaming · orientação por TV em Mídias
                       {!s.propagandas_ativas ? " (sem imagens ativas)" : ""}
                     </>
                   ) : (
