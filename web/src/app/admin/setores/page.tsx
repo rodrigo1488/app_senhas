@@ -335,6 +335,29 @@ export default function SetoresPage() {
                   {s.propagandas_cliente_ativas ? "Desligar espera" : "Ligar espera"}
                 </Button>
                 ) : null}
+                {!setorEhStreaming(s) ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={async () => {
+                    if (
+                      !confirm(
+                        `Limpar a fila de "${s.nome}"?\n\nTodas as senhas aguardando e em atendimento serão finalizadas.`,
+                      )
+                    ) {
+                      return;
+                    }
+                    try {
+                      await apiFetch(`/api/v1/admin/setores/${s.id}/limpar-fila`, { method: "POST" });
+                      setError(null);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Erro ao limpar a fila");
+                    }
+                  }}
+                >
+                  Limpar fila
+                </Button>
+                ) : null}
                 <Button variant="outline" size="sm" onClick={() => startEdit(s)}>
                   Editar
                 </Button>

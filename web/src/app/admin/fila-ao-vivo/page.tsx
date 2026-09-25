@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Activity, Radio } from "lucide-react";
+import { Activity, Radio, Trash2 } from "lucide-react";
 import { io, type Socket } from "socket.io-client";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { apiFetch, setorEhAtendimento, type FilaAoVivoData, type Setor } from "@/lib/api";
@@ -52,6 +53,7 @@ export default function FilaAoVivoPage() {
   const [error, setError] = useState<string | null>(null);
   const [live, setLive] = useState(false);
   const [ignorarAuto, setIgnorarAuto] = useState(false);
+  const [limpando, setLimpando] = useState(false);
 
   const loadSnapshot = useCallback(async (id: string) => {
     if (!id) return;
@@ -139,6 +141,33 @@ export default function FilaAoVivoPage() {
     if (setorId) await loadSnapshot(setorId);
   }
 
+  async function limparFila() {
+    if (!setorId || limpando) return;
+    const setorNome = setores.find((s) => String(s.id) === setorId)?.nome || "este setor";
+    const ok = confirm(
+      `Limpar a fila de "${setorNome}"?\n\nTodas as senhas aguardando e em atendimento serão finalizadas. Esta ação não pode ser desfeita.`,
+    );
+    if (!ok) return;
+    setLimpando(true);
+    setError(null);
+    try {
+      const result = await apiFetch<{
+        ok: boolean;
+        removidas: number;
+        aguardando: number;
+        em_atendimento: number;
+      }>(`/api/v1/admin/setores/${setorId}/limpar-fila`, { method: "POST" });
+      await loadSnapshot(setorId);
+      if (result.removidas === 0) {
+        setError(null);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Erro ao limpar a fila");
+    } finally {
+      setLimpando(false);
+    }
+  }
+
   const selectClass =
     "flex h-9 w-full max-w-xs rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
@@ -179,6 +208,19 @@ export default function FilaAoVivoPage() {
               ))}
             </select>
           </div>
+          {setorId ? (
+            <Button
+              type="button"
+              variant="destructive"
+              size="sm"
+              className="mt-5"
+              disabled={limpando}
+              onClick={() => void limparFila()}
+            >
+              <Trash2 className="mr-1.5 h-4 w-4" />
+              {limpando ? "Limpando…" : "Limpar fila"}
+            </Button>
+          ) : null}
         </div>
       </div>
 

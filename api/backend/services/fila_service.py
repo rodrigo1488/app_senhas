@@ -95,6 +95,78 @@ def encerrar_senhas_vencidas(agora: Optional[datetime] = None) -> list[int]:
         return setor_ids
 
 
+def limpar_fila_setor(setor_id: int) -> dict:
+    """Finaliza todas as senhas em aberto do setor (aguardando e em atendimento).
+
+    Remove atendimentos atuais, marca as senhas como finalizadas e registra
+    `Finalizado` sem avaliação (mesmo padrão da virada do dia). Não apaga o
+    histórico do dia — só zera a fila operacional.
+    """
+    setor = db.session.get(Setor, setor_id)
+    if not setor:
+        raise FilaError("Setor não encontrado")
+    if setor_eh_streaming(setor):
+        raise FilaError("Setor de streaming não possui fila de atendimento")
+
+    agora = agora_sp()
+    with _setor_locks[setor_id]:
+        abertas = (
+            Senha.query.filter(
+                Senha.setor_id == setor_id,
+                Senha.status.in_(("A", "C")),
+            )
+            .order_by(Senha.id.asc())
+            .all()
+        )
+        if not abertas:
+            return {
+                "setor_id": setor_id,
+                "removidas": 0,
+                "aguardando": 0,
+                "em_atendimento": 0,
+            }
+
+        ids = [senha.id for senha in abertas]
+        aguardando = sum(1 for senha in abertas if senha.status == "A")
+        em_atendimento = sum(1 for senha in abertas if senha.status == "C")
+        atendimentos = AtendimentoAtual.query.filter(
+            AtendimentoAtual.setor_id == setor_id,
+            AtendimentoAtual.senha_id.in_(ids),
+        ).all()
+        atendimento_por_senha = {item.senha_id: item for item in atendimentos}
+
+        for senha in abertas:
+            senha.status = "F"
+            senha.finalizado_em = agora
+            atendimento = atendimento_por_senha.get(senha.id)
+            if atendimento:
+                db.session.add(
+                    Finalizado(
+                        senha_id=senha.id,
+                        operador_id=atendimento.operador_id,
+                        setor_id=atendimento.setor_id,
+                        avaliacao="",
+                        data_hora=agora,
+                    )
+                )
+                db.session.delete(atendimento)
+            elif senha.setor_id:
+                # Em atendimento órfão (status C sem linha) ou só aguardando:
+                # não cria Finalizado sem operador — senhas A ficam só como F.
+                pass
+
+        # Limpa qualquer atendimento residual do setor (defensivo).
+        AtendimentoAtual.query.filter_by(setor_id=setor_id).delete(synchronize_session=False)
+        db.session.commit()
+
+    return {
+        "setor_id": setor_id,
+        "removidas": len(abertas),
+        "aguardando": aguardando,
+        "em_atendimento": em_atendimento,
+    }
+
+
 def iniciar_rotina_virada_dia(app) -> None:
     """No boot encerra leftovers e, à meia-noite de SP, fecha o dia de novo."""
     if app.config.get("TESTING"):

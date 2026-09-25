@@ -365,6 +365,26 @@ def fila_ao_vivo_token():
     return jsonify({"session_token": token, "setor_id": setor_id})
 
 
+@admin_api_bp.route("/setores/<int:setor_id>/limpar-fila", methods=["POST"])
+@api_login_required
+def limpar_fila_setor_route(setor_id: int):
+    """Zera senhas aguardando e em atendimento do setor (admin/gerente)."""
+    from backend.services.fila_service import FilaError, limpar_fila_setor
+    from backend.sockets.emitters import broadcast_posicao_fila, emit_fila_atualizada
+
+    try:
+        assert_setor_permitido(setor_id)
+        resultado = limpar_fila_setor(setor_id)
+    except AdminAccessError as exc:
+        return _access_error_response(exc)
+    except FilaError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    emit_fila_atualizada(setor_id)
+    broadcast_posicao_fila(setor_id)
+    return jsonify({"ok": True, **resultado})
+
+
 @admin_api_bp.route("/fila-ao-vivo/config", methods=["PUT"])
 @api_login_required
 @require_admin
