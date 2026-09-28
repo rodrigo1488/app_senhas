@@ -3,6 +3,7 @@ package com.example.compuflow.ui.tv
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -26,6 +27,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -34,6 +37,9 @@ import com.example.compuflow.ui.common.ForcedDisplayOrientation
 
 private val PreferencialPanel = Color(0xFF120B1E)
 private val NormalPanel = Color(0xFFE85D04)
+
+/** Altura de referência do painel Preferencial/Normal no design original. */
+private val PanelRefHeight = 140.dp
 
 @Composable
 fun TvScreen(viewModel: TvViewModel = viewModel()) {
@@ -96,68 +102,87 @@ private fun PropagandaTvLayout(
     normalFoto: String?,
     vertical: Boolean = false,
 ) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        // Garante espaço mínimo visível para as senhas; mídia fica com o restante.
+        val panelWeight = passwordPanelWeight(maxHeight = maxHeight, vertical = vertical)
+        val mediaWeight = (1f - panelWeight).coerceAtLeast(0.45f)
+
         Column(modifier = Modifier.fillMaxSize()) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(if (vertical) 0.62f else 0.78f),
-        ) {
-            key(item?.id, item?.arquivo, item?.tipo) {
-                TvMediaSlide(
-                    item = item,
-                    mediaUrl = mediaUrl,
-                    loop = loop,
-                    onEnded = onEnded,
-                    emptyLabel = "Sem mídia de propaganda",
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-        }
-        if (vertical) {
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(0.38f),
+                    .weight(mediaWeight),
             ) {
-                TipoSenhaPanel(
-                    titulo = "PREFERENCIAL",
-                    senha = preferencialSenha,
-                    foto = preferencialFoto,
-                    background = PreferencialPanel,
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                )
-                TipoSenhaPanel(
-                    titulo = "NORMAL",
-                    senha = normalSenha,
-                    foto = normalFoto,
-                    background = NormalPanel,
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                )
+                key(item?.id, item?.arquivo, item?.tipo) {
+                    TvMediaSlide(
+                        item = item,
+                        mediaUrl = mediaUrl,
+                        loop = loop,
+                        onEnded = onEnded,
+                        emptyLabel = "Sem mídia de propaganda",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
             }
-        } else {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(0.22f),
-            ) {
-                TipoSenhaPanel(
-                    titulo = "PREFERENCIAL",
-                    senha = preferencialSenha,
-                    foto = preferencialFoto,
-                    background = PreferencialPanel,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                )
-                TipoSenhaPanel(
-                    titulo = "NORMAL",
-                    senha = normalSenha,
-                    foto = normalFoto,
-                    background = NormalPanel,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                )
+            if (vertical) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(panelWeight),
+                ) {
+                    TipoSenhaPanel(
+                        titulo = "PREFERENCIAL",
+                        senha = preferencialSenha,
+                        foto = preferencialFoto,
+                        background = PreferencialPanel,
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                    )
+                    TipoSenhaPanel(
+                        titulo = "NORMAL",
+                        senha = normalSenha,
+                        foto = normalFoto,
+                        background = NormalPanel,
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                    )
+                }
+            } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(panelWeight),
+                ) {
+                    TipoSenhaPanel(
+                        titulo = "PREFERENCIAL",
+                        senha = preferencialSenha,
+                        foto = preferencialFoto,
+                        background = PreferencialPanel,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                    TipoSenhaPanel(
+                        titulo = "NORMAL",
+                        senha = normalSenha,
+                        foto = normalFoto,
+                        background = NormalPanel,
+                        modifier = Modifier.weight(1f).fillMaxHeight(),
+                    )
+                }
             }
         }
     }
+}
+
+/**
+ * Fração da tela reservada aos painéis de senha.
+ * Em telas baixas (densidade alta / 720p) aumenta a fração para caber o conteúdo.
+ */
+private fun passwordPanelWeight(maxHeight: Dp, vertical: Boolean): Float {
+    val minNeeded = if (vertical) 220.dp else 110.dp
+    val fraction = (minNeeded / maxHeight).coerceIn(
+        minimumValue = if (vertical) 0.32f else 0.20f,
+        maximumValue = if (vertical) 0.48f else 0.40f,
+    )
+    return fraction
 }
 
 @Composable
@@ -168,45 +193,68 @@ private fun TipoSenhaPanel(
     background: Color,
     modifier: Modifier,
 ) {
-    Column(
-        modifier = modifier.background(background).padding(horizontal = 24.dp, vertical = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text(
-            text = titulo,
-            color = Color.White.copy(alpha = 0.90f),
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 3.sp,
-        )
-        Row(
-            modifier = Modifier.padding(top = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+    BoxWithConstraints(modifier = modifier.background(background)) {
+        val scale = (maxHeight / PanelRefHeight).coerceIn(0.40f, 1.15f)
+        val compact = maxHeight < 100.dp
+        val panelMaxWidth = maxWidth
+        val titleSp = (18f * scale).coerceIn(11f, 22f).sp
+        val senhaSp = (
+            if (senha == null) 36f * scale else 64f * scale
+            ).coerceIn(22f, if (senha == null) 48f else 72f).sp
+        val photoDp = (64f * scale).coerceIn(28f, 72f).dp
+        val hPad = (16f * scale).coerceIn(8f, 24f).dp
+        val vPad = (8f * scale).coerceIn(4f, 12f).dp
+        val gap = (10f * scale).coerceIn(4f, 16f).dp
+        val letterSp = (2.2f * scale).coerceIn(1f, 3f).sp
+
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = hPad, vertical = vPad),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
         ) {
-            Box(
-                modifier = Modifier
-                    .size(72.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center,
+            Text(
+                text = titulo,
+                color = Color.White.copy(alpha = 0.90f),
+                fontSize = titleSp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = letterSp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Row(
+                modifier = Modifier.padding(top = if (compact) 2.dp else gap * 0.6f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(gap),
             ) {
-                TvOperatorPhoto(
-                    foto = foto,
-                    placeholderTint = Color.White.copy(alpha = 0.80f),
-                    placeholderSize = 36.dp,
-                    decodeSizePx = 160,
-                    modifier = Modifier.fillMaxSize(),
+                if (!compact || panelMaxWidth > 280.dp) {
+                    Box(
+                        modifier = Modifier
+                            .size(photoDp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.15f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        TvOperatorPhoto(
+                            foto = foto,
+                            placeholderTint = Color.White.copy(alpha = 0.80f),
+                            placeholderSize = (photoDp.value * 0.5f).dp,
+                            decodeSizePx = 160,
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
+                }
+                Text(
+                    text = senha ?: "—",
+                    color = Color.White,
+                    fontSize = senhaSp,
+                    fontWeight = FontWeight.Black,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            Text(
-                text = senha ?: "—",
-                color = Color.White,
-                fontSize = if (senha == null) 48.sp else 72.sp,
-                fontWeight = FontWeight.Black,
-                textAlign = TextAlign.Center,
-            )
         }
     }
 }
