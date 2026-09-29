@@ -54,9 +54,10 @@ def process_propaganda_image(file) -> str | None:
 
 # TVs de mídia já instaladas ficam em landscape e recortam (crop). Sem novo APK:
 # horizontal = retrato vira JPEG 16:9 com laterais pretas;
-# vertical   = conteúdo em 9:16, girado −90° (igual à TV de senhas) e servido em 16:9.
+# vertical   = conteúdo em 9:16, girado +90° (horário) e servido em 16:9.
 _TV_HORIZONTAL_RATIO = 16 / 9
 _TV_VERTICAL_RATIO = 9 / 16
+_ENQUADRE_VERTICAL_VERSAO = "cw90"
 _enquadre_cache: dict[tuple, bytes] = {}
 _enquadre_lock = threading.Lock()
 
@@ -102,16 +103,16 @@ def bytes_imagem_enquadrada_tv(filepath: str, orientacao: str = "horizontal") ->
     """Enquadra a imagem para o APK de mídia (landscape + crop) sem cortar.
 
     Horizontal: retrato vira JPEG 16:9 com laterais pretas.
-    Vertical: monta 9:16, gira −90° (CW do monitor, igual à tela de senhas) e
-    devolve JPEG 16:9 — o aparelho preenche a tela deitada e o conteúdo aparece
-    em pé. O original em disco não é alterado.
+    Vertical: monta 9:16, gira +90° (horário) e devolve JPEG 16:9 — o
+    aparelho preenche a tela deitada e o conteúdo aparece em pé no monitor.
+    O original em disco não é alterado.
     """
     try:
         stat = os.stat(filepath)
     except OSError:
         return None
     modo = normalizar_orientacao_tv(orientacao)
-    key = (os.path.abspath(filepath), stat.st_mtime_ns, stat.st_size, modo)
+    key = (os.path.abspath(filepath), stat.st_mtime_ns, stat.st_size, modo, _ENQUADRE_VERTICAL_VERSAO)
     with _enquadre_lock:
         cached = _enquadre_cache.get(key)
     if cached is not None:
@@ -127,8 +128,8 @@ def bytes_imagem_enquadrada_tv(filepath: str, orientacao: str = "horizontal") ->
         rgb, mask = _rgb_com_mascara(image)
         if modo == "vertical":
             canvas = _conter_em_ratio(rgb, mask, _TV_VERTICAL_RATIO)
-            # Mesmo −90° da tela de senhas (ForcedDisplayOrientation).
-            canvas = canvas.transpose(Image.Transpose.ROTATE_90)
+            # +90° horário: o −90° deixava a imagem de cabeça para baixo nas TVs.
+            canvas = canvas.transpose(Image.Transpose.ROTATE_270)
         else:
             if rgb.height <= rgb.width:
                 return None
@@ -172,7 +173,7 @@ def _conter_em_ratio(
 
 
 def video_enquadrado_tv(filepath: str, orientacao: str = "horizontal") -> str | None:
-    """Transcodifica MP4 vertical para 16:9 girado −90°, com cache em disco.
+    """Transcodifica MP4 vertical para 16:9 girado +90° (horário), com cache em disco.
 
     Retorna o caminho do arquivo cacheado, ou None se não precisar / falhar.
     """
@@ -193,13 +194,13 @@ def video_enquadrado_tv(filepath: str, orientacao: str = "horizontal") -> str | 
     cache_dir = os.path.join(os.path.dirname(filepath), ".enquadre")
     os.makedirs(cache_dir, exist_ok=True)
     base = os.path.basename(filepath)
-    cache_path = os.path.join(cache_dir, f"{base}.{stat.st_mtime_ns}.vertical.mp4")
+    cache_path = os.path.join(cache_dir, f"{base}.{stat.st_mtime_ns}.{_ENQUADRE_VERTICAL_VERSAO}.mp4")
     if os.path.isfile(cache_path) and os.path.getsize(cache_path) > 0:
         return cache_path
 
     prefix = f"{base}."
     for nome in os.listdir(cache_dir):
-        if nome.startswith(prefix) and nome.endswith(".vertical.mp4"):
+        if nome.startswith(prefix) and nome.endswith((".vertical.mp4", f".{_ENQUADRE_VERTICAL_VERSAO}.mp4")):
             antigo = os.path.join(cache_dir, nome)
             if antigo != cache_path:
                 try:
@@ -208,11 +209,11 @@ def video_enquadrado_tv(filepath: str, orientacao: str = "horizontal") -> str | 
                     pass
 
     tmp_path = f"{cache_path}.tmp"
-    # 9:16 com contain + transpose=2 (90° anti-horário) = 16:9, igual à imagem.
+    # 9:16 com contain + transpose=1 (90° horário) = 16:9, igual à imagem.
     filtro = (
         "scale=1080:1920:force_original_aspect_ratio=decrease,"
         "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black,"
-        "transpose=2"
+        "transpose=1"
     )
     comando = [
         ffmpeg,

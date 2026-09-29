@@ -676,8 +676,8 @@ class PropagandasTvTest(unittest.TestCase):
             self.assertEqual("image/jpeg", portrait.mimetype)
             img = Image.open(io.BytesIO(portrait.data))
             self.assertAlmostEqual(img.width / img.height, 16 / 9, places=2)
-            # Topo do retrato (vermelho) vira a esquerda após −90°, como na TV de senhas.
-            self.assertGreater(img.getpixel((2, img.height // 2))[0], 240)
+            # Topo do retrato (vermelho) vira a direita após +90° horário.
+            self.assertGreater(img.getpixel((img.width - 3, img.height // 2))[0], 240)
             self.assertLess(img.getpixel((img.width // 2, img.height // 2))[0], 16)
             self.assertGreater(img.getpixel((img.width // 2, img.height // 2))[2], 240)
             img.close()

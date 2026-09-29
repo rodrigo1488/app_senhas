@@ -37,10 +37,11 @@ def media_public_path(arquivo: str, orientacao: str = "horizontal") -> str:
         nome = nome[len("uploads/") :]
     if nome.startswith("media/"):
         nome = nome[len("media/") :]
+    path = f"/media/{nome}"
     # Sem letterbox/rotação no servidor: o APK usa Fit + ForcedDisplayOrientation
     # conforme `rotacao_tv` do dispositivo (evitar imagem "bichada" por dupla rotação).
     _ = normalizar_orientacao_tv(orientacao)
-    return f"/media/{nome}"
+    return path
 
 
 def _tipo_arquivo(arquivo: str) -> str:
