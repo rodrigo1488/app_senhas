@@ -71,8 +71,13 @@ fun StreamingTvScreen(viewModel: StreamingTvViewModel = viewModel()) {
                                 }
                             },
                             emptyLabel = "Sem mídia",
-                            // Fit: mídia original; rotação física via ForcedDisplayOrientation.
-                            contentScale = ContentScale.Fit,
+                            // 90/270: o quadro já está em retrato; Crop cobre a tela.
+                            // 0/180: Fit mantém a mídia inteira no framebuffer paisagem.
+                            contentScale = if (rotation == 90 || rotation == 270) {
+                                ContentScale.Crop
+                            } else {
+                                ContentScale.Fit
+                            },
                             modifier = Modifier.fillMaxSize(),
                         )
                     }

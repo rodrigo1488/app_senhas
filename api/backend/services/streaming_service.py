@@ -14,7 +14,13 @@ from backend.models import (
     setor_eh_streaming,
     setor_propagandas,
 )
-from backend.services.tv_config_service import INTERVALO_IMAGEM_MS, serializar_tv_config
+from backend.services.tv_config_service import (
+    INTERVALO_IMAGEM_MS,
+    data_iso,
+    dentro_da_vigencia,
+    parse_data_vigencia,
+    serializar_tv_config,
+)
 from backend.sockets.emitters import emit_tv_config_atualizada
 from backend.utils import (
     normalizar_orientacao_tv,
@@ -38,8 +44,8 @@ def media_public_path(arquivo: str, orientacao: str = "horizontal") -> str:
     if nome.startswith("media/"):
         nome = nome[len("media/") :]
     path = f"/media/{nome}"
-    # Sem letterbox/rotação no servidor: o APK usa Fit + ForcedDisplayOrientation
-    # conforme `rotacao_tv` do dispositivo (evitar imagem "bichada" por dupla rotação).
+    # Sem letterbox/rotação no servidor: o APK gira com ForcedDisplayOrientation
+    # e, em 90/270, cobre a tela (Crop) para a mídia lateralizada preencher.
     _ = normalizar_orientacao_tv(orientacao)
     return path
 
@@ -69,7 +75,12 @@ def _aplicar_rotacao(dispositivo: TvDispositivo, rotacao: int) -> None:
 
 def fila_streaming(dispositivo: TvDispositivo) -> list[dict]:
     rows = db.session.execute(
-        select(dispositivo_propagandas.c.propaganda_id, dispositivo_propagandas.c.ordem)
+        select(
+            dispositivo_propagandas.c.propaganda_id,
+            dispositivo_propagandas.c.ordem,
+            dispositivo_propagandas.c.vigencia_inicio,
+            dispositivo_propagandas.c.vigencia_fim,
+        )
         .where(dispositivo_propagandas.c.dispositivo_id == dispositivo.id)
         .order_by(dispositivo_propagandas.c.ordem.asc(), dispositivo_propagandas.c.propaganda_id.asc())
     ).all()
@@ -84,6 +95,8 @@ def fila_streaming(dispositivo: TvDispositivo) -> list[dict]:
     for row in rows:
         item = by_id.get(row.propaganda_id)
         if not item or not item.ativo:
+            continue
+        if not dentro_da_vigencia(row.vigencia_inicio, row.vigencia_fim):
             continue
         fila.append(
             {
@@ -108,39 +121,105 @@ def item_fila_de_propaganda(dispositivo: TvDispositivo, propaganda: Propaganda) 
     }
 
 
-def propaganda_ids_dispositivo(dispositivo_id: int) -> list[int]:
+def _serializar_vigencia(inicio, fim) -> dict:
+    return {
+        "vigencia_inicio": data_iso(inicio),
+        "vigencia_fim": data_iso(fim),
+    }
+
+
+def midias_dispositivo(dispositivo_id: int) -> list[dict]:
     rows = db.session.execute(
-        select(dispositivo_propagandas.c.propaganda_id)
+        select(
+            dispositivo_propagandas.c.propaganda_id,
+            dispositivo_propagandas.c.ordem,
+            dispositivo_propagandas.c.vigencia_inicio,
+            dispositivo_propagandas.c.vigencia_fim,
+        )
         .where(dispositivo_propagandas.c.dispositivo_id == dispositivo_id)
         .order_by(dispositivo_propagandas.c.ordem.asc())
     ).all()
-    return [row.propaganda_id for row in rows]
+    return [
+        {
+            "propaganda_id": row.propaganda_id,
+            "ordem": row.ordem,
+            **_serializar_vigencia(row.vigencia_inicio, row.vigencia_fim),
+        }
+        for row in rows
+    ]
 
 
-def propaganda_ids_setor(setor_id: int) -> list[int]:
+def propaganda_ids_dispositivo(dispositivo_id: int) -> list[int]:
+    return [item["propaganda_id"] for item in midias_dispositivo(dispositivo_id)]
+
+
+def midias_setor(setor_id: int) -> list[dict]:
     rows = db.session.execute(
-        select(setor_propagandas.c.propaganda_id)
-        .where(setor_propagandas.c.setor_id == setor_id)
+        select(
+            setor_propagandas.c.propaganda_id,
+            setor_propagandas.c.vigencia_inicio,
+            setor_propagandas.c.vigencia_fim,
+        ).where(setor_propagandas.c.setor_id == setor_id)
     ).all()
-    ids = [row.propaganda_id for row in rows]
-    if not ids:
+    por_id = {
+        row.propaganda_id: _serializar_vigencia(row.vigencia_inicio, row.vigencia_fim)
+        for row in rows
+    }
+    if not por_id:
         return []
     itens = (
-        Propaganda.query.filter(Propaganda.id.in_(ids))
+        Propaganda.query.filter(Propaganda.id.in_(por_id))
         .order_by(Propaganda.ordem.asc(), Propaganda.id.asc())
         .all()
     )
-    return [item.id for item in itens]
+    return [
+        {"propaganda_id": item.id, "ordem": item.ordem, **por_id[item.id]}
+        for item in itens
+    ]
 
 
-def substituir_fila_dispositivo(dispositivo: TvDispositivo, propaganda_ids: list[int]) -> None:
+def propaganda_ids_setor(setor_id: int) -> list[int]:
+    return [item["propaganda_id"] for item in midias_setor(setor_id)]
+
+
+def _vigencias_de_midias(midias: list[dict]) -> dict[int, tuple]:
+    return {
+        item["propaganda_id"]: (item.get("vigencia_inicio"), item.get("vigencia_fim"))
+        for item in midias
+    }
+
+
+def substituir_fila_dispositivo(
+    dispositivo: TvDispositivo,
+    propaganda_ids: list[int],
+    vigencias: dict | None = None,
+) -> None:
+    vigencias = vigencias or {}
     db.session.execute(delete(dispositivo_propagandas).where(dispositivo_propagandas.c.dispositivo_id == dispositivo.id))
     for index, propaganda_id in enumerate(propaganda_ids):
+        inicio, fim = vigencias.get(propaganda_id, (None, None))
         db.session.execute(
             insert(dispositivo_propagandas).values(
                 dispositivo_id=dispositivo.id,
                 propaganda_id=propaganda_id,
                 ordem=index,
+                vigencia_inicio=inicio,
+                vigencia_fim=fim,
+            )
+        )
+
+
+def substituir_fila_setor(setor_id: int, propaganda_ids: list[int], vigencias: dict | None = None) -> None:
+    vigencias = vigencias or {}
+    db.session.execute(delete(setor_propagandas).where(setor_propagandas.c.setor_id == setor_id))
+    for propaganda_id in propaganda_ids:
+        inicio, fim = vigencias.get(propaganda_id, (None, None))
+        db.session.execute(
+            insert(setor_propagandas).values(
+                setor_id=setor_id,
+                propaganda_id=propaganda_id,
+                vigencia_inicio=inicio,
+                vigencia_fim=fim,
             )
         )
 
@@ -429,6 +508,7 @@ def listar_tvs_admin() -> list[dict]:
                 "setor_nome": setor.nome,
                 "tipo_setor": setor.tipo_setor or "atendimento",
                 "propaganda_ids": propaganda_ids_setor(setor.id),
+                "midias": midias_setor(setor.id),
                 "layout_tv_web": setor.layout_tv_web or "propaganda",
                 "orientacao_tv": setor.orientacao_tv or "horizontal",
             }
@@ -438,11 +518,18 @@ def listar_tvs_admin() -> list[dict]:
             online=esta_online(dispositivo.chave),
             propaganda_ids=propaganda_ids_dispositivo(dispositivo.id),
         )
+        payload["midias"] = midias_dispositivo(dispositivo.id)
         tvs.append(payload)
     return tvs
 
 
-def atribuir_midias_tv(*, tipo: str, alvo_id: int, propaganda_ids: list[int]) -> dict:
+def atribuir_midias_tv(
+    *,
+    tipo: str,
+    alvo_id: int,
+    propaganda_ids: list[int],
+    vigencias: dict | None = None,
+) -> dict:
     itens = Propaganda.query.filter(Propaganda.id.in_(propaganda_ids)).all() if propaganda_ids else []
     if propaganda_ids and len(itens) != len(set(propaganda_ids)):
         raise ValueError("Uma ou mais mídias não foram encontradas")
@@ -452,25 +539,37 @@ def atribuir_midias_tv(*, tipo: str, alvo_id: int, propaganda_ids: list[int]) ->
         item = by_id.get(propaganda_id)
         if item:
             ordered.append(item)
+    ids = [item.id for item in ordered]
+    vigencias = {pid: vigencias[pid] for pid in ids if vigencias and pid in vigencias} if vigencias else {}
 
     if tipo == "setor":
         setor = db.session.get(Setor, alvo_id)
         if not setor:
             raise ValueError("Setor não encontrado")
-        setor.propagandas = ordered
-        if ordered:
+        substituir_fila_setor(setor.id, ids, vigencias)
+        if ids:
             setor.propagandas_ativas = True
         db.session.commit()
         emit_tv_config_atualizada(setor.id, serializar_tv_config(setor))
-        return {"tipo": "setor", "id": setor.id, "propaganda_ids": [item.id for item in ordered]}
+        return {
+            "tipo": "setor",
+            "id": setor.id,
+            "propaganda_ids": ids,
+            "midias": midias_setor(setor.id),
+        }
 
     dispositivo = db.session.get(TvDispositivo, alvo_id)
     if not dispositivo or dispositivo.tipo != "streaming":
         raise ValueError("TV de streaming não encontrada")
-    substituir_fila_dispositivo(dispositivo, [item.id for item in ordered])
+    substituir_fila_dispositivo(dispositivo, ids, vigencias)
     db.session.commit()
     emitir_fila_streaming(dispositivo)
-    return {"tipo": "streaming", "id": dispositivo.id, "propaganda_ids": [item.id for item in ordered]}
+    return {
+        "tipo": "streaming",
+        "id": dispositivo.id,
+        "propaganda_ids": ids,
+        "midias": midias_dispositivo(dispositivo.id),
+    }
 
 
 def vincular_tv_streaming_ao_setor(dispositivo: TvDispositivo, setor_id: int | None) -> dict:
@@ -484,9 +583,19 @@ def vincular_tv_streaming_ao_setor(dispositivo: TvDispositivo, setor_id: int | N
             raise ValueError("Setor não encontrado")
         dispositivo.setor_id = setor.id
         if not propaganda_ids_dispositivo(dispositivo.id):
-            herdados = propaganda_ids_setor(setor.id)
+            herdados = midias_setor(setor.id)
             if herdados:
-                substituir_fila_dispositivo(dispositivo, herdados)
+                substituir_fila_dispositivo(
+                    dispositivo,
+                    [item["propaganda_id"] for item in herdados],
+                    {
+                        item["propaganda_id"]: (
+                            parse_data_vigencia(item.get("vigencia_inicio"), "vigencia_inicio"),
+                            parse_data_vigencia(item.get("vigencia_fim"), "vigencia_fim"),
+                        )
+                        for item in herdados
+                    },
+                )
                 emitir_fila_streaming(dispositivo)
     else:
         dispositivo.setor_id = None

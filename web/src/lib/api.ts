@@ -94,15 +94,30 @@ export function setorEhStreaming(setor: { tipo_setor?: string | null }): boolean
 
 export type PropagandaTipo = "image" | "video";
 
+export type CategoriaMidia = {
+  id: number;
+  nome: string;
+  ordem: number;
+  criado_em?: string | null;
+};
+
 export type Propaganda = {
   id: number;
   arquivo: string;
   tipo: PropagandaTipo;
   ordem: number;
   ativo: boolean;
+  categoria_id?: number | null;
   criado_em: string | null;
   setor_ids: number[];
   setor_ids_cliente?: number[];
+};
+
+export type MidiaTvVinculo = {
+  propaganda_id: number;
+  ordem?: number;
+  vigencia_inicio?: string | null;
+  vigencia_fim?: string | null;
 };
 
 export type TvAdmin = {
@@ -121,6 +136,7 @@ export type TvAdmin = {
   setor_nome?: string | null;
   tipo_setor?: "atendimento" | "streaming" | null;
   propaganda_ids: number[];
+  midias?: MidiaTvVinculo[];
   layout_tv_web?: "propaganda" | "fila";
 };
 

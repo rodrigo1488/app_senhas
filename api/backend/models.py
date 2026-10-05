@@ -32,6 +32,8 @@ setor_propagandas = db.Table(
         db.ForeignKey("propagandas.id", ondelete="CASCADE"),
         primary_key=True,
     ),
+    db.Column("vigencia_inicio", db.Date, nullable=True),
+    db.Column("vigencia_fim", db.Date, nullable=True),
 )
 
 setor_propagandas_cliente = db.Table(
@@ -259,6 +261,25 @@ usuario_setores = db.Table(
 )
 
 
+class CategoriaMidia(db.Model):
+    """Agrupa a biblioteca de mídias (açougue, padaria, ofertas…)."""
+
+    __tablename__ = "categorias_midia"
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.Text, nullable=False)
+    ordem = db.Column(db.Integer, nullable=False, default=0)
+    criado_em = db.Column(db.DateTime, default=agora_sp)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "nome": self.nome,
+            "ordem": self.ordem,
+            "criado_em": self.criado_em.isoformat() if self.criado_em else None,
+        }
+
+
 class Propaganda(db.Model):
     """Mídia publicitária (imagem ou vídeo) vinculável a um ou mais setores/TVs."""
 
@@ -269,6 +290,11 @@ class Propaganda(db.Model):
     tipo = db.Column(db.String(10), nullable=False, default="image")  # image | video
     ordem = db.Column(db.Integer, nullable=False, default=0)
     ativo = db.Column(db.Boolean, nullable=False, default=True)
+    categoria_id = db.Column(
+        db.Integer,
+        db.ForeignKey("categorias_midia.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     criado_em = db.Column(db.DateTime, default=agora_sp)
     setores = db.relationship(
         "Setor",
@@ -292,6 +318,7 @@ class Propaganda(db.Model):
             "tipo": (self.tipo or "image"),
             "ordem": self.ordem,
             "ativo": bool(self.ativo),
+            "categoria_id": self.categoria_id,
             "criado_em": self.criado_em.isoformat() if self.criado_em else None,
             "setor_ids": sorted(setor.id for setor in self.setores),
             "setor_ids_cliente": sorted(setor.id for setor in self.setores_cliente),
@@ -313,6 +340,8 @@ dispositivo_propagandas = db.Table(
         primary_key=True,
     ),
     db.Column("ordem", db.Integer, nullable=False, default=0),
+    db.Column("vigencia_inicio", db.Date, nullable=True),
+    db.Column("vigencia_fim", db.Date, nullable=True),
 )
 
 

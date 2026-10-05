@@ -266,6 +266,7 @@ def _init_database(app: Flask) -> None:
     _migrate_tv_dispositivo_orientacao_column()
     _migrate_tv_dispositivo_rotacao_column()
     _migrate_usuario_papeis()
+    _migrate_midia_categorias_e_vigencia()
 
     is_sqlite = db.engine.dialect.name == "sqlite"
 
@@ -531,6 +532,24 @@ def _migrate_tv_dispositivo_rotacao_column() -> None:
                     """
                 )
             )
+
+
+def _migrate_midia_categorias_e_vigencia() -> None:
+    """Categoria da biblioteca e vigência (início/fim) no vínculo com a TV."""
+    from sqlalchemy import inspect
+
+    inspector = inspect(db.engine)
+    tabelas = set(inspector.get_table_names())
+    is_sqlite = db.engine.dialect.name == "sqlite"
+    with db.engine.begin() as conn:
+        if "propagandas" in tabelas:
+            _ensure_column(conn, "propagandas", "categoria_id", "INTEGER", is_sqlite)
+        if "dispositivo_propagandas" in tabelas:
+            _ensure_column(conn, "dispositivo_propagandas", "vigencia_inicio", "DATE", is_sqlite)
+            _ensure_column(conn, "dispositivo_propagandas", "vigencia_fim", "DATE", is_sqlite)
+        if "setor_propagandas" in tabelas:
+            _ensure_column(conn, "setor_propagandas", "vigencia_inicio", "DATE", is_sqlite)
+            _ensure_column(conn, "setor_propagandas", "vigencia_fim", "DATE", is_sqlite)
 
 
 def _backfill_setor_propagandas() -> None:

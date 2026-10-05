@@ -19,6 +19,7 @@ from backend.models import (
     Finalizado,
     Impressora,
     Operador,
+    CategoriaMidia,
     Propaganda,
     Senha,
     Setor,
@@ -66,6 +67,7 @@ from backend.services.tv_config_service import (
     atribuir_midias_cliente,
     notificar_clientes,
     notificar_tvs,
+    parse_data_vigencia,
     propaganda_ids_cliente,
 )
 
@@ -730,6 +732,110 @@ def _processar_arquivo_midia(file, *, prefixo: str = "") -> tuple[str | None, st
     return filename, "image", None
 
 
+def _categoria_por_id(categoria_id):
+    if categoria_id in (None, ""):
+        return None
+    try:
+        categoria_id = int(categoria_id)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("categoria_id inválido") from exc
+    categoria = db.session.get(CategoriaMidia, categoria_id)
+    if not categoria:
+        raise ValueError("Categoria não encontrada")
+    return categoria
+
+
+def _parse_midias_tv(data: dict) -> tuple[list[int], dict]:
+    """Aceita `midias` (com vigência) ou `propaganda_ids` legado."""
+    midias_raw = data.get("midias")
+    if isinstance(midias_raw, list):
+        propaganda_ids: list[int] = []
+        vigencias: dict[int, tuple] = {}
+        for item in midias_raw:
+            if not isinstance(item, dict):
+                raise ValueError("Cada mídia deve informar propaganda_id")
+            propaganda_id = int(item.get("propaganda_id"))
+            if propaganda_id in vigencias:
+                continue
+            inicio = parse_data_vigencia(item.get("vigencia_inicio"), "vigencia_inicio")
+            fim = parse_data_vigencia(item.get("vigencia_fim"), "vigencia_fim")
+            if inicio and fim and fim < inicio:
+                raise ValueError("A data final da vigência não pode ser anterior à inicial")
+            propaganda_ids.append(propaganda_id)
+            vigencias[propaganda_id] = (inicio, fim)
+        return propaganda_ids, vigencias
+
+    propaganda_ids = [int(item_id) for item_id in (data.get("propaganda_ids") or [])]
+    return propaganda_ids, {}
+
+
+@admin_api_bp.route("/propagandas/categorias", methods=["GET"])
+@api_login_required
+def list_categorias_midia():
+    itens = CategoriaMidia.query.order_by(CategoriaMidia.ordem.asc(), CategoriaMidia.nome.asc()).all()
+    return jsonify([item.to_dict() for item in itens])
+
+
+@admin_api_bp.route("/propagandas/categorias", methods=["POST"])
+@api_login_required
+@require_admin_ou_marketing
+def create_categoria_midia():
+    data = request.get_json(silent=True) or {}
+    nome = (data.get("nome") or "").strip()
+    if not nome:
+        return jsonify({"error": "Informe o nome da categoria"}), 400
+    existe = CategoriaMidia.query.filter(func.lower(CategoriaMidia.nome) == nome.lower()).first()
+    if existe:
+        return jsonify({"error": "Já existe uma categoria com esse nome"}), 400
+    max_ordem = db.session.query(func.max(CategoriaMidia.ordem)).scalar() or 0
+    categoria = CategoriaMidia(nome=nome, ordem=max_ordem + 1)
+    db.session.add(categoria)
+    db.session.commit()
+    return jsonify(categoria.to_dict()), 201
+
+
+@admin_api_bp.route("/propagandas/categorias/<int:categoria_id>", methods=["PUT"])
+@api_login_required
+@require_admin_ou_marketing
+def update_categoria_midia(categoria_id: int):
+    categoria = db.session.get(CategoriaMidia, categoria_id)
+    if not categoria:
+        return jsonify({"error": "Categoria não encontrada"}), 404
+    data = request.get_json(silent=True) or {}
+    if "nome" in data:
+        nome = (data.get("nome") or "").strip()
+        if not nome:
+            return jsonify({"error": "Informe o nome da categoria"}), 400
+        existe = (
+            CategoriaMidia.query.filter(func.lower(CategoriaMidia.nome) == nome.lower())
+            .filter(CategoriaMidia.id != categoria.id)
+            .first()
+        )
+        if existe:
+            return jsonify({"error": "Já existe uma categoria com esse nome"}), 400
+        categoria.nome = nome
+    if "ordem" in data:
+        try:
+            categoria.ordem = int(data.get("ordem"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "ordem inválida"}), 400
+    db.session.commit()
+    return jsonify(categoria.to_dict())
+
+
+@admin_api_bp.route("/propagandas/categorias/<int:categoria_id>", methods=["DELETE"])
+@api_login_required
+@require_admin_ou_marketing
+def delete_categoria_midia(categoria_id: int):
+    categoria = db.session.get(CategoriaMidia, categoria_id)
+    if not categoria:
+        return jsonify({"error": "Categoria não encontrada"}), 404
+    Propaganda.query.filter_by(categoria_id=categoria.id).update({Propaganda.categoria_id: None})
+    db.session.delete(categoria)
+    db.session.commit()
+    return jsonify({"ok": True})
+
+
 @admin_api_bp.route("/propagandas", methods=["GET"])
 @api_login_required
 def list_propagandas():
@@ -753,6 +859,12 @@ def create_propaganda():
     if setor_ids and len(setores) != len(setor_ids):
         return jsonify({"error": "Um ou mais setores não foram encontrados"}), 404
 
+    try:
+        categoria = _categoria_por_id(request.form.get("categoria_id"))
+    except ValueError as exc:
+        status = 404 if "não encontrada" in str(exc) else 400
+        return jsonify({"error": str(exc)}), status
+
     lote = len(arquivos) > 1
     processados: list[tuple[str, str]] = []
     for file in arquivos:
@@ -765,7 +877,13 @@ def create_propaganda():
     max_ordem = db.session.query(func.max(Propaganda.ordem)).scalar() or 0
     itens: list[Propaganda] = []
     for index, (filename, tipo) in enumerate(processados, start=1):
-        item = Propaganda(arquivo=filename, tipo=tipo, ordem=max_ordem + index, ativo=True)
+        item = Propaganda(
+            arquivo=filename,
+            tipo=tipo,
+            ordem=max_ordem + index,
+            ativo=True,
+            categoria_id=categoria.id if categoria else None,
+        )
         itens.append(item)
 
     if setores:
@@ -854,6 +972,13 @@ def update_propaganda(propaganda_id: int):
             return jsonify({"error": "ordem inválida"}), 400
     if "ativo" in data:
         item.ativo = bool(data.get("ativo"))
+    if "categoria_id" in data:
+        try:
+            categoria = _categoria_por_id(data.get("categoria_id"))
+        except ValueError as exc:
+            status = 404 if "não encontrada" in str(exc) else 400
+            return jsonify({"error": str(exc)}), status
+        item.categoria_id = categoria.id if categoria else None
     db.session.commit()
     notificar_tvs([setor.id for setor in item.setores])
     notificar_clientes([setor.id for setor in item.setores_cliente])
@@ -891,11 +1016,16 @@ def update_tv_midias():
         return jsonify({"error": "tipo deve ser setor ou streaming"}), 400
     try:
         alvo_id = int(data.get("id"))
-        propaganda_ids = [int(item_id) for item_id in (data.get("propaganda_ids") or [])]
-    except (TypeError, ValueError):
-        return jsonify({"error": "IDs inválidos"}), 400
+        propaganda_ids, vigencias = _parse_midias_tv(data)
+    except (TypeError, ValueError) as exc:
+        return jsonify({"error": str(exc) or "IDs inválidos"}), 400
     try:
-        result = atribuir_midias_tv(tipo=tipo, alvo_id=alvo_id, propaganda_ids=propaganda_ids)
+        result = atribuir_midias_tv(
+            tipo=tipo,
+            alvo_id=alvo_id,
+            propaganda_ids=propaganda_ids,
+            vigencias=vigencias,
+        )
     except ValueError as exc:
         status = 404 if "não encontrad" in str(exc) else 400
         return jsonify({"error": str(exc)}), status

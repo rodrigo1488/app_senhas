@@ -1,9 +1,58 @@
 """Serialização da fila de mídia da TV e da espera do cliente."""
+from datetime import date, datetime
+
+from sqlalchemy import select
+
 from backend.extensions import db
 from backend.models import Propaganda, Setor, setor_eh_streaming, setor_propagandas, setor_propagandas_cliente
 from backend.sockets.emitters import emit_cliente_config_atualizada, emit_tv_config_atualizada
+from backend.timezone import agora_sp
 
 INTERVALO_IMAGEM_MS = 15_000
+
+
+def data_iso(valor) -> str | None:
+    if valor is None or valor == "":
+        return None
+    if isinstance(valor, datetime):
+        return valor.date().isoformat()
+    if isinstance(valor, date):
+        return valor.isoformat()
+    texto = str(valor).strip()
+    return texto[:10] if texto else None
+
+
+def parse_data_vigencia(valor, campo: str) -> date | None:
+    if valor is None or valor == "":
+        return None
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    texto = str(valor).strip()[:10]
+    try:
+        return datetime.strptime(texto, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValueError(f"{campo} inválida (use AAAA-MM-DD)") from exc
+
+
+def _como_data(valor) -> date | None:
+    try:
+        return parse_data_vigencia(valor, "vigencia")
+    except ValueError:
+        return None
+
+
+def dentro_da_vigencia(inicio, fim, hoje: date | None = None) -> bool:
+    """Início e fim inclusivos. Vazio em qualquer ponta significa sem limite."""
+    atual = hoje or agora_sp().date()
+    ini = _como_data(inicio)
+    end = _como_data(fim)
+    if ini and atual < ini:
+        return False
+    if end and atual > end:
+        return False
+    return True
 
 
 def serializar_midia(propaganda: Propaganda) -> dict:
@@ -15,17 +64,35 @@ def serializar_midia(propaganda: Propaganda) -> dict:
     }
 
 
+def _vigencias_da_associacao(setor_id: int, associacao) -> dict[int, tuple]:
+    if not hasattr(associacao.c, "vigencia_inicio"):
+        return {}
+    rows = db.session.execute(
+        select(
+            associacao.c.propaganda_id,
+            associacao.c.vigencia_inicio,
+            associacao.c.vigencia_fim,
+        ).where(associacao.c.setor_id == setor_id)
+    ).all()
+    return {row.propaganda_id: (row.vigencia_inicio, row.vigencia_fim) for row in rows}
+
+
 def _listar_midias_ativas(setor_id: int, associacao) -> list[dict]:
-    return [
-        serializar_midia(item)
-        for item in (
-            Propaganda.query.filter_by(ativo=True)
-            .join(associacao, associacao.c.propaganda_id == Propaganda.id)
-            .filter(associacao.c.setor_id == setor_id)
-            .order_by(Propaganda.ordem.asc(), Propaganda.id.asc())
-            .all()
-        )
-    ]
+    itens = (
+        Propaganda.query.filter_by(ativo=True)
+        .join(associacao, associacao.c.propaganda_id == Propaganda.id)
+        .filter(associacao.c.setor_id == setor_id)
+        .order_by(Propaganda.ordem.asc(), Propaganda.id.asc())
+        .all()
+    )
+    vigencias = _vigencias_da_associacao(setor_id, associacao)
+    saida = []
+    for item in itens:
+        inicio, fim = vigencias.get(item.id, (None, None))
+        if vigencias and not dentro_da_vigencia(inicio, fim):
+            continue
+        saida.append(serializar_midia(item))
+    return saida
 
 
 def propaganda_ids_cliente(setor_id: int) -> list[int]:

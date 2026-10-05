@@ -734,7 +734,7 @@ class PropagandasTvTest(unittest.TestCase):
             )
             db.session.commit()
             fila = fila_streaming(dispositivo)
-            # Sem ?enquadre: rotação fica no dispositivo/APK (Fit + ForcedDisplayOrientation).
+            # Sem ?enquadre: rotação fica no dispositivo/APK (ForcedDisplayOrientation).
             self.assertEqual(["/media/retrato.jpg"], [item["path"] for item in fila])
             self.assertEqual(90, dispositivo.rotacao_tv)
             self.assertEqual("vertical", dispositivo.orientacao_tv)
@@ -852,6 +852,109 @@ class PropagandasTvTest(unittest.TestCase):
 
         empty = client.post(f"/api/v1/admin/tvs/{dispositivo_id}/preview", json={})
         self.assertEqual(400, empty.status_code)
+
+    def test_categoria_e_vigencia_na_tv(self):
+        from datetime import timedelta
+
+        from backend.timezone import agora_sp
+
+        admin = self._admin_client()
+        public = self.app.test_client()
+        hoje = agora_sp().date()
+
+        criada = admin.post("/api/v1/admin/propagandas/categorias", json={"nome": "Açougue"})
+        self.assertEqual(201, criada.status_code, criada.get_json())
+        categoria_id = criada.get_json()["id"]
+        duplicada = admin.post("/api/v1/admin/propagandas/categorias", json={"nome": "açougue"})
+        self.assertEqual(400, duplicada.status_code)
+
+        with self.app.app_context():
+            vigente = Propaganda(arquivo="vigente.jpg", tipo="image", ordem=1, ativo=True, categoria_id=categoria_id)
+            futura = Propaganda(arquivo="futura.jpg", tipo="image", ordem=2, ativo=True, categoria_id=categoria_id)
+            db.session.add_all([vigente, futura])
+            db.session.commit()
+            vigente_id, futura_id = vigente.id, futura.id
+
+        listadas = admin.get("/api/v1/admin/propagandas").get_json()
+        self.assertEqual(categoria_id, next(item["categoria_id"] for item in listadas if item["id"] == vigente_id))
+
+        mover = admin.put(
+            f"/api/v1/admin/propagandas/{futura_id}",
+            json={"categoria_id": None},
+        )
+        self.assertEqual(200, mover.status_code)
+        self.assertIsNone(mover.get_json()["categoria_id"])
+
+        public.post("/api/register_poll", json={"ip_address": "10.9.0.1", "nome": "TV Açougue"})
+        tv_id = next(tv["id"] for tv in admin.get("/api/v1/admin/tvs").get_json() if tv["tipo"] == "streaming")
+
+        invalida = admin.put(
+            "/api/v1/admin/tvs/midias",
+            json={
+                "tipo": "streaming",
+                "id": tv_id,
+                "midias": [
+                    {
+                        "propaganda_id": vigente_id,
+                        "vigencia_inicio": hoje.isoformat(),
+                        "vigencia_fim": (hoje - timedelta(days=1)).isoformat(),
+                    }
+                ],
+            },
+        )
+        self.assertEqual(400, invalida.status_code)
+
+        enviar = admin.put(
+            "/api/v1/admin/tvs/midias",
+            json={
+                "tipo": "streaming",
+                "id": tv_id,
+                "midias": [
+                    {
+                        "propaganda_id": vigente_id,
+                        "vigencia_inicio": (hoje - timedelta(days=1)).isoformat(),
+                        "vigencia_fim": (hoje + timedelta(days=1)).isoformat(),
+                    },
+                    {
+                        "propaganda_id": futura_id,
+                        "vigencia_inicio": (hoje + timedelta(days=2)).isoformat(),
+                        "vigencia_fim": None,
+                    },
+                ],
+            },
+        )
+        self.assertEqual(200, enviar.status_code, enviar.get_json())
+        self.assertEqual([vigente_id, futura_id], enviar.get_json()["propaganda_ids"])
+
+        poll = public.get("/api/poll/10.9.0.1").get_json()
+        self.assertEqual(["/media/vigente.jpg"], [item["path"] for item in poll["queue"]])
+
+        setor = admin.put(
+            "/api/v1/admin/tvs/midias",
+            json={
+                "tipo": "setor",
+                "id": self.setor_id,
+                "midias": [
+                    {
+                        "propaganda_id": futura_id,
+                        "vigencia_inicio": (hoje + timedelta(days=3)).isoformat(),
+                        "vigencia_fim": (hoje + timedelta(days=4)).isoformat(),
+                    }
+                ],
+            },
+        )
+        self.assertEqual(200, setor.status_code, setor.get_json())
+        tv_config = public.get(
+            "/api/v1/setor/tv_config",
+            headers={"Authorization": f"Bearer {self._token()}"},
+        )
+        self.assertEqual([], tv_config.get_json()["imagens"])
+
+        apagar = admin.delete(f"/api/v1/admin/propagandas/categorias/{categoria_id}")
+        self.assertEqual(200, apagar.status_code)
+        with self.app.app_context():
+            item = db.session.get(Propaganda, vigente_id)
+            self.assertIsNone(item.categoria_id)
 
 
 if __name__ == "__main__":
