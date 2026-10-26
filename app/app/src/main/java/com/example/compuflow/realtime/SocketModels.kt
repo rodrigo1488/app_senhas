@@ -61,6 +61,7 @@ sealed class SocketEvent {
         val propagandasAtivas: Boolean,
         val layoutTvWeb: String,
         val orientacaoTv: String,
+        val posicaoSenhasTv: String = "superior",
         val imagens: List<PropagandaImagemDto>,
         val intervaloMs: Long,
     ) : SocketEvent()

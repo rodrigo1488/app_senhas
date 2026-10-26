@@ -78,6 +78,7 @@ fun TvScreen(viewModel: TvViewModel = viewModel()) {
                     normalSenha = viewModel.ultimaNormalSenha,
                     normalFoto = viewModel.ultimaNormalFoto,
                     vertical = vertical,
+                    senhasNoTopo = viewModel.posicaoSenhasTv != "inferior",
                 )
             }
         }
@@ -95,8 +96,21 @@ private fun PropagandaTvLayout(
     normalSenha: String?,
     normalFoto: String?,
     vertical: Boolean = false,
+    senhasNoTopo: Boolean = true,
 ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (senhasNoTopo) {
+            SenhasFaixa(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(if (vertical) 0.38f else 0.22f),
+                vertical = vertical,
+                preferencialSenha = preferencialSenha,
+                preferencialFoto = preferencialFoto,
+                normalSenha = normalSenha,
+                normalFoto = normalFoto,
+            )
+        }
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -114,48 +128,67 @@ private fun PropagandaTvLayout(
                 )
             }
         }
-        if (vertical) {
-            Column(
+        if (!senhasNoTopo) {
+            SenhasFaixa(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(0.38f),
-            ) {
-                TipoSenhaPanel(
-                    titulo = "PREFERENCIAL",
-                    senha = preferencialSenha,
-                    foto = preferencialFoto,
-                    background = PreferencialPanel,
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                )
-                TipoSenhaPanel(
-                    titulo = "NORMAL",
-                    senha = normalSenha,
-                    foto = normalFoto,
-                    background = NormalPanel,
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                )
-            }
-        } else {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(0.22f),
-            ) {
-                TipoSenhaPanel(
-                    titulo = "PREFERENCIAL",
-                    senha = preferencialSenha,
-                    foto = preferencialFoto,
-                    background = PreferencialPanel,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                )
-                TipoSenhaPanel(
-                    titulo = "NORMAL",
-                    senha = normalSenha,
-                    foto = normalFoto,
-                    background = NormalPanel,
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                )
-            }
+                    .weight(if (vertical) 0.38f else 0.22f),
+                vertical = vertical,
+                preferencialSenha = preferencialSenha,
+                preferencialFoto = preferencialFoto,
+                normalSenha = normalSenha,
+                normalFoto = normalFoto,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SenhasFaixa(
+    modifier: Modifier,
+    vertical: Boolean,
+    preferencialSenha: String?,
+    preferencialFoto: String?,
+    normalSenha: String?,
+    normalFoto: String?,
+) {
+    if (vertical) {
+        Column(
+            modifier = modifier,
+        ) {
+            TipoSenhaPanel(
+                titulo = "PREFERENCIAL",
+                senha = preferencialSenha,
+                foto = preferencialFoto,
+                background = PreferencialPanel,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            )
+            TipoSenhaPanel(
+                titulo = "NORMAL",
+                senha = normalSenha,
+                foto = normalFoto,
+                background = NormalPanel,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            )
+        }
+    } else {
+        Row(
+            modifier = modifier,
+        ) {
+            TipoSenhaPanel(
+                titulo = "PREFERENCIAL",
+                senha = preferencialSenha,
+                foto = preferencialFoto,
+                background = PreferencialPanel,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+            TipoSenhaPanel(
+                titulo = "NORMAL",
+                senha = normalSenha,
+                foto = normalFoto,
+                background = NormalPanel,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
         }
     }
 }

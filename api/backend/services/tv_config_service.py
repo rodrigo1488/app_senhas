@@ -9,6 +9,25 @@ from backend.sockets.emitters import emit_cliente_config_atualizada, emit_tv_con
 from backend.timezone import agora_sp
 
 INTERVALO_IMAGEM_MS = 15_000
+POSICAO_SENHAS_TV_PADRAO = "superior"
+POSICOES_SENHAS_TV = {"superior", "inferior"}
+
+
+def normalizar_posicao_senhas_tv(valor: str | None) -> str:
+    posicao = (valor or POSICAO_SENHAS_TV_PADRAO).strip().lower()
+    if posicao not in POSICOES_SENHAS_TV:
+        raise ValueError("Posição das senhas deve ser superior ou inferior")
+    return posicao
+
+
+def posicao_senhas_tv_atual() -> str:
+    from backend.utils import get_configuracao
+
+    valor = get_configuracao("posicao_senhas_tv", POSICAO_SENHAS_TV_PADRAO) or POSICAO_SENHAS_TV_PADRAO
+    try:
+        return normalizar_posicao_senhas_tv(valor)
+    except ValueError:
+        return POSICAO_SENHAS_TV_PADRAO
 
 
 def data_iso(valor) -> str | None:
@@ -115,6 +134,7 @@ def serializar_tv_config(setor: Setor | None) -> dict:
         "propagandas_ativas": ativas,
         "layout_tv_web": (setor.layout_tv_web if setor else None) or "propaganda",
         "orientacao_tv": (setor.orientacao_tv if setor else None) or "horizontal",
+        "posicao_senhas_tv": posicao_senhas_tv_atual(),
         "setor_nome": setor.nome if setor else None,
         "imagens": imagens,
         "intervalo_ms": INTERVALO_IMAGEM_MS,

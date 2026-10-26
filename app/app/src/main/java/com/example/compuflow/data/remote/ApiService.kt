@@ -9,6 +9,7 @@ import com.example.compuflow.data.remote.dto.ConfirmarPedidoRequest
 import com.example.compuflow.data.remote.dto.CriarSenhaRequest
 import com.example.compuflow.data.remote.dto.EnviarAvaliacaoRequest
 import com.example.compuflow.data.remote.dto.FilaDto
+import com.example.compuflow.data.remote.dto.HealthDto
 import com.example.compuflow.data.remote.dto.OperadoresResponse
 import com.example.compuflow.data.remote.dto.PosicaoDto
 import com.example.compuflow.data.remote.dto.SalvarPedidoRequest
@@ -39,7 +40,7 @@ import retrofit2.http.Query
 interface ApiService {
 
     @GET("api/v1/health")
-    suspend fun health(): SuccessDto
+    suspend fun health(): HealthDto
 
     @POST("api/v1/setor/login")
     suspend fun setorLogin(@Body body: SetorLoginRequest): SetorLoginResponse

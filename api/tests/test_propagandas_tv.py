@@ -134,6 +134,7 @@ class PropagandasTvTest(unittest.TestCase):
         self.assertFalse(payload["propagandas_ativas"])
         self.assertEqual("propaganda", payload["layout_tv_web"])
         self.assertEqual("horizontal", payload["orientacao_tv"])
+        self.assertEqual("superior", payload["posicao_senhas_tv"])
         self.assertEqual("Balcão", payload["setor_nome"])
         self.assertEqual([], payload["imagens"])
         self.assertEqual(15_000, payload["intervalo_ms"])
@@ -414,6 +415,83 @@ class PropagandasTvTest(unittest.TestCase):
         self.assertEqual(1, len(imagens))
         self.assertEqual("video", imagens[0]["tipo"])
         self.assertEqual("promo.mp4", imagens[0]["arquivo"])
+
+    def test_simulacao_telas_inclui_formato_e_modo(self):
+        client = self._admin_client()
+        with self.app.app_context():
+            setor = db.session.get(Setor, self.setor_id)
+            setor.layout_tv_web = "fila"
+            setor.orientacao_tv = "vertical"
+            setor.propagandas_ativas = True
+            db.session.commit()
+
+        response = client.get("/api/v1/admin/tvs/simulacao")
+        self.assertEqual(200, response.status_code, response.get_json())
+        telas = response.get_json()
+        self.assertTrue(telas)
+        painel = next(item for item in telas if item["tipo"] == "setor" and item["id"] == self.setor_id)
+        self.assertEqual("vertical", painel["formato"])
+        self.assertEqual("fila", painel["modo"])
+        self.assertEqual("superior", painel["posicao_senhas_tv"])
+        self.assertIn("midias", painel)
+
+    def test_admin_salva_posicao_senhas_tv(self):
+        client = self._admin_client()
+        invalido = client.put("/api/v1/admin/configuracao/tv", json={"posicao_senhas_tv": "meio"})
+        self.assertEqual(400, invalido.status_code)
+
+        resp = client.put("/api/v1/admin/configuracao/tv", json={"posicao_senhas_tv": "inferior"})
+        self.assertEqual(200, resp.status_code)
+        self.assertEqual("inferior", resp.get_json()["posicao_senhas_tv"])
+
+        get_resp = client.get("/api/v1/admin/configuracao")
+        self.assertEqual("inferior", get_resp.get_json()["posicao_senhas_tv"])
+
+        tv = self.app.test_client().get(
+            "/api/v1/setor/tv_config",
+            headers={"Authorization": f"Bearer {self._token()}"},
+        )
+        self.assertEqual("inferior", tv.get_json()["posicao_senhas_tv"])
+
+        simulacao = client.get("/api/v1/admin/tvs/simulacao")
+        painel = next(
+            item for item in simulacao.get_json() if item["tipo"] == "setor" and item["id"] == self.setor_id
+        )
+        self.assertEqual("inferior", painel["posicao_senhas_tv"])
+
+    @patch("backend.blueprints.admin_api_bp.process_propaganda_image", return_value="oferta.jpg")
+    def test_admin_upload_escolhe_tela_e_prazo_sem_apagar_fila(self, _mock_process):
+        import json
+
+        from backend.services.streaming_service import atribuir_midias_tv, midias_setor
+
+        client = self._admin_client()
+        with self.app.app_context():
+            antiga = Propaganda(arquivo="antiga.jpg", tipo="image", ordem=1, ativo=True)
+            db.session.add(antiga)
+            db.session.commit()
+            antiga_id = antiga.id
+            atribuir_midias_tv(tipo="setor", alvo_id=self.setor_id, propaganda_ids=[antiga_id])
+
+        response = client.post(
+            "/api/v1/admin/propagandas",
+            data={
+                "arquivo": (io.BytesIO(b"fake-image"), "oferta.png"),
+                "tvs": json.dumps([{"tipo": "setor", "id": self.setor_id}]),
+                "vigencia_fim": "2026-12-31",
+            },
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(201, response.status_code, response.get_json())
+        nova_id = response.get_json()["id"]
+
+        with self.app.app_context():
+            fila = midias_setor(self.setor_id)
+            self.assertEqual([antiga_id, nova_id], [item["propaganda_id"] for item in fila])
+            nova = next(item for item in fila if item["propaganda_id"] == nova_id)
+            self.assertEqual("2026-12-31", nova["vigencia_fim"])
+            antiga = next(item for item in fila if item["propaganda_id"] == antiga_id)
+            self.assertIsNone(antiga["vigencia_fim"])
 
     def test_streaming_paginas_de_compatibilidade(self):
         client = self.app.test_client()
@@ -867,6 +945,15 @@ class PropagandasTvTest(unittest.TestCase):
         categoria_id = criada.get_json()["id"]
         duplicada = admin.post("/api/v1/admin/propagandas/categorias", json={"nome": "açougue"})
         self.assertEqual(400, duplicada.status_code)
+        listadas_cat = admin.get("/api/v1/admin/propagandas/categorias").get_json()
+        acougue = next(item for item in listadas_cat if item["id"] == categoria_id)
+        self.assertEqual(0, acougue["midias"])
+        rename = admin.put(
+            f"/api/v1/admin/propagandas/categorias/{categoria_id}",
+            json={"nome": "Açougue premium"},
+        )
+        self.assertEqual(200, rename.status_code)
+        self.assertEqual("Açougue premium", rename.get_json()["nome"])
 
         with self.app.app_context():
             vigente = Propaganda(arquivo="vigente.jpg", tipo="image", ordem=1, ativo=True, categoria_id=categoria_id)
@@ -949,6 +1036,29 @@ class PropagandasTvTest(unittest.TestCase):
             headers={"Authorization": f"Bearer {self._token()}"},
         )
         self.assertEqual([], tv_config.get_json()["imagens"])
+
+        permanente = admin.put(
+            "/api/v1/admin/tvs/midias",
+            json={
+                "tipo": "streaming",
+                "id": tv_id,
+                "midias": [
+                    {
+                        "propaganda_id": vigente_id,
+                        "vigencia_inicio": None,
+                        "vigencia_fim": None,
+                    },
+                    {
+                        "propaganda_id": futura_id,
+                        "vigencia_inicio": None,
+                        "vigencia_fim": (hoje - timedelta(days=1)).isoformat(),
+                    },
+                ],
+            },
+        )
+        self.assertEqual(200, permanente.status_code, permanente.get_json())
+        poll_permanente = public.get("/api/poll/10.9.0.1").get_json()
+        self.assertEqual(["/media/vigente.jpg"], [item["path"] for item in poll_permanente["queue"]])
 
         apagar = admin.delete(f"/api/v1/admin/propagandas/categorias/{categoria_id}")
         self.assertEqual(200, apagar.status_code)

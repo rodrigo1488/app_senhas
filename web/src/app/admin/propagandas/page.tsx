@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Check, ChevronDown, ImageIcon, MonitorPlay, Search, Smartphone, Trash2, Tv } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,30 +11,168 @@ import {
   apiFetch,
   setorEhStreaming,
   type CategoriaMidia,
+  type MidiaTvVinculo,
   type Propaganda,
   type Setor,
   type TvAdmin,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
+type VigenciaTv = {
+  permanente: boolean;
+  inicio: string;
+  fim: string;
+};
+
 function midiaTipo(item: Propaganda): "image" | "video" {
   return item.tipo === "video" ? "video" : "image";
+}
+
+function hojeLocalISO(): string {
+  const agora = new Date();
+  const y = agora.getFullYear();
+  const m = String(agora.getMonth() + 1).padStart(2, "0");
+  const d = String(agora.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function isoParaDdMmAa(iso: string): string {
+  const [y, m, d] = (iso || "").split("-");
+  if (!y || !m || !d) return iso || "";
+  return `${d}/${m}/${y.slice(-2)}`;
+}
+
+function mascararDdMmAa(valor: string): string {
+  const digits = valor.replace(/\D/g, "").slice(0, 6);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+function dataParaIso(valor: string): string | null {
+  const texto = (valor || "").trim();
+  if (!texto) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) return texto;
+  const match = texto.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2}|\d{4})$/);
+  if (!match) return null;
+  const dia = Number(match[1]);
+  const mes = Number(match[2]);
+  const ano = match[3].length === 2 ? 2000 + Number(match[3]) : Number(match[3]);
+  const data = new Date(ano, mes - 1, dia);
+  if (data.getFullYear() !== ano || data.getMonth() !== mes - 1 || data.getDate() !== dia) {
+    return null;
+  }
+  return `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+}
+
+function vigenciaDeVinculo(vinculo?: MidiaTvVinculo): VigenciaTv {
+  return {
+    permanente: !vinculo?.vigencia_fim,
+    inicio: vinculo?.vigencia_inicio || "",
+    fim: vinculo?.vigencia_fim ? isoParaDdMmAa(vinculo.vigencia_fim) : "",
+  };
+}
+
+function chaveTv(tv: { tipo: string; id: number }): string {
+  return `${tv.tipo}:${tv.id}`;
+}
+
+function PrazoCampos({
+  permanente,
+  fim,
+  onChange,
+}: {
+  permanente: boolean;
+  fim: string;
+  onChange: (valor: { permanente: boolean; fim: string }) => void;
+}) {
+  const hoje = isoParaDdMmAa(hojeLocalISO());
+  const fimIso = dataParaIso(fim);
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-medium">Prazo na TV</p>
+      <label className="flex cursor-pointer items-start gap-2 text-sm">
+        <input
+          type="radio"
+          className="mt-1"
+          checked={permanente}
+          onChange={() => onChange({ permanente: true, fim: "" })}
+        />
+        <span>
+          <span className="block font-medium">Permanente</span>
+          <span className="text-xs text-muted-foreground">Fica na TV até ser desmarcada.</span>
+        </span>
+      </label>
+      <label className="flex cursor-pointer items-start gap-2 text-sm">
+        <input
+          type="radio"
+          className="mt-1"
+          checked={!permanente}
+          onChange={() => onChange({ permanente: false, fim: fim || hoje })}
+        />
+        <span>
+          <span className="block font-medium">Data final</span>
+          <span className="text-xs text-muted-foreground">
+            Inclui o dia escolhido; no dia seguinte some da TV.
+          </span>
+        </span>
+      </label>
+      {!permanente ? (
+        <label className="block space-y-1 text-xs text-muted-foreground">
+          Exibir até (DD/MM/AA)
+          <Input
+            inputMode="numeric"
+            placeholder="DD/MM/AA"
+            maxLength={8}
+            value={fim}
+            onChange={(e) =>
+              onChange({ permanente: false, fim: mascararDdMmAa(e.target.value) })
+            }
+          />
+        </label>
+      ) : null}
+      {!permanente && fimIso && fimIso < hojeLocalISO() ? (
+        <p className="text-xs text-amber-700">
+          Prazo encerrado em {isoParaDdMmAa(fimIso)} — não aparece hoje.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function resumoPrazosTv(tv: TvAdmin): string {
+  const vinculos = tv.midias?.length
+    ? tv.midias
+    : tv.propaganda_ids.map((id) => ({ propaganda_id: id } as MidiaTvVinculo));
+  if (!vinculos.length) return "sem mídia";
+  const permanentes = vinculos.filter((item) => !item.vigencia_fim).length;
+  const comPrazo = vinculos.length - permanentes;
+  const partes = [`${vinculos.length} mídia(s)`];
+  if (permanentes) partes.push(`${permanentes} permanente${permanentes === 1 ? "" : "s"}`);
+  if (comPrazo) {
+    const prazos = vinculos
+      .filter((item) => item.vigencia_fim)
+      .map((item) => `até ${isoParaDdMmAa(item.vigencia_fim || "")}`);
+    partes.push(prazos.join(", "));
+  }
+  return partes.join(" · ");
 }
 
 export default function PropagandasPage() {
   const [itens, setItens] = useState<Propaganda[]>([]);
   const [categorias, setCategorias] = useState<CategoriaMidia[]>([]);
-  const [nomeCategoria, setNomeCategoria] = useState("");
   const [categoriaUpload, setCategoriaUpload] = useState("");
-  const [salvandoCategoria, setSalvandoCategoria] = useState(false);
   const [tvs, setTvs] = useState<TvAdmin[]>([]);
   const [setoresCadastro, setSetoresCadastro] = useState<Setor[]>([]);
   const [arquivos, setArquivos] = useState<File[]>([]);
+  const [uploadTvs, setUploadTvs] = useState<Set<string>>(new Set());
+  const [uploadPermanente, setUploadPermanente] = useState(true);
+  const [uploadFim, setUploadFim] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [tvAtiva, setTvAtiva] = useState<TvAdmin | null>(null);
   const [midiasTv, setMidiasTv] = useState<Set<number>>(new Set());
-  const [vigenciasTv, setVigenciasTv] = useState<Record<number, { inicio: string; fim: string }>>({});
+  const [vigenciasTv, setVigenciasTv] = useState<Record<number, VigenciaTv>>({});
   const [savingTv, setSavingTv] = useState(false);
   const [previewingTv, setPreviewingTv] = useState(false);
   const [previewMsg, setPreviewMsg] = useState<string | null>(null);
@@ -91,8 +230,24 @@ export default function PropagandasPage() {
         form.append("arquivo", arquivo);
       }
       if (categoriaUpload) form.append("categoria_id", categoriaUpload);
+      if (uploadTvs.size) {
+        const alvos = [...uploadTvs].map((chave) => {
+          const [tipo, id] = chave.split(":");
+          return { tipo, id: Number(id) };
+        });
+        form.append("tvs", JSON.stringify(alvos));
+        if (!uploadPermanente) {
+          const fimIso = dataParaIso(uploadFim);
+          if (!fimIso) {
+            throw new Error("Informe a data final no formato DD/MM/AA");
+          }
+          form.append("vigencia_fim", fimIso);
+        }
+      }
       await apiFetch("/api/v1/admin/propagandas", { method: "POST", body: form });
       setArquivos([]);
+      setUploadPermanente(true);
+      setUploadFim("");
       if (fileInputRef.current) fileInputRef.current.value = "";
       await load();
     } catch (err) {
@@ -124,45 +279,6 @@ export default function PropagandasPage() {
     await load();
   }
 
-  async function criarCategoria(e: FormEvent) {
-    e.preventDefault();
-    const nome = nomeCategoria.trim();
-    if (!nome) return;
-    setSalvandoCategoria(true);
-    setError(null);
-    try {
-      await apiFetch("/api/v1/admin/propagandas/categorias", {
-        method: "POST",
-        body: JSON.stringify({ nome }),
-      });
-      setNomeCategoria("");
-      await load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Erro ao criar categoria");
-    } finally {
-      setSalvandoCategoria(false);
-    }
-  }
-
-  async function renomearCategoria(categoria: CategoriaMidia, nome: string) {
-    const limpo = nome.trim();
-    if (!limpo || limpo === categoria.nome) return;
-    await apiFetch(`/api/v1/admin/propagandas/categorias/${categoria.id}`, {
-      method: "PUT",
-      body: JSON.stringify({ nome: limpo }),
-    });
-    await load();
-  }
-
-  async function removerCategoria(categoria: CategoriaMidia) {
-    if (!confirm(`Remover a categoria "${categoria.nome}"? As mídias continuam na biblioteca, sem categoria.`)) {
-      return;
-    }
-    await apiFetch(`/api/v1/admin/propagandas/categorias/${categoria.id}`, { method: "DELETE" });
-    if (categoriaUpload === String(categoria.id)) setCategoriaUpload("");
-    await load();
-  }
-
   async function definirCategoria(item: Propaganda, categoriaId: string) {
     await apiFetch(`/api/v1/admin/propagandas/${item.id}`, {
       method: "PUT",
@@ -180,12 +296,9 @@ export default function PropagandasPage() {
           : 0;
     setTvAtiva({ ...tv, rotacao_tv: rotacao });
     setMidiasTv(new Set(tv.propaganda_ids));
-    const vigencias: Record<number, { inicio: string; fim: string }> = {};
+    const vigencias: Record<number, VigenciaTv> = {};
     for (const vinculo of tv.midias || []) {
-      vigencias[vinculo.propaganda_id] = {
-        inicio: vinculo.vigencia_inicio || "",
-        fim: vinculo.vigencia_fim || "",
-      };
+      vigencias[vinculo.propaganda_id] = vigenciaDeVinculo(vinculo);
     }
     setVigenciasTv(vigencias);
     setPreviewMsg(null);
@@ -195,8 +308,22 @@ export default function PropagandasPage() {
     setMidiasTv((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
-      else next.add(id);
+      else {
+        next.add(id);
+        setVigenciasTv((vigencias) =>
+          vigencias[id]
+            ? vigencias
+            : { ...vigencias, [id]: { permanente: true, inicio: "", fim: "" } },
+        );
+      }
       return next;
+    });
+  }
+
+  function atualizarVigenciaTv(id: number, patch: Partial<VigenciaTv>) {
+    setVigenciasTv((current) => {
+      const atual = current[id] || { permanente: true, inicio: "", fim: "" };
+      return { ...current, [id]: { ...atual, ...patch } };
     });
   }
 
@@ -221,22 +348,31 @@ export default function PropagandasPage() {
         });
       }
       const selecionadas = itens.filter((item) => midiasTv.has(item.id));
-      for (const item of selecionadas) {
-        const vigencia = vigenciasTv[item.id];
-        if (vigencia?.inicio && vigencia?.fim && vigencia.fim < vigencia.inicio) {
+      const midiasPayload = selecionadas.map((item) => {
+        const vigencia = vigenciasTv[item.id] || { permanente: true, inicio: "", fim: "" };
+        if (vigencia.permanente) {
+          return { propaganda_id: item.id, vigencia_inicio: null, vigencia_fim: null };
+        }
+        const fimIso = dataParaIso(vigencia.fim);
+        if (!fimIso) {
+          throw new Error("Informe a data final no formato DD/MM/AA");
+        }
+        const inicioIso = dataParaIso(vigencia.inicio);
+        if (inicioIso && fimIso < inicioIso) {
           throw new Error("A data final da vigência não pode ser anterior à inicial");
         }
-      }
+        return {
+          propaganda_id: item.id,
+          vigencia_inicio: inicioIso,
+          vigencia_fim: fimIso,
+        };
+      });
       await apiFetch("/api/v1/admin/tvs/midias", {
         method: "PUT",
         body: JSON.stringify({
           tipo: tvAtiva.tipo,
           id: tvAtiva.id,
-          midias: selecionadas.map((item) => ({
-            propaganda_id: item.id,
-            vigencia_inicio: vigenciasTv[item.id]?.inicio || null,
-            vigencia_fim: vigenciasTv[item.id]?.fim || null,
-          })),
+          midias: midiasPayload,
         }),
       });
       setTvAtiva(null);
@@ -434,58 +570,17 @@ export default function PropagandasPage() {
           <CardTitle>Biblioteca</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <form className="flex flex-wrap items-end gap-2" onSubmit={criarCategoria}>
-            <div className="min-w-[220px] flex-1 space-y-2">
-              <Label htmlFor="nova-categoria">Nova categoria</Label>
-              <Input
-                id="nova-categoria"
-                value={nomeCategoria}
-                placeholder="Ex.: Açougue, Padaria, Ofertas"
-                onChange={(e) => setNomeCategoria(e.target.value)}
-              />
-            </div>
-            <Button type="submit" variant="secondary" disabled={salvandoCategoria || !nomeCategoria.trim()}>
-              {salvandoCategoria ? "Salvando..." : "Criar categoria"}
-            </Button>
-          </form>
-          {categorias.length ? (
-            <ul className="flex flex-wrap gap-2">
-              {categorias.map((categoria) => (
-                <li key={categoria.id} className="flex items-center gap-1 rounded-lg border bg-card px-2 py-1">
-                  <input
-                    aria-label={`Nome da categoria ${categoria.nome}`}
-                    className="w-36 bg-transparent text-sm outline-none"
-                    defaultValue={categoria.nome}
-                    key={`${categoria.id}-${categoria.nome}`}
-                    onBlur={(e) => {
-                      renomearCategoria(categoria, e.target.value).catch((err) =>
-                        setError(err instanceof Error ? err.message : "Erro ao renomear categoria"),
-                      );
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="rounded p-1 text-muted-foreground hover:text-destructive"
-                    aria-label={`Remover categoria ${categoria.nome}`}
-                    onClick={() =>
-                      removerCategoria(categoria).catch((err) =>
-                        setError(err instanceof Error ? err.message : "Erro ao remover categoria"),
-                      )
-                    }
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Crie uma categoria e envie as mídias para dentro dela.
-            </p>
-          )}
           <form className="grid gap-4" onSubmit={onUpload}>
             <div className="space-y-2">
-              <Label htmlFor="categoria-upload">Categoria</Label>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label htmlFor="categoria-upload">Categoria</Label>
+                <Link
+                  href="/admin/categorias-midias"
+                  className="text-xs text-primary underline-offset-4 hover:underline"
+                >
+                  Gerenciar categorias
+                </Link>
+              </div>
               <select
                 id="categoria-upload"
                 className="flex h-10 w-full max-w-sm rounded-lg border border-input bg-card px-3 text-sm"
@@ -524,6 +619,74 @@ export default function PropagandasPage() {
                 </ul>
               )}
             </div>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label>Telas em que a mídia vai aparecer</Label>
+                {tvs.length ? (
+                  <button
+                    type="button"
+                    className="text-xs text-primary hover:underline"
+                    onClick={() => {
+                      const todas = tvs.map(chaveTv);
+                      const todasMarcadas = todas.every((chave) => uploadTvs.has(chave));
+                      setUploadTvs(todasMarcadas ? new Set() : new Set(todas));
+                    }}
+                  >
+                    {tvs.every((tv) => uploadTvs.has(chaveTv(tv))) ? "Limpar telas" : "Selecionar todas"}
+                  </button>
+                ) : null}
+              </div>
+              {tvs.length ? (
+                <div className="grid max-h-56 gap-2 overflow-y-auto rounded-lg border p-2 sm:grid-cols-2">
+                  {tvs.map((tv) => {
+                    const chave = chaveTv(tv);
+                    const checked = uploadTvs.has(chave);
+                    return (
+                      <label
+                        key={chave}
+                        className={`flex cursor-pointer items-start gap-2 rounded-md border p-2 text-sm ${
+                          checked ? "border-primary bg-accent/40" : "border-transparent"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={checked}
+                          onChange={() => {
+                            setUploadTvs((current) => {
+                              const next = new Set(current);
+                              if (next.has(chave)) next.delete(chave);
+                              else next.add(chave);
+                              return next;
+                            });
+                          }}
+                        />
+                        <span>
+                          <span className="block font-medium">{tv.nome}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {tv.tipo === "setor" ? "Painel de senhas" : tv.setor_nome || "Streaming"}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Nenhuma TV cadastrada ainda. A mídia fica só na biblioteca até você escolher uma tela.
+                </p>
+              )}
+            </div>
+            {uploadTvs.size ? (
+              <PrazoCampos
+                permanente={uploadPermanente}
+                fim={uploadFim}
+                onChange={({ permanente, fim }) => {
+                  setUploadPermanente(permanente);
+                  setUploadFim(fim);
+                }}
+              />
+            ) : null}
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" disabled={loading || !arquivos.length} className="w-fit">
               {loading
@@ -756,8 +919,8 @@ export default function PropagandasPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Marque o que deve aparecer nesta TV e salve. A ordem segue a da biblioteca. Início e
-                fim são opcionais: fora desse período a mídia não entra na TV.
+                Marque o que deve aparecer nesta TV e escolha o prazo: permanente ou uma data final.
+                Depois da data, a mídia some da TV sozinha.
               </p>
               {tvAtiva.tipo === "streaming" ? (
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -866,7 +1029,11 @@ export default function PropagandasPage() {
                     <div className="grid gap-3 sm:grid-cols-2">
                       {grupo.itens.map((item) => {
                         const checked = midiasTv.has(item.id);
-                        const vigencia = vigenciasTv[item.id] || { inicio: "", fim: "" };
+                        const vigencia = vigenciasTv[item.id] || {
+                          permanente: true,
+                          inicio: "",
+                          fim: "",
+                        };
                         return (
                           <div
                             key={item.id}
@@ -905,33 +1072,14 @@ export default function PropagandasPage() {
                               </div>
                             </button>
                             {checked ? (
-                              <div className="grid grid-cols-2 gap-2 border-t px-2 py-2">
-                                <label className="space-y-1 text-xs text-muted-foreground">
-                                  Início
-                                  <Input
-                                    type="date"
-                                    value={vigencia.inicio}
-                                    onChange={(e) =>
-                                      setVigenciasTv((current) => ({
-                                        ...current,
-                                        [item.id]: { ...vigencia, inicio: e.target.value },
-                                      }))
-                                    }
-                                  />
-                                </label>
-                                <label className="space-y-1 text-xs text-muted-foreground">
-                                  Fim
-                                  <Input
-                                    type="date"
-                                    value={vigencia.fim}
-                                    onChange={(e) =>
-                                      setVigenciasTv((current) => ({
-                                        ...current,
-                                        [item.id]: { ...vigencia, fim: e.target.value },
-                                      }))
-                                    }
-                                  />
-                                </label>
+                              <div className="border-t px-2 py-2">
+                                <PrazoCampos
+                                  permanente={vigencia.permanente}
+                                  fim={vigencia.fim}
+                                  onChange={({ permanente, fim }) =>
+                                    atualizarVigenciaTv(item.id, { permanente, fim })
+                                  }
+                                />
                               </div>
                             ) : null}
                             {tvAtiva.tipo === "streaming" ? (
@@ -1121,7 +1269,7 @@ function TvGroup({
                     : tv.setor_nome
                       ? `${tv.device_name || "Streaming"} · ${tv.setor_nome}`
                       : tv.device_name || "Streaming avulsa"}{" "}
-                  · {tv.propaganda_ids.length} mídia(s)
+                  · {resumoPrazosTv(tv)}
                   {tv.tipo === "streaming"
                     ? ` · ${
                         tv.rotacao_tv === 90 || tv.rotacao_tv === 180 || tv.rotacao_tv === 270

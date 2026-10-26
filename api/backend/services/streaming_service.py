@@ -19,6 +19,7 @@ from backend.services.tv_config_service import (
     data_iso,
     dentro_da_vigencia,
     parse_data_vigencia,
+    posicao_senhas_tv_atual,
     serializar_tv_config,
 )
 from backend.sockets.emitters import emit_tv_config_atualizada
@@ -521,6 +522,129 @@ def listar_tvs_admin() -> list[dict]:
         payload["midias"] = midias_dispositivo(dispositivo.id)
         tvs.append(payload)
     return tvs
+
+
+def listar_simulacao_telas(setor_ids: list[int] | None = None) -> list[dict]:
+    """Estado atual de cada TV para o painel de simulação."""
+    from backend.services.fila_service import listar_chamadas_recentes, serializar_fila
+
+    telas: list[dict] = []
+    for tv in listar_tvs_admin():
+        if tv["tipo"] == "setor":
+            if setor_ids is not None and tv["id"] not in setor_ids:
+                continue
+            setor = db.session.get(Setor, tv["id"])
+            config = serializar_tv_config(setor)
+            fila = serializar_fila(tv["id"])
+            chamadas = listar_chamadas_recentes(tv["id"], limite=4)
+            atendimentos = fila.get("atendimentos") or []
+            normal = next((item for item in atendimentos if item.get("tipo") == "normal"), None)
+            preferencial = next((item for item in atendimentos if item.get("tipo") == "preferencial"), None)
+            chamada_atual = chamadas[0] if chamadas else None
+            telas.append(
+                {
+                    "chave": tv["chave"],
+                    "id": tv["id"],
+                    "tipo": "setor",
+                    "nome": tv["nome"],
+                    "subtitulo": "Painel de senhas",
+                    "is_online": bool(tv.get("is_online")),
+                    "formato": config.get("orientacao_tv") or "horizontal",
+                    "rotacao_tv": 90 if (config.get("orientacao_tv") or "horizontal") == "vertical" else 0,
+                    "modo": config.get("layout_tv_web") or "propaganda",
+                    "posicao_senhas_tv": config.get("posicao_senhas_tv") or "superior",
+                    "intervalo_ms": config.get("intervalo_ms") or INTERVALO_IMAGEM_MS,
+                    "propagandas_ativas": bool(config.get("propagandas_ativas")),
+                    "midias": [
+                        {
+                            "id": img["id"],
+                            "arquivo": img["arquivo"],
+                            "tipo": img.get("tipo") or "image",
+                            "url": f"/uploads/{img['arquivo']}",
+                        }
+                        for img in (config.get("imagens") or [])
+                    ],
+                    "senha_normal": (normal or {}).get("senha"),
+                    "senha_preferencial": (preferencial or {}).get("senha"),
+                    "chamada_atual": chamada_atual["senha"] if chamada_atual else None,
+                    "chamada_atual_tipo": chamada_atual.get("tipo") if chamada_atual else None,
+                    "proximas": [item.get("senha") for item in (fila.get("pendentes") or [])[:5]],
+                }
+            )
+            continue
+
+        setor_id = tv.get("setor_id")
+        if setor_ids is not None and (setor_id is None or setor_id not in setor_ids):
+            continue
+        dispositivo = db.session.get(TvDispositivo, tv["id"])
+        rotacao = rotacao_do_dispositivo(dispositivo) if dispositivo else 0
+        formato = orientacao_de_rotacao(rotacao)
+        fila_midia = fila_streaming(dispositivo) if dispositivo else []
+        telas.append(
+            {
+                "chave": tv["chave"],
+                "id": tv["id"],
+                "tipo": "streaming",
+                "nome": tv["nome"],
+                "subtitulo": tv.get("setor_nome") or tv.get("device_name") or "Streaming",
+                "is_online": bool(tv.get("is_online")),
+                "formato": formato,
+                "rotacao_tv": rotacao,
+                "modo": "streaming",
+                "posicao_senhas_tv": posicao_senhas_tv_atual(),
+                "intervalo_ms": INTERVALO_IMAGEM_MS,
+                "propagandas_ativas": True,
+                "midias": [
+                    {
+                        "id": item.get("propaganda_id"),
+                        "arquivo": (item.get("path") or "").rsplit("/", 1)[-1],
+                        "tipo": item.get("type") or "image",
+                        "url": item.get("path") or "",
+                    }
+                    for item in fila_midia
+                ],
+                "senha_normal": None,
+                "senha_preferencial": None,
+                "chamada_atual": None,
+                "chamada_atual_tipo": None,
+                "proximas": [],
+            }
+        )
+    return telas
+
+
+def adicionar_midias_nas_tvs(
+    alvos: list[tuple[str, int]],
+    propaganda_ids: list[int],
+    vigencia: tuple | None = None,
+) -> None:
+    """Inclui mídias na fila atual de cada TV, sem apagar as que já estão lá."""
+    inicio, fim = vigencia or (None, None)
+    for tipo, alvo_id in alvos:
+        if tipo == "setor":
+            atuais = midias_setor(alvo_id)
+        elif tipo == "streaming":
+            atuais = midias_dispositivo(alvo_id)
+        else:
+            raise ValueError("tipo deve ser setor ou streaming")
+        ids = [item["propaganda_id"] for item in atuais]
+        vigencias = {
+            item["propaganda_id"]: (
+                parse_data_vigencia(item.get("vigencia_inicio"), "vigencia_inicio"),
+                parse_data_vigencia(item.get("vigencia_fim"), "vigencia_fim"),
+            )
+            for item in atuais
+        }
+        for propaganda_id in propaganda_ids:
+            if propaganda_id not in ids:
+                ids.append(propaganda_id)
+            vigencias[propaganda_id] = (inicio, fim)
+        atribuir_midias_tv(
+            tipo=tipo,
+            alvo_id=alvo_id,
+            propaganda_ids=ids,
+            vigencias=vigencias,
+        )
 
 
 def atribuir_midias_tv(

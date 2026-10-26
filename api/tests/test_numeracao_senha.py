@@ -120,6 +120,9 @@ class NumeracaoSenhaTest(unittest.TestCase):
 
     def test_posicao_respeita_prioridade_e_atualiza_apos_chamada(self):
         with self.app.app_context():
+            from backend.utils import set_configuracao
+
+            set_configuracao("modo_chamada", "preferencial_primeiro")
             n1 = criar_senha(self.setor_id, "normal")
             n2 = criar_senha(self.setor_id, "normal")
             p1 = criar_senha(self.setor_id, "preferencial")

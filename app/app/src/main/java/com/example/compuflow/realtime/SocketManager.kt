@@ -84,6 +84,7 @@ object SocketManager {
                     propagandasAtivas = obj.optBoolean("propagandas_ativas", false),
                     layoutTvWeb = obj.optString("layout_tv_web", "propaganda").ifBlank { "propaganda" },
                     orientacaoTv = obj.optString("orientacao_tv", "horizontal").ifBlank { "horizontal" },
+                    posicaoSenhasTv = obj.optString("posicao_senhas_tv", "superior").ifBlank { "superior" },
                     imagens = obj.optJSONArray("imagens").toPropagandaList(),
                     intervaloMs = obj.optLong("intervalo_ms", 15_000L).coerceAtLeast(1_000L),
                 )

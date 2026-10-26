@@ -25,6 +25,10 @@ from backend.models import AtendimentoAtual, Finalizado, Operador, QrScan, Senha
 from backend.timezone import agora_sp, inicio_fim_dia_sp, segundos_ate_proxima_meia_noite
 from backend.utils import gerar_token_unico, get_configuracao
 
+MODO_PROPORCAO = "proporcao"
+MODO_PREFERENCIAL_PRIMEIRO = "preferencial_primeiro"
+MODOS_CHAMADA = (MODO_PROPORCAO, MODO_PREFERENCIAL_PRIMEIRO)
+
 # Lock por setor para serializar "chamar próxima" e emissão de senhas
 # (evita duas senhas iguais sob concorrência no mesmo setor).
 _setor_locks: dict[int, threading.Lock] = defaultdict(threading.Lock)
@@ -372,6 +376,65 @@ def listar_operadores(setor_id: int) -> list[Operador]:
     return Operador.query.filter_by(setor_id=setor_id).order_by(Operador.nome).all()
 
 
+def modo_chamada_fila() -> str:
+    modo = (get_configuracao("modo_chamada") or MODO_PROPORCAO).strip()
+    return modo if modo in MODOS_CHAMADA else MODO_PROPORCAO
+
+
+def _parametros_chamada(setor_id: int) -> tuple[str, int, int, int]:
+    modo = modo_chamada_fila()
+    proporcao_normais = int(get_configuracao("proporcao_normais") or 2)
+    limite_preferenciais_alerta = int(get_configuracao("limite_preferenciais_alerta") or 3)
+    normais_chamadas = int(get_configuracao(f"normais_chamadas_setor_{setor_id}") or 0)
+    return modo, proporcao_normais, limite_preferenciais_alerta, normais_chamadas
+
+
+def _selecionar_proxima(
+    normais: list[Senha],
+    preferenciais: list[Senha],
+    modo: str,
+    proporcao_normais: int,
+    limite_preferenciais_alerta: int,
+    normais_chamadas: int,
+) -> tuple[Optional[Senha], Optional[str], int, bool]:
+    """Escolhe a próxima senha sem mutar as filas. Retorna senha, tipo, novo contador e alerta."""
+    if modo == MODO_PREFERENCIAL_PRIMEIRO:
+        if preferenciais:
+            return preferenciais[0], "preferencial", 0, False
+        if normais:
+            return normais[0], "normal", normais_chamadas + 1, False
+        return None, None, normais_chamadas, False
+
+    alerta_preferenciais = False
+    proxima = None
+    tipo_a_chamar = None
+
+    if len(preferenciais) > limite_preferenciais_alerta:
+        proxima = preferenciais[0] if preferenciais else (normais[0] if normais else None)
+        tipo_a_chamar = "preferencial" if preferenciais else "normal"
+        alerta_preferenciais = True
+        normais_chamadas = 0
+    elif preferenciais and normais:
+        if normais_chamadas < proporcao_normais:
+            proxima = normais[0]
+            tipo_a_chamar = "normal"
+            normais_chamadas += 1
+        else:
+            proxima = preferenciais[0]
+            tipo_a_chamar = "preferencial"
+            normais_chamadas = 0
+    elif preferenciais:
+        proxima = preferenciais[0]
+        tipo_a_chamar = "preferencial"
+        normais_chamadas = 0
+    elif normais:
+        proxima = normais[0]
+        tipo_a_chamar = "normal"
+        normais_chamadas += 1
+
+    return proxima, tipo_a_chamar, normais_chamadas, alerta_preferenciais
+
+
 def chamar_proxima(setor_id: int, operador_id: int) -> ChamadaResultado:
     """Reimplementação fiel da lógica de proporção normal/preferencial que
     antes vivia na rota `/chamar_proxima` (POST) do `backend/__init__.py` legado, agora
@@ -407,38 +470,17 @@ def chamar_proxima(setor_id: int, operador_id: int) -> ChamadaResultado:
         )
         normais = [s for s in todas if s.tipo == "normal"]
         preferenciais = [s for s in todas if s.tipo == "preferencial"]
-
-        proporcao_normais = int(get_configuracao("proporcao_normais") or 2)
-        limite_preferenciais_alerta = int(get_configuracao("limite_preferenciais_alerta") or 3)
-        normais_chamadas_key = f"normais_chamadas_setor_{setor_id}"
-        normais_chamadas = int(get_configuracao(normais_chamadas_key) or 0)
-
-        alerta_preferenciais = False
-        proxima = None
-        tipo_a_chamar = None
-
-        if len(preferenciais) > limite_preferenciais_alerta:
-            proxima = preferenciais[0] if preferenciais else (normais[0] if normais else None)
-            tipo_a_chamar = "preferencial" if preferenciais else "normal"
-            alerta_preferenciais = True
-            normais_chamadas = 0
-        elif preferenciais and normais:
-            if normais_chamadas < proporcao_normais:
-                proxima = normais[0]
-                tipo_a_chamar = "normal"
-                normais_chamadas += 1
-            else:
-                proxima = preferenciais[0]
-                tipo_a_chamar = "preferencial"
-                normais_chamadas = 0
-        elif preferenciais:
-            proxima = preferenciais[0]
-            tipo_a_chamar = "preferencial"
-            normais_chamadas = 0
-        elif normais:
-            proxima = normais[0]
-            tipo_a_chamar = "normal"
-            normais_chamadas += 1
+        modo, proporcao_normais, limite_preferenciais_alerta, normais_chamadas = _parametros_chamada(
+            setor_id
+        )
+        proxima, tipo_a_chamar, normais_chamadas, alerta_preferenciais = _selecionar_proxima(
+            normais,
+            preferenciais,
+            modo,
+            proporcao_normais,
+            limite_preferenciais_alerta,
+            normais_chamadas,
+        )
 
         if proxima is None:
             # A ausência de uma próxima senha é um resultado válido. O commit é
@@ -457,7 +499,7 @@ def chamar_proxima(setor_id: int, operador_id: int) -> ChamadaResultado:
         db.session.add(AtendimentoAtual(senha_id=proxima.id, setor_id=setor_id, operador_id=operador_id, data_hora=agora))
 
         from backend.utils import set_configuracao
-        set_configuracao(normais_chamadas_key, str(normais_chamadas))
+        set_configuracao(f"normais_chamadas_setor_{setor_id}", str(normais_chamadas))
 
         db.session.commit()
 
@@ -512,6 +554,40 @@ def confirmar_pedido(
     return senha
 
 
+def _posicao_aguardando(senha: Senha) -> int:
+    """Quantas senhas serão chamadas antes desta, no modo de fila configurado."""
+    todas = (
+        Senha.query.filter_by(setor_id=senha.setor_id, status="A")
+        .order_by(Senha.id.asc())
+        .all()
+    )
+    normais = [s for s in todas if s.tipo == "normal"]
+    preferenciais = [s for s in todas if s.tipo == "preferencial"]
+    modo, proporcao_normais, limite_preferenciais_alerta, normais_chamadas = _parametros_chamada(
+        senha.setor_id
+    )
+    posicao = 0
+    while normais or preferenciais:
+        proxima, tipo_a_chamar, normais_chamadas, _ = _selecionar_proxima(
+            normais,
+            preferenciais,
+            modo,
+            proporcao_normais,
+            limite_preferenciais_alerta,
+            normais_chamadas,
+        )
+        if proxima is None:
+            break
+        if proxima.id == senha.id:
+            return posicao
+        if tipo_a_chamar == "preferencial":
+            preferenciais = preferenciais[1:]
+        else:
+            normais = normais[1:]
+        posicao += 1
+    return posicao
+
+
 def posicao_na_fila(token_unico: str) -> dict:
     senha = Senha.query.filter_by(token_unico=token_unico).first()
     if not senha:
@@ -523,22 +599,8 @@ def posicao_na_fila(token_unico: str) -> dict:
         posicao = 0
     elif senha.status == "F":
         posicao = -1
-    elif senha.tipo == "preferencial":
-        posicao = Senha.query.filter(
-            Senha.setor_id == senha.setor_id,
-            Senha.status == "A",
-            Senha.tipo == "preferencial",
-            Senha.id < senha.id,
-        ).count()
     else:
-        posicao = Senha.query.filter(
-            Senha.setor_id == senha.setor_id,
-            Senha.status == "A",
-            or_(
-                Senha.tipo == "preferencial",
-                and_(Senha.tipo == senha.tipo, Senha.id < senha.id),
-            ),
-        ).count()
+        posicao = _posicao_aguardando(senha)
 
     avaliacao_pendente = False
     if senha.status == "F":

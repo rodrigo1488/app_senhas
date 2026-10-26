@@ -30,7 +30,12 @@ from backend.models import (
     TIPO_SETOR_ATENDIMENTO,
     TIPO_SETOR_STREAMING,
 )
-from backend.services.streaming_service import atribuir_midias_tv, listar_tvs_admin
+from backend.services.streaming_service import (
+    adicionar_midias_nas_tvs,
+    atribuir_midias_tv,
+    listar_simulacao_telas,
+    listar_tvs_admin,
+)
 from backend.services.admin_access import (
     AdminAccessError,
     assert_setor_permitido,
@@ -65,9 +70,11 @@ from backend.utils import (
 from backend.services.tv_config_service import (
     ativar_propagandas_nos_setores,
     atribuir_midias_cliente,
+    normalizar_posicao_senhas_tv,
     notificar_clientes,
     notificar_tvs,
     parse_data_vigencia,
+    posicao_senhas_tv_atual,
     propaganda_ids_cliente,
 )
 
@@ -513,8 +520,10 @@ def dashboard():
             "medias_por_setor": medias_por_setor,
             "atendimentos_mes_operador_por_setor": atendimentos_mes_operador_por_setor,
             "setores": [{"id": s.id, "nome": s.nome} for s in setores],
+            "modo_chamada": get_configuracao("modo_chamada", "proporcao") or "proporcao",
             "proporcao_normais": get_configuracao("proporcao_normais", "2"),
             "limite_preferenciais_alerta": get_configuracao("limite_preferenciais_alerta", "3"),
+            "posicao_senhas_tv": posicao_senhas_tv_atual(),
             "ngrok_url": get_ngrok_url(),
             "nome_empresa": get_configuracao("nome_empresa", "") or "",
         }
@@ -745,6 +754,36 @@ def _categoria_por_id(categoria_id):
     return categoria
 
 
+def _parse_tvs_alvos(raw) -> tuple[list[tuple[str, int]] | None, str | None]:
+    if raw is None or raw == "":
+        return [], None
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (TypeError, ValueError):
+            return None, "tvs inválido"
+    if not isinstance(raw, list):
+        return None, "tvs deve ser uma lista"
+    alvos: list[tuple[str, int]] = []
+    vistos: set[tuple[str, int]] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            return None, "Cada TV deve informar tipo e id"
+        tipo = str(item.get("tipo") or "").strip().lower()
+        if tipo not in {"setor", "streaming"}:
+            return None, "tipo de TV deve ser setor ou streaming"
+        try:
+            alvo_id = int(item.get("id"))
+        except (TypeError, ValueError):
+            return None, "id de TV inválido"
+        chave = (tipo, alvo_id)
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+        alvos.append(chave)
+    return alvos, None
+
+
 def _parse_midias_tv(data: dict) -> tuple[list[int], dict]:
     """Aceita `midias` (com vigência) ou `propaganda_ids` legado."""
     midias_raw = data.get("midias")
@@ -773,7 +812,13 @@ def _parse_midias_tv(data: dict) -> tuple[list[int], dict]:
 @api_login_required
 def list_categorias_midia():
     itens = CategoriaMidia.query.order_by(CategoriaMidia.ordem.asc(), CategoriaMidia.nome.asc()).all()
-    return jsonify([item.to_dict() for item in itens])
+    counts = dict(
+        db.session.query(Propaganda.categoria_id, func.count(Propaganda.id))
+        .filter(Propaganda.categoria_id.isnot(None))
+        .group_by(Propaganda.categoria_id)
+        .all()
+    )
+    return jsonify([{**item.to_dict(), "midias": int(counts.get(item.id, 0))} for item in itens])
 
 
 @admin_api_bp.route("/propagandas/categorias", methods=["POST"])
@@ -854,6 +899,16 @@ def create_propaganda():
     setor_ids, setor_error = _parse_setor_ids(request.form.get("setor_ids"))
     if setor_error:
         return jsonify({"error": setor_error}), 400
+    tvs_alvos, tvs_error = _parse_tvs_alvos(request.form.get("tvs"))
+    if tvs_error:
+        return jsonify({"error": tvs_error}), 400
+    try:
+        vigencia_inicio = parse_data_vigencia(request.form.get("vigencia_inicio"), "vigencia_inicio")
+        vigencia_fim = parse_data_vigencia(request.form.get("vigencia_fim"), "vigencia_fim")
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    if vigencia_inicio and vigencia_fim and vigencia_fim < vigencia_inicio:
+        return jsonify({"error": "A data final da vigência não pode ser anterior à inicial"}), 400
 
     setores = Setor.query.filter(Setor.id.in_(setor_ids)).all() if setor_ids else []
     if setor_ids and len(setores) != len(setor_ids):
@@ -886,11 +941,23 @@ def create_propaganda():
         )
         itens.append(item)
 
-    if setores:
+    if setores and not tvs_alvos:
         _vincular_propagandas(itens, setores)
     db.session.add_all(itens)
     db.session.commit()
-    if setores:
+    if tvs_alvos:
+        try:
+            adicionar_midias_nas_tvs(
+                tvs_alvos,
+                [item.id for item in itens],
+                (vigencia_inicio, vigencia_fim),
+            )
+        except ValueError as exc:
+            status = 404 if "não encontrad" in str(exc) else 400
+            return jsonify({"error": str(exc)}), status
+        for item in itens:
+            db.session.refresh(item)
+    elif setores:
         notificar_tvs([setor.id for setor in setores])
 
     if len(itens) == 1:
@@ -1004,6 +1071,16 @@ def delete_propaganda(propaganda_id: int):
 @api_login_required
 def list_tvs():
     return jsonify(listar_tvs_admin())
+
+
+@admin_api_bp.route("/tvs/simulacao", methods=["GET"])
+@api_login_required
+def list_tvs_simulacao():
+    try:
+        permitidos = setor_ids_permitidos()
+    except AdminAccessError as exc:
+        return _access_error_response(exc)
+    return jsonify(listar_simulacao_telas(permitidos))
 
 
 @admin_api_bp.route("/tvs/midias", methods=["PUT"])
@@ -1390,8 +1467,10 @@ def get_config():
         {
             "nome_empresa": get_configuracao("nome_empresa", "") or "",
             "ngrok_url": get_ngrok_url(),
+            "modo_chamada": get_configuracao("modo_chamada", "proporcao") or "proporcao",
             "proporcao_normais": get_configuracao("proporcao_normais", "2"),
             "limite_preferenciais_alerta": get_configuracao("limite_preferenciais_alerta", "3"),
+            "posicao_senhas_tv": posicao_senhas_tv_atual(),
         }
     )
 
@@ -1420,9 +1499,36 @@ def put_ngrok():
 @api_login_required
 @require_admin
 def put_fila():
+    from backend.services.fila_service import MODOS_CHAMADA, MODO_PROPORCAO
+
     data = request.get_json(silent=True) or {}
+    modo = str(data.get("modo_chamada") or MODO_PROPORCAO).strip()
+    if modo not in MODOS_CHAMADA:
+        return jsonify({"error": "modo_chamada inválido"}), 400
     proporcao = str(data.get("proporcao_normais", 2))
     limite = str(data.get("limite_preferenciais_alerta", 3))
+    set_configuracao("modo_chamada", modo)
     set_configuracao("proporcao_normais", proporcao)
     set_configuracao("limite_preferenciais_alerta", limite)
-    return jsonify({"ok": True, "proporcao_normais": proporcao, "limite_preferenciais_alerta": limite})
+    return jsonify(
+        {
+            "ok": True,
+            "modo_chamada": modo,
+            "proporcao_normais": proporcao,
+            "limite_preferenciais_alerta": limite,
+        }
+    )
+
+
+@admin_api_bp.route("/configuracao/tv", methods=["PUT"])
+@api_login_required
+@require_admin
+def put_tv():
+    data = request.get_json(silent=True) or {}
+    try:
+        posicao = normalizar_posicao_senhas_tv(data.get("posicao_senhas_tv"))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    set_configuracao("posicao_senhas_tv", posicao)
+    notificar_tvs([setor.id for setor in Setor.query.all()])
+    return jsonify({"ok": True, "posicao_senhas_tv": posicao})

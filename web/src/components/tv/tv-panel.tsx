@@ -115,6 +115,7 @@ export function TvPanel({ initialCodigo }: Props) {
               propagandas_ativas: false,
               layout_tv_web: "propaganda",
               orientacao_tv: "horizontal",
+              posicao_senhas_tv: "superior",
               setor_nome: null,
               imagens: [] as TvPropagandaImagem[],
               intervalo_ms: 15_000,
@@ -325,6 +326,7 @@ export function TvPanel({ initialCodigo }: Props) {
   const layout = config?.layout_tv_web ?? "propaganda";
   const orientacao: TvOrientacao = config?.orientacao_tv === "vertical" ? "vertical" : "horizontal";
   const vertical = orientacao === "vertical";
+  const senhasNoTopo = (config?.posicao_senhas_tv ?? "superior") !== "inferior";
 
   useEffect(() => {
     if (!token) return;
@@ -341,6 +343,25 @@ export function TvPanel({ initialCodigo }: Props) {
       loop={loopMedia}
       emptyLabel={layout === "fila" ? "Espaço de mídia" : "Sem mídia de propaganda"}
     />
+  );
+
+  const senhasFaixa = (
+    <div className={cn("flex min-h-0", vertical ? "flex-[38] flex-col" : "flex-[22]")}>
+      <TipoPanel
+        titulo="PREFERENCIAL"
+        senha={preferencial.senha}
+        foto={preferencial.foto}
+        className="bg-[#120B1E] text-white"
+        compact={vertical}
+      />
+      <TipoPanel
+        titulo="NORMAL"
+        senha={normal.senha}
+        foto={normal.foto}
+        className="bg-[#E85D04] text-white"
+        compact={vertical}
+      />
+    </div>
   );
 
   if (bootstrapping) {
@@ -403,26 +424,11 @@ export function TvPanel({ initialCodigo }: Props) {
         />
       ) : (
       <div className="flex h-full w-full flex-col">
+        {senhasNoTopo ? senhasFaixa : null}
         <div className={cn("relative min-h-0", vertical ? "flex-[62]" : "flex-[78]")}>
           {mediaSlide}
         </div>
-
-        <div className={cn("flex min-h-0", vertical ? "flex-[38] flex-col" : "flex-[22]")}>
-          <TipoPanel
-            titulo="PREFERENCIAL"
-            senha={preferencial.senha}
-            foto={preferencial.foto}
-            className="bg-[#120B1E] text-white"
-            compact={vertical}
-          />
-          <TipoPanel
-            titulo="NORMAL"
-            senha={normal.senha}
-            foto={normal.foto}
-            className="bg-[#E85D04] text-white"
-            compact={vertical}
-          />
-        </div>
+        {!senhasNoTopo ? senhasFaixa : null}
       </div>
       )}
 
@@ -443,6 +449,7 @@ function tvConfigFingerprint(config: TvConfig) {
   return [
     config.layout_tv_web,
     config.orientacao_tv ?? "horizontal",
+    config.posicao_senhas_tv ?? "superior",
     config.intervalo_ms,
     config.propagandas_ativas ? "1" : "0",
     imagens,
