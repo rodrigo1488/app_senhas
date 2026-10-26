@@ -1,0 +1,16 @@
+O CompuFlow Senhas é o aplicativo do sistema de filas da Computicket. Use no tablet, no totem, no celular do operador ou na TV da recepção.
+
+Com um código de setor, o mesmo app vira:
+
+• Totem do cliente — emissão de senha normal ou preferencial
+• Painel do operador — chamar a próxima senha e gerenciar o atendimento
+• Tela de avaliação — pesquisa de satisfação após o atendimento
+• Painel da TV — senhas chamadas e mídia de propaganda, na horizontal ou na vertical
+
+Conecte ao servidor da sua empresa. O endereço padrão é https://apisenhas.computicket.space. Também é possível escanear a rede local ou informar outro endereço.
+
+Requisitos
+• Aparelho na mesma operação da sua fila (ou com acesso ao servidor)
+• Código do setor fornecido pelo administrador
+
+O aplicativo não cria conta Google. A sessão fica no aparelho e os dados de atendimento são enviados ao servidor da empresa.

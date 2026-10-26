@@ -1,0 +1,21 @@
+Formulário de segurança de dados (Play Console)
+
+Natureza do app: aplicativo de trabalho / kiosk para estabelecimentos.
+
+Dados coletados pelo app (no aparelho):
+- Identificadores no dispositivo: token de sessão e URL do servidor (não criptografados no sentido Play de "conta", apenas preferências locais).
+
+Dados enviados ao servidor da empresa (não à Google):
+- Código do setor
+- Senhas emitidas e chamadas
+- Identificação de operador (nome/foto já cadastrada no servidor, ou PIN)
+- Avaliações de atendimento
+
+Respostas sugeridas:
+- O app coleta dados pessoais dos usuários? Sim, apenas os necessários ao atendimento, enviados ao servidor da empresa.
+- Os dados são criptografados em trânsito? Sim, quando o servidor usa HTTPS. O endereço padrão atual é HTTP; se publicar com HTTP, declare que o tráfego pode não ser criptografado ponta a ponta.
+- Os dados são vendidos? Não.
+- Os dados são compartilhados com terceiros? Não, salvo o servidor que o estabelecimento configurar.
+- O usuário pode pedir exclusão? Sim, pelo administrador do estabelecimento / desinstalando o app (sessão local).
+
+Público-alvo: maior de 18 anos (uso profissional). Não é app infantil.

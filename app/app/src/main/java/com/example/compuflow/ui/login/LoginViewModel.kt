@@ -32,7 +32,8 @@ class LoginViewModel : ViewModel() {
             val antigoPadrao =
                 saved.startsWith("http://192.168.0.100") ||
                     saved == "192.168.0.100:5000" ||
-                    saved.contains("senhas.compuchat.space")
+                    saved.contains("senhas.compuchat.space") ||
+                    saved.contains("senhas.computicket.space")
             if (saved.isNotBlank() && !antigoPadrao) {
                 serverUrl = saved
             }

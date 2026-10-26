@@ -1,0 +1,1 @@
+First Play Store release: sector login, Computicket server connection, LAN scan, customer, operator, feedback and TV modes.

@@ -1,0 +1,12 @@
+CompuFlow is the Computicket queue app. Use it on a tablet, kiosk, operator phone or waiting-room TV.
+
+With a sector code, the same app becomes:
+
+• Customer kiosk — issue regular or priority tickets
+• Operator panel — call the next ticket and manage service
+• Feedback screen — satisfaction survey after service
+• TV display — called tickets and ads, landscape or portrait
+
+Connect to your company server. The default address is https://apisenhas.computicket.space. You can also scan the local network or enter another address.
+
+The app does not create a Google account. The session stays on the device and service data is sent to your company server.

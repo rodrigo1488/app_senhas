@@ -124,7 +124,7 @@ fun LoginScreen(
                         value = viewModel.serverUrl,
                         onValueChange = { viewModel.serverUrl = it },
                         label = { Text("Endereço do servidor") },
-                        placeholder = { Text("http://senhas.computicket.space") },
+                        placeholder = { Text("https://apisenhas.computicket.space") },
                         singleLine = true,
                         enabled = !ocupado,
                         shape = RoundedCornerShape(14.dp),
