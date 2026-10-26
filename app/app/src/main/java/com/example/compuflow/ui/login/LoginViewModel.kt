@@ -28,7 +28,11 @@ class LoginViewModel : ViewModel() {
 
     init {
         viewModelScope.launch {
-            sessionRepository.getServerUrl()?.let { serverUrl = it }
+            val saved = sessionRepository.getServerUrl()?.trim().orEmpty()
+            val antigoPadrao = saved.startsWith("http://192.168.0.100") || saved == "192.168.0.100:5000"
+            if (saved.isNotBlank() && !antigoPadrao) {
+                serverUrl = saved
+            }
         }
     }
 

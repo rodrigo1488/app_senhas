@@ -17,7 +17,7 @@ import java.util.concurrent.TimeUnit
  */
 object NetworkModule {
 
-    const val DEFAULT_BASE_URL = "http://192.168.0.100:5000/"
+    const val DEFAULT_BASE_URL = "http://senhas.compuchat.space/"
 
     private val json = Json {
         ignoreUnknownKeys = true
