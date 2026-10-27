@@ -1,0 +1,29 @@
+Ficha rápida — Play Console
+
+Nome do app: CompuFlow Senhas
+Pacote (applicationId): space.computicket.senhas
+Categoria sugerida: Empresas / Produtividade
+Padrão de preço: Gratuito
+Países: Brasil (e outros se desejar)
+Classificação: PEGI 3 / todas as idades, uso profissional
+Contato: e-mail da Computicket (obrigatório na Play)
+
+Pacote para upload:
+  playstore/CompuFlow-senhas-1.13.aab
+
+Gráficos:
+  playstore/graficos/icon-512.png              (ícone de alta resolução)
+  playstore/graficos/feature-1024x500.png      (gráfico de recurso)
+  playstore/graficos/phone-1.png               (captura 1080x1920)
+  playstore/graficos/phone-2.png
+
+Textos (pt-BR):
+  playstore/listing/pt-BR/
+
+Política de privacidade:
+  Hospede playstore/politica-privacidade.html em um HTTPS público
+  (ex.: https://senhas.computicket.space/privacidade) e cole a URL no Console.
+
+Assinatura:
+  Guarde app/play-release.jks e playstore/credenciais-assinatura.txt em local seguro.
+  Sem esse keystore você não consegue atualizar o app na loja.

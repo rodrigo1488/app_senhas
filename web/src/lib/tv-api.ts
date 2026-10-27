@@ -41,10 +41,13 @@ export type TvPropagandaImagem = {
 
 export type TvOrientacao = "horizontal" | "vertical";
 
+export type TvPosicaoSenhas = "superior" | "inferior";
+
 export type TvConfig = {
   propagandas_ativas: boolean;
   layout_tv_web: "propaganda" | "fila";
   orientacao_tv?: TvOrientacao;
+  posicao_senhas_tv?: TvPosicaoSenhas;
   setor_nome?: string | null;
   imagens: TvPropagandaImagem[];
   intervalo_ms: number;

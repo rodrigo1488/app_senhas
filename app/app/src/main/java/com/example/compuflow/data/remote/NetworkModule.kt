@@ -1,5 +1,6 @@
 package com.example.compuflow.data.remote
 
+import com.example.compuflow.BuildConfig
 import com.example.compuflow.data.session.AuthState
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
@@ -17,7 +18,7 @@ import java.util.concurrent.TimeUnit
  */
 object NetworkModule {
 
-    const val DEFAULT_BASE_URL = "http://192.168.0.100:5000/"
+    const val DEFAULT_BASE_URL = "https://apisenhas.computicket.space/"
 
     private val json = Json {
         ignoreUnknownKeys = true
@@ -30,7 +31,9 @@ object NetworkModule {
     @Volatile private var cachedApiService: ApiService? = null
 
     private val okHttpClient: OkHttpClient by lazy {
-        val logging = HttpLoggingInterceptor().apply { level = HttpLoggingInterceptor.Level.BASIC }
+        val logging = HttpLoggingInterceptor().apply {
+            level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
+        }
         OkHttpClient.Builder()
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(20, TimeUnit.SECONDS)

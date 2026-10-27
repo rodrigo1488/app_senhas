@@ -121,6 +121,9 @@ data class ChamarProximaResponseDto(
 data class SuccessDto(val success: Boolean = true)
 
 @Serializable
+data class HealthDto(val status: String = "ok")
+
+@Serializable
 data class ErrorDto(val error: String? = null)
 
 // --- Requests -----------------------------------------------------------------
@@ -163,6 +166,7 @@ data class TvConfigDto(
     val propagandas_ativas: Boolean = false,
     val layout_tv_web: String = "propaganda",
     val orientacao_tv: String = "horizontal",
+    val posicao_senhas_tv: String = "superior",
     val setor_nome: String? = null,
     val imagens: List<PropagandaImagemDto> = emptyList(),
     val intervalo_ms: Long = 15_000,

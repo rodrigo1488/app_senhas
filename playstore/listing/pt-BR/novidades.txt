@@ -1,0 +1,1 @@
+Primeira versão na Play Store: login por setor, conexão ao servidor Computicket, scan na rede local, modos cliente, operador, avaliação e TV.

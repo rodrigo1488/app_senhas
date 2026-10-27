@@ -1,27 +1,178 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { Check, ChevronDown, ImageIcon, MonitorPlay, Search, Smartphone, Trash2, Tv } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { apiFetch, setorEhStreaming, type Propaganda, type Setor, type TvAdmin } from "@/lib/api";
+import {
+  apiFetch,
+  setorEhStreaming,
+  type CategoriaMidia,
+  type MidiaTvVinculo,
+  type Propaganda,
+  type Setor,
+  type TvAdmin,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
+
+type VigenciaTv = {
+  permanente: boolean;
+  inicio: string;
+  fim: string;
+};
 
 function midiaTipo(item: Propaganda): "image" | "video" {
   return item.tipo === "video" ? "video" : "image";
 }
 
+function hojeLocalISO(): string {
+  const agora = new Date();
+  const y = agora.getFullYear();
+  const m = String(agora.getMonth() + 1).padStart(2, "0");
+  const d = String(agora.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function isoParaDdMmAa(iso: string): string {
+  const [y, m, d] = (iso || "").split("-");
+  if (!y || !m || !d) return iso || "";
+  return `${d}/${m}/${y.slice(-2)}`;
+}
+
+function mascararDdMmAa(valor: string): string {
+  const digits = valor.replace(/\D/g, "").slice(0, 6);
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+  return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+}
+
+function dataParaIso(valor: string): string | null {
+  const texto = (valor || "").trim();
+  if (!texto) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(texto)) return texto;
+  const match = texto.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2}|\d{4})$/);
+  if (!match) return null;
+  const dia = Number(match[1]);
+  const mes = Number(match[2]);
+  const ano = match[3].length === 2 ? 2000 + Number(match[3]) : Number(match[3]);
+  const data = new Date(ano, mes - 1, dia);
+  if (data.getFullYear() !== ano || data.getMonth() !== mes - 1 || data.getDate() !== dia) {
+    return null;
+  }
+  return `${ano}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+}
+
+function vigenciaDeVinculo(vinculo?: MidiaTvVinculo): VigenciaTv {
+  return {
+    permanente: !vinculo?.vigencia_fim,
+    inicio: vinculo?.vigencia_inicio || "",
+    fim: vinculo?.vigencia_fim ? isoParaDdMmAa(vinculo.vigencia_fim) : "",
+  };
+}
+
+function chaveTv(tv: { tipo: string; id: number }): string {
+  return `${tv.tipo}:${tv.id}`;
+}
+
+function PrazoCampos({
+  permanente,
+  fim,
+  onChange,
+}: {
+  permanente: boolean;
+  fim: string;
+  onChange: (valor: { permanente: boolean; fim: string }) => void;
+}) {
+  const hoje = isoParaDdMmAa(hojeLocalISO());
+  const fimIso = dataParaIso(fim);
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-medium">Prazo na TV</p>
+      <label className="flex cursor-pointer items-start gap-2 text-sm">
+        <input
+          type="radio"
+          className="mt-1"
+          checked={permanente}
+          onChange={() => onChange({ permanente: true, fim: "" })}
+        />
+        <span>
+          <span className="block font-medium">Permanente</span>
+          <span className="text-xs text-muted-foreground">Fica na TV até ser desmarcada.</span>
+        </span>
+      </label>
+      <label className="flex cursor-pointer items-start gap-2 text-sm">
+        <input
+          type="radio"
+          className="mt-1"
+          checked={!permanente}
+          onChange={() => onChange({ permanente: false, fim: fim || hoje })}
+        />
+        <span>
+          <span className="block font-medium">Data final</span>
+          <span className="text-xs text-muted-foreground">
+            Inclui o dia escolhido; no dia seguinte some da TV.
+          </span>
+        </span>
+      </label>
+      {!permanente ? (
+        <label className="block space-y-1 text-xs text-muted-foreground">
+          Exibir até (DD/MM/AA)
+          <Input
+            inputMode="numeric"
+            placeholder="DD/MM/AA"
+            maxLength={8}
+            value={fim}
+            onChange={(e) =>
+              onChange({ permanente: false, fim: mascararDdMmAa(e.target.value) })
+            }
+          />
+        </label>
+      ) : null}
+      {!permanente && fimIso && fimIso < hojeLocalISO() ? (
+        <p className="text-xs text-amber-700">
+          Prazo encerrado em {isoParaDdMmAa(fimIso)} — não aparece hoje.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function resumoPrazosTv(tv: TvAdmin): string {
+  const vinculos = tv.midias?.length
+    ? tv.midias
+    : tv.propaganda_ids.map((id) => ({ propaganda_id: id } as MidiaTvVinculo));
+  if (!vinculos.length) return "sem mídia";
+  const permanentes = vinculos.filter((item) => !item.vigencia_fim).length;
+  const comPrazo = vinculos.length - permanentes;
+  const partes = [`${vinculos.length} mídia(s)`];
+  if (permanentes) partes.push(`${permanentes} permanente${permanentes === 1 ? "" : "s"}`);
+  if (comPrazo) {
+    const prazos = vinculos
+      .filter((item) => item.vigencia_fim)
+      .map((item) => `até ${isoParaDdMmAa(item.vigencia_fim || "")}`);
+    partes.push(prazos.join(", "));
+  }
+  return partes.join(" · ");
+}
+
 export default function PropagandasPage() {
   const [itens, setItens] = useState<Propaganda[]>([]);
+  const [categorias, setCategorias] = useState<CategoriaMidia[]>([]);
+  const [categoriaUpload, setCategoriaUpload] = useState("");
   const [tvs, setTvs] = useState<TvAdmin[]>([]);
   const [setoresCadastro, setSetoresCadastro] = useState<Setor[]>([]);
   const [arquivos, setArquivos] = useState<File[]>([]);
+  const [uploadTvs, setUploadTvs] = useState<Set<string>>(new Set());
+  const [uploadPermanente, setUploadPermanente] = useState(true);
+  const [uploadFim, setUploadFim] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [tvAtiva, setTvAtiva] = useState<TvAdmin | null>(null);
   const [midiasTv, setMidiasTv] = useState<Set<number>>(new Set());
+  const [vigenciasTv, setVigenciasTv] = useState<Record<number, VigenciaTv>>({});
   const [savingTv, setSavingTv] = useState(false);
   const [previewingTv, setPreviewingTv] = useState(false);
   const [previewMsg, setPreviewMsg] = useState<string | null>(null);
@@ -39,12 +190,14 @@ export default function PropagandasPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function load() {
-    const [midias, tvsResponse, setoresResponse] = await Promise.all([
+    const [midias, categoriasResponse, tvsResponse, setoresResponse] = await Promise.all([
       apiFetch<Propaganda[]>("/api/v1/admin/propagandas"),
+      apiFetch<CategoriaMidia[]>("/api/v1/admin/propagandas/categorias"),
       apiFetch<TvAdmin[]>("/api/v1/admin/tvs"),
       apiFetch<Setor[]>("/api/v1/admin/setores"),
     ]);
     setItens(midias);
+    setCategorias(categoriasResponse);
     setTvs(tvsResponse);
     setSetoresCadastro(setoresResponse);
   }
@@ -76,8 +229,25 @@ export default function PropagandasPage() {
       for (const arquivo of arquivos) {
         form.append("arquivo", arquivo);
       }
+      if (categoriaUpload) form.append("categoria_id", categoriaUpload);
+      if (uploadTvs.size) {
+        const alvos = [...uploadTvs].map((chave) => {
+          const [tipo, id] = chave.split(":");
+          return { tipo, id: Number(id) };
+        });
+        form.append("tvs", JSON.stringify(alvos));
+        if (!uploadPermanente) {
+          const fimIso = dataParaIso(uploadFim);
+          if (!fimIso) {
+            throw new Error("Informe a data final no formato DD/MM/AA");
+          }
+          form.append("vigencia_fim", fimIso);
+        }
+      }
       await apiFetch("/api/v1/admin/propagandas", { method: "POST", body: form });
       setArquivos([]);
+      setUploadPermanente(true);
+      setUploadFim("");
       if (fileInputRef.current) fileInputRef.current.value = "";
       await load();
     } catch (err) {
@@ -109,6 +279,14 @@ export default function PropagandasPage() {
     await load();
   }
 
+  async function definirCategoria(item: Propaganda, categoriaId: string) {
+    await apiFetch(`/api/v1/admin/propagandas/${item.id}`, {
+      method: "PUT",
+      body: JSON.stringify({ categoria_id: categoriaId ? Number(categoriaId) : null }),
+    });
+    await load();
+  }
+
   function abrirTv(tv: TvAdmin) {
     const rotacao =
       tv.rotacao_tv === 90 || tv.rotacao_tv === 180 || tv.rotacao_tv === 270
@@ -118,6 +296,11 @@ export default function PropagandasPage() {
           : 0;
     setTvAtiva({ ...tv, rotacao_tv: rotacao });
     setMidiasTv(new Set(tv.propaganda_ids));
+    const vigencias: Record<number, VigenciaTv> = {};
+    for (const vinculo of tv.midias || []) {
+      vigencias[vinculo.propaganda_id] = vigenciaDeVinculo(vinculo);
+    }
+    setVigenciasTv(vigencias);
     setPreviewMsg(null);
   }
 
@@ -125,8 +308,22 @@ export default function PropagandasPage() {
     setMidiasTv((current) => {
       const next = new Set(current);
       if (next.has(id)) next.delete(id);
-      else next.add(id);
+      else {
+        next.add(id);
+        setVigenciasTv((vigencias) =>
+          vigencias[id]
+            ? vigencias
+            : { ...vigencias, [id]: { permanente: true, inicio: "", fim: "" } },
+        );
+      }
       return next;
+    });
+  }
+
+  function atualizarVigenciaTv(id: number, patch: Partial<VigenciaTv>) {
+    setVigenciasTv((current) => {
+      const atual = current[id] || { permanente: true, inicio: "", fim: "" };
+      return { ...current, [id]: { ...atual, ...patch } };
     });
   }
 
@@ -150,12 +347,32 @@ export default function PropagandasPage() {
           body: JSON.stringify({ rotacao_tv: rotacaoTvAtual(tvAtiva) }),
         });
       }
+      const selecionadas = itens.filter((item) => midiasTv.has(item.id));
+      const midiasPayload = selecionadas.map((item) => {
+        const vigencia = vigenciasTv[item.id] || { permanente: true, inicio: "", fim: "" };
+        if (vigencia.permanente) {
+          return { propaganda_id: item.id, vigencia_inicio: null, vigencia_fim: null };
+        }
+        const fimIso = dataParaIso(vigencia.fim);
+        if (!fimIso) {
+          throw new Error("Informe a data final no formato DD/MM/AA");
+        }
+        const inicioIso = dataParaIso(vigencia.inicio);
+        if (inicioIso && fimIso < inicioIso) {
+          throw new Error("A data final da vigência não pode ser anterior à inicial");
+        }
+        return {
+          propaganda_id: item.id,
+          vigencia_inicio: inicioIso,
+          vigencia_fim: fimIso,
+        };
+      });
       await apiFetch("/api/v1/admin/tvs/midias", {
         method: "PUT",
         body: JSON.stringify({
           tipo: tvAtiva.tipo,
           id: tvAtiva.id,
-          propaganda_ids: itens.filter((item) => midiasTv.has(item.id)).map((item) => item.id),
+          midias: midiasPayload,
         }),
       });
       setTvAtiva(null);
@@ -304,6 +521,39 @@ export default function PropagandasPage() {
     });
   }, [gruposStreaming]);
 
+  const gruposBiblioteca = useMemo(() => {
+    const semCategoria = itens.filter(
+      (item) => !item.categoria_id || !categorias.some((categoria) => categoria.id === item.categoria_id),
+    );
+    const grupos = categorias.map((categoria) => ({
+      id: categoria.id,
+      nome: categoria.nome,
+      itens: itens.filter((item) => item.categoria_id === categoria.id),
+    }));
+    if (semCategoria.length) {
+      grupos.push({ id: 0, nome: "Sem categoria", itens: semCategoria });
+    }
+    return grupos;
+  }, [categorias, itens]);
+
+  const midiasAtivasPorCategoria = useMemo(() => {
+    const ativas = itens.filter((item) => item.ativo);
+    const semCategoria = ativas.filter(
+      (item) => !item.categoria_id || !categorias.some((categoria) => categoria.id === item.categoria_id),
+    );
+    const grupos = categorias
+      .map((categoria) => ({
+        id: categoria.id,
+        nome: categoria.nome,
+        itens: ativas.filter((item) => item.categoria_id === categoria.id),
+      }))
+      .filter((grupo) => grupo.itens.length);
+    if (semCategoria.length) {
+      grupos.push({ id: 0, nome: "Sem categoria", itens: semCategoria });
+    }
+    return grupos;
+  }, [categorias, itens]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -319,8 +569,32 @@ export default function PropagandasPage() {
         <CardHeader>
           <CardTitle>Biblioteca</CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           <form className="grid gap-4" onSubmit={onUpload}>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label htmlFor="categoria-upload">Categoria</Label>
+                <Link
+                  href="/admin/categorias-midias"
+                  className="text-xs text-primary underline-offset-4 hover:underline"
+                >
+                  Gerenciar categorias
+                </Link>
+              </div>
+              <select
+                id="categoria-upload"
+                className="flex h-10 w-full max-w-sm rounded-lg border border-input bg-card px-3 text-sm"
+                value={categoriaUpload}
+                onChange={(e) => setCategoriaUpload(e.target.value)}
+              >
+                <option value="">Sem categoria</option>
+                {categorias.map((categoria) => (
+                  <option key={categoria.id} value={categoria.id}>
+                    {categoria.nome}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="space-y-2">
               <Label>Arquivos (PNG, JPG, WEBP, GIF até 5MB ou MP4 até 80MB cada)</Label>
               <Input
@@ -345,6 +619,74 @@ export default function PropagandasPage() {
                 </ul>
               )}
             </div>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label>Telas em que a mídia vai aparecer</Label>
+                {tvs.length ? (
+                  <button
+                    type="button"
+                    className="text-xs text-primary hover:underline"
+                    onClick={() => {
+                      const todas = tvs.map(chaveTv);
+                      const todasMarcadas = todas.every((chave) => uploadTvs.has(chave));
+                      setUploadTvs(todasMarcadas ? new Set() : new Set(todas));
+                    }}
+                  >
+                    {tvs.every((tv) => uploadTvs.has(chaveTv(tv))) ? "Limpar telas" : "Selecionar todas"}
+                  </button>
+                ) : null}
+              </div>
+              {tvs.length ? (
+                <div className="grid max-h-56 gap-2 overflow-y-auto rounded-lg border p-2 sm:grid-cols-2">
+                  {tvs.map((tv) => {
+                    const chave = chaveTv(tv);
+                    const checked = uploadTvs.has(chave);
+                    return (
+                      <label
+                        key={chave}
+                        className={`flex cursor-pointer items-start gap-2 rounded-md border p-2 text-sm ${
+                          checked ? "border-primary bg-accent/40" : "border-transparent"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="mt-1"
+                          checked={checked}
+                          onChange={() => {
+                            setUploadTvs((current) => {
+                              const next = new Set(current);
+                              if (next.has(chave)) next.delete(chave);
+                              else next.add(chave);
+                              return next;
+                            });
+                          }}
+                        />
+                        <span>
+                          <span className="block font-medium">{tv.nome}</span>
+                          <span className="text-xs text-muted-foreground">
+                            {tv.tipo === "setor" ? "Painel de senhas" : tv.setor_nome || "Streaming"}
+                          </span>
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Nenhuma TV cadastrada ainda. A mídia fica só na biblioteca até você escolher uma tela.
+                </p>
+              )}
+            </div>
+            {uploadTvs.size ? (
+              <PrazoCampos
+                permanente={uploadPermanente}
+                fim={uploadFim}
+                onChange={({ permanente, fim }) => {
+                  setUploadPermanente(permanente);
+                  setUploadFim(fim);
+                }}
+              />
+            ) : null}
             {error && <p className="text-sm text-destructive">{error}</p>}
             <Button type="submit" disabled={loading || !arquivos.length} className="w-fit">
               {loading
@@ -485,8 +827,18 @@ export default function PropagandasPage() {
         <CardHeader>
           <CardTitle>Galeria ({itens.length})</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {itens.map((item) => (
+        <CardContent className="space-y-6">
+          {gruposBiblioteca.map((grupo) => (
+            <div key={grupo.id} className="space-y-3">
+              <h3 className="text-sm font-semibold">
+                {grupo.nome}
+                <span className="ml-2 font-normal text-muted-foreground">{grupo.itens.length}</span>
+              </h3>
+              {!grupo.itens.length ? (
+                <p className="text-sm text-muted-foreground">Nenhuma mídia nesta categoria.</p>
+              ) : (
+                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                  {grupo.itens.map((item) => (
             <div key={item.id} className="overflow-hidden rounded-xl border">
               {midiaTipo(item) === "video" ? (
                 <video
@@ -509,6 +861,23 @@ export default function PropagandasPage() {
                   {midiaTipo(item) === "video" ? "Vídeo" : "Imagem"} · Ordem {item.ordem} ·{" "}
                   {item.ativo ? "Ativa" : "Inativa"}
                 </p>
+                <select
+                  aria-label={`Categoria da mídia ${item.id}`}
+                  className="flex h-9 w-full rounded-lg border border-input bg-card px-2 text-sm"
+                  value={item.categoria_id ? String(item.categoria_id) : ""}
+                  onChange={(e) =>
+                    definirCategoria(item, e.target.value).catch((err) =>
+                      setError(err instanceof Error ? err.message : "Erro ao mover mídia"),
+                    )
+                  }
+                >
+                  <option value="">Sem categoria</option>
+                  {categorias.map((categoria) => (
+                    <option key={categoria.id} value={categoria.id}>
+                      {categoria.nome}
+                    </option>
+                  ))}
+                </select>
                 <div className="flex flex-wrap gap-2">
                   <Button type="button" size="sm" variant="outline" onClick={() => move(item, -1)}>
                     Subir
@@ -525,9 +894,13 @@ export default function PropagandasPage() {
                 </div>
               </div>
             </div>
+                  ))}
+                </div>
+              )}
+            </div>
           ))}
-          {!itens.length && (
-            <div className="col-span-full flex flex-col items-center gap-2 py-10 text-muted-foreground">
+          {!itens.length && !categorias.length && (
+            <div className="flex flex-col items-center gap-2 py-10 text-muted-foreground">
               <ImageIcon className="h-8 w-8" />
               <p className="text-sm">Nenhuma mídia na biblioteca.</p>
             </div>
@@ -546,7 +919,8 @@ export default function PropagandasPage() {
             </CardHeader>
             <CardContent className="space-y-4">
               <p className="text-sm text-muted-foreground">
-                Marque o que deve aparecer nesta TV e salve. A ordem segue a da biblioteca.
+                Marque o que deve aparecer nesta TV e escolha o prazo: permanente ou uma data final.
+                Depois da data, a mídia some da TV sozinha.
               </p>
               {tvAtiva.tipo === "streaming" ? (
                 <div className="grid gap-4 sm:grid-cols-2">
@@ -603,108 +977,131 @@ export default function PropagandasPage() {
                   <p className="mb-2 text-xs font-medium text-muted-foreground">
                     Pré-visualização local (mesma rotação da TV)
                   </p>
-                  <div className="flex justify-center overflow-hidden rounded-lg bg-black p-4">
+                  <div className="flex justify-center">
                     {(() => {
                       const firstId = itens.find((item) => item.ativo && midiasTv.has(item.id))?.id;
                       const first = itens.find((item) => item.id === firstId);
                       if (!first) return <p className="text-sm text-muted-foreground">Sem mídia marcada</p>;
                       const rot = rotacaoTvAtual(tvAtiva);
                       const swapped = rot === 90 || rot === 270;
+                      // 90/270: palco 9:16 (o que o cliente vê com a TV em pé) e a mídia cobre
+                      // até a borda. 0/180: palco 16:9; 180° só inverte, sem faixas extras.
+                      const mediaClass = `h-full w-full ${swapped || rot === 180 ? "object-cover" : "object-contain"}`;
+                      const mediaStyle = rot === 180 ? { transform: "rotate(180deg)" } : undefined;
                       return (
                         <div
-                          className="flex items-center justify-center"
-                          style={{
-                            width: swapped ? 180 : 320,
-                            height: swapped ? 320 : 180,
-                          }}
+                          className="relative overflow-hidden rounded-lg bg-black"
+                          style={
+                            swapped
+                              ? { height: "min(68vh, 520px)", aspectRatio: "9 / 16" }
+                              : { width: "100%", aspectRatio: "16 / 9" }
+                          }
                         >
-                          <div
-                            style={{
-                              width: 320,
-                              height: 180,
-                              transform: `rotate(${rot}deg)`,
-                              transformOrigin: "center center",
-                            }}
-                          >
-                            {midiaTipo(first) === "video" ? (
-                              <video
-                                src={`/uploads/${first.arquivo}`}
-                                muted
-                                playsInline
-                                className="h-full w-full object-contain"
-                              />
-                            ) : (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img
-                                src={`/uploads/${first.arquivo}`}
-                                alt=""
-                                className="h-full w-full object-contain"
-                              />
-                            )}
-                          </div>
+                          {midiaTipo(first) === "video" ? (
+                            <video
+                              src={`/uploads/${first.arquivo}`}
+                              muted
+                              playsInline
+                              className={`absolute inset-0 ${mediaClass}`}
+                              style={mediaStyle}
+                            />
+                          ) : (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={`/uploads/${first.arquivo}`}
+                              alt=""
+                              className={`absolute inset-0 ${mediaClass}`}
+                              style={mediaStyle}
+                            />
+                          )}
                         </div>
                       );
                     })()}
                   </div>
                 </div>
               ) : null}
-              <div className="grid gap-3 sm:grid-cols-2">
-                {itens.filter((item) => item.ativo).map((item) => {
-                  const checked = midiasTv.has(item.id);
-                  return (
-                    <div
-                      key={item.id}
-                      className={`overflow-hidden rounded-xl border ${
-                        checked ? "border-primary ring-2 ring-primary/20" : ""
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => toggleMidiaTv(item.id)}
-                        className="w-full text-left"
-                      >
-                        {midiaTipo(item) === "video" ? (
-                          <video
-                            src={`/uploads/${item.arquivo}`}
-                            muted
-                            className="aspect-video w-full object-cover bg-muted"
-                          />
-                        ) : (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img
-                            src={`/uploads/${item.arquivo}`}
-                            alt=""
-                            className="aspect-video w-full object-cover bg-muted"
-                          />
-                        )}
-                        <div className="flex items-center gap-2 p-2 text-sm">
-                          <span
-                            className={`flex h-5 w-5 items-center justify-center rounded border ${
-                              checked ? "border-primary bg-primary text-primary-foreground" : "border-input"
+              <div className="space-y-4">
+                {midiasAtivasPorCategoria.map((grupo) => (
+                  <div key={grupo.id} className="space-y-2">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {grupo.nome}
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {grupo.itens.map((item) => {
+                        const checked = midiasTv.has(item.id);
+                        const vigencia = vigenciasTv[item.id] || {
+                          permanente: true,
+                          inicio: "",
+                          fim: "",
+                        };
+                        return (
+                          <div
+                            key={item.id}
+                            className={`overflow-hidden rounded-xl border ${
+                              checked ? "border-primary ring-2 ring-primary/20" : ""
                             }`}
                           >
-                            {checked && <Check className="h-3.5 w-3.5" />}
-                          </span>
-                          {midiaTipo(item) === "video" ? "Vídeo" : "Imagem"} {item.id}
-                        </div>
-                      </button>
-                      {tvAtiva.tipo === "streaming" ? (
-                        <div className="border-t px-2 pb-2">
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-full text-xs"
-                            disabled={previewingTv}
-                            onClick={() => previewNaTv(item.id)}
-                          >
-                            Pré-visualizar na TV
-                          </Button>
-                        </div>
-                      ) : null}
+                            <button
+                              type="button"
+                              onClick={() => toggleMidiaTv(item.id)}
+                              className="w-full text-left"
+                            >
+                              {midiaTipo(item) === "video" ? (
+                                <video
+                                  src={`/uploads/${item.arquivo}`}
+                                  muted
+                                  className="aspect-video w-full object-cover bg-muted"
+                                />
+                              ) : (
+                                // eslint-disable-next-line @next/next/no-img-element
+                                <img
+                                  src={`/uploads/${item.arquivo}`}
+                                  alt=""
+                                  className="aspect-video w-full object-cover bg-muted"
+                                />
+                              )}
+                              <div className="flex items-center gap-2 p-2 text-sm">
+                                <span
+                                  className={`flex h-5 w-5 items-center justify-center rounded border ${
+                                    checked ? "border-primary bg-primary text-primary-foreground" : "border-input"
+                                  }`}
+                                >
+                                  {checked && <Check className="h-3.5 w-3.5" />}
+                                </span>
+                                {midiaTipo(item) === "video" ? "Vídeo" : "Imagem"} {item.id}
+                              </div>
+                            </button>
+                            {checked ? (
+                              <div className="border-t px-2 py-2">
+                                <PrazoCampos
+                                  permanente={vigencia.permanente}
+                                  fim={vigencia.fim}
+                                  onChange={({ permanente, fim }) =>
+                                    atualizarVigenciaTv(item.id, { permanente, fim })
+                                  }
+                                />
+                              </div>
+                            ) : null}
+                            {tvAtiva.tipo === "streaming" ? (
+                              <div className="border-t px-2 pb-2">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-full text-xs"
+                                  disabled={previewingTv}
+                                  onClick={() => previewNaTv(item.id)}
+                                >
+                                  Pré-visualizar na TV
+                                </Button>
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
               {!itens.filter((item) => item.ativo).length && (
                 <p className="text-sm text-muted-foreground">Cadastre mídias na biblioteca primeiro.</p>
@@ -872,7 +1269,7 @@ function TvGroup({
                     : tv.setor_nome
                       ? `${tv.device_name || "Streaming"} · ${tv.setor_nome}`
                       : tv.device_name || "Streaming avulsa"}{" "}
-                  · {tv.propaganda_ids.length} mídia(s)
+                  · {resumoPrazosTv(tv)}
                   {tv.tipo === "streaming"
                     ? ` · ${
                         tv.rotacao_tv === 90 || tv.rotacao_tv === 180 || tv.rotacao_tv === 270

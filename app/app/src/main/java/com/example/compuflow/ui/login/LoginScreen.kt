@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,8 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -20,14 +21,19 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ConfirmationNumber
+import androidx.compose.material.icons.filled.Link
+import androidx.compose.material.icons.filled.WifiFind
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
@@ -52,6 +58,7 @@ fun LoginScreen(
     onLoginSuccess: (setorNome: String) -> Unit,
     viewModel: LoginViewModel = viewModel(),
 ) {
+    val ocupado = viewModel.isLoading || viewModel.isScanning || viewModel.isConnecting
     Scaffold(
         containerColor = IndigoApp,
         contentWindowInsets = WindowInsets.safeDrawing,
@@ -117,8 +124,9 @@ fun LoginScreen(
                         value = viewModel.serverUrl,
                         onValueChange = { viewModel.serverUrl = it },
                         label = { Text("Endereço do servidor") },
-                        placeholder = { Text("192.168.0.100:5000") },
+                        placeholder = { Text("https://apisenhas.computicket.space") },
                         singleLine = true,
+                        enabled = !ocupado,
                         shape = RoundedCornerShape(14.dp),
                         colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = IndigoApp),
                         keyboardOptions = KeyboardOptions(
@@ -127,6 +135,86 @@ fun LoginScreen(
                         ),
                         modifier = Modifier.fillMaxWidth(),
                     )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        OutlinedButton(
+                            onClick = { viewModel.escanearRede() },
+                            enabled = !ocupado,
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            if (viewModel.isScanning) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    color = IndigoApp,
+                                    strokeWidth = 2.dp,
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Filled.WifiFind,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                            Text(
+                                text = if (viewModel.isScanning) "Buscando" else "Escanear",
+                                modifier = Modifier.padding(start = 8.dp),
+                            )
+                        }
+                        Button(
+                            onClick = { viewModel.conectar() },
+                            enabled = !ocupado,
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = IndigoApp),
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            if (viewModel.isConnecting) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(18.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp,
+                                )
+                            } else {
+                                Icon(
+                                    imageVector = Icons.Filled.Link,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                            Text(
+                                text = if (viewModel.isConnecting) "Aguarde" else "Conectar",
+                                modifier = Modifier.padding(start = 8.dp),
+                            )
+                        }
+                    }
+
+                    if (viewModel.servidoresEncontrados.size > 1) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 8.dp)
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            viewModel.servidoresEncontrados.forEach { url ->
+                                FilterChip(
+                                    selected = viewModel.serverUrl == url,
+                                    onClick = { viewModel.serverUrl = url },
+                                    enabled = !ocupado,
+                                    label = { Text(url.removePrefix("http://")) },
+                                    colors = FilterChipDefaults.filterChipColors(
+                                        selectedContainerColor = IndigoApp,
+                                        selectedLabelColor = Color.White,
+                                    ),
+                                )
+                            }
+                        }
+                    }
 
                     OutlinedTextField(
                         value = viewModel.codigoSetor,
@@ -144,6 +232,15 @@ fun LoginScreen(
                             .padding(top = 12.dp),
                     )
 
+                    viewModel.statusMessage?.let { message ->
+                        Text(
+                            text = message,
+                            color = IndigoApp,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(top = 12.dp),
+                        )
+                    }
+
                     viewModel.errorMessage?.let { message ->
                         Text(
                             text = message,
@@ -155,7 +252,7 @@ fun LoginScreen(
 
                     Button(
                         onClick = { viewModel.login(onLoginSuccess) },
-                        enabled = !viewModel.isLoading,
+                        enabled = !ocupado,
                         shape = RoundedCornerShape(14.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = IndigoApp),
                         modifier = Modifier
@@ -164,7 +261,7 @@ fun LoginScreen(
                     ) {
                         if (viewModel.isLoading) {
                             CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp).width(20.dp),
+                                modifier = Modifier.size(20.dp),
                                 color = Color.White,
                                 strokeWidth = 2.dp,
                             )

@@ -42,6 +42,7 @@ class TvViewModel : ViewModel() {
 
     var layoutTvWeb by mutableStateOf("propaganda")
     var orientacaoTv by mutableStateOf("horizontal")
+    var posicaoSenhasTv by mutableStateOf("superior")
     var imagens by mutableStateOf<List<PropagandaImagemDto>>(emptyList())
     var intervaloMs by mutableStateOf(15_000L)
     var imagemIndex by mutableStateOf(0)
@@ -122,6 +123,7 @@ class TvViewModel : ViewModel() {
             applyTvConfig(
                 layout = config.layout_tv_web,
                 orientacao = config.orientacao_tv,
+                posicao = config.posicao_senhas_tv,
                 imgs = config.imagens,
                 intervalo = config.intervalo_ms.coerceAtLeast(1_000L),
             )
@@ -135,11 +137,13 @@ class TvViewModel : ViewModel() {
     private fun applyTvConfig(
         layout: String,
         orientacao: String,
+        posicao: String,
         imgs: List<PropagandaImagemDto>,
         intervalo: Long,
     ) {
         layoutTvWeb = if (layout == "fila") "fila" else "propaganda"
         orientacaoTv = if (orientacao == "vertical") "vertical" else "horizontal"
+        posicaoSenhasTv = if (posicao == "inferior") "inferior" else "superior"
         val fingerprint = buildString {
             append(intervalo)
             imgs.forEach { item ->
@@ -248,6 +252,7 @@ class TvViewModel : ViewModel() {
                 applyTvConfig(
                     layout = event.layoutTvWeb,
                     orientacao = event.orientacaoTv,
+                    posicao = event.posicaoSenhasTv,
                     imgs = event.imagens,
                     intervalo = event.intervaloMs,
                 )

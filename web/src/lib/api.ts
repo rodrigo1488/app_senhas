@@ -44,7 +44,14 @@ export function homeDoPapel(papel: PapelPainel | string): string {
 
 export function rotaAdminPermitida(papel: PapelPainel | string, pathname: string): boolean {
   if (papel !== "marketing") return true;
-  return pathname === "/admin/propagandas" || pathname.startsWith("/admin/propagandas/");
+  return (
+    pathname === "/admin/propagandas" ||
+    pathname.startsWith("/admin/propagandas/") ||
+    pathname === "/admin/categorias-midias" ||
+    pathname.startsWith("/admin/categorias-midias/") ||
+    pathname === "/admin/simulacao-telas" ||
+    pathname.startsWith("/admin/simulacao-telas/")
+  );
 }
 
 export type AdminUser = {
@@ -94,15 +101,31 @@ export function setorEhStreaming(setor: { tipo_setor?: string | null }): boolean
 
 export type PropagandaTipo = "image" | "video";
 
+export type CategoriaMidia = {
+  id: number;
+  nome: string;
+  ordem: number;
+  criado_em?: string | null;
+  midias?: number;
+};
+
 export type Propaganda = {
   id: number;
   arquivo: string;
   tipo: PropagandaTipo;
   ordem: number;
   ativo: boolean;
+  categoria_id?: number | null;
   criado_em: string | null;
   setor_ids: number[];
   setor_ids_cliente?: number[];
+};
+
+export type MidiaTvVinculo = {
+  propaganda_id: number;
+  ordem?: number;
+  vigencia_inicio?: string | null;
+  vigencia_fim?: string | null;
 };
 
 export type TvAdmin = {
@@ -121,7 +144,36 @@ export type TvAdmin = {
   setor_nome?: string | null;
   tipo_setor?: "atendimento" | "streaming" | null;
   propaganda_ids: number[];
+  midias?: MidiaTvVinculo[];
   layout_tv_web?: "propaganda" | "fila";
+};
+
+export type SimulacaoMidia = {
+  id: number | null;
+  arquivo: string;
+  tipo: "image" | "video" | string;
+  url: string;
+};
+
+export type SimulacaoTela = {
+  chave: string;
+  id: number;
+  tipo: "setor" | "streaming";
+  nome: string;
+  subtitulo: string;
+  is_online: boolean;
+  formato: "horizontal" | "vertical";
+  rotacao_tv: number;
+  modo: "propaganda" | "fila" | "streaming";
+  posicao_senhas_tv?: "superior" | "inferior";
+  intervalo_ms: number;
+  propagandas_ativas: boolean;
+  midias: SimulacaoMidia[];
+  senha_normal: string | null;
+  senha_preferencial: string | null;
+  chamada_atual: string | null;
+  chamada_atual_tipo: string | null;
+  proximas: string[];
 };
 
 export type Operador = {
@@ -153,8 +205,10 @@ export type DashboardData = {
   medias_por_setor: Record<string, { operador: string; media: number | null }[]>;
   atendimentos_mes_operador_por_setor: Record<string, { operador: string; total: number }[]>;
   setores: { id: number; nome: string }[];
+  modo_chamada: string;
   proporcao_normais: string;
   limite_preferenciais_alerta: string;
+  posicao_senhas_tv?: string;
   ngrok_url: string;
   nome_empresa: string;
 };

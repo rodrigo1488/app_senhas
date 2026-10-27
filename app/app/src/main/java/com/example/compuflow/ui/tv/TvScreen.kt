@@ -84,6 +84,7 @@ fun TvScreen(viewModel: TvViewModel = viewModel()) {
                     normalSenha = viewModel.ultimaNormalSenha,
                     normalFoto = viewModel.ultimaNormalFoto,
                     vertical = vertical,
+                    senhasNoTopo = viewModel.posicaoSenhasTv != "inferior",
                 )
             }
         }
@@ -101,7 +102,9 @@ private fun PropagandaTvLayout(
     normalSenha: String?,
     normalFoto: String?,
     vertical: Boolean = false,
+    senhasNoTopo: Boolean = true,
 ) {
+<<<<<<< HEAD
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         // Garante espaço mínimo visível para as senhas; mídia fica com o restante.
         val panelWeight = passwordPanelWeight(maxHeight = maxHeight, vertical = vertical)
@@ -168,6 +171,99 @@ private fun PropagandaTvLayout(
                     )
                 }
             }
+=======
+    Column(modifier = Modifier.fillMaxSize()) {
+        if (senhasNoTopo) {
+            SenhasFaixa(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(if (vertical) 0.38f else 0.22f),
+                vertical = vertical,
+                preferencialSenha = preferencialSenha,
+                preferencialFoto = preferencialFoto,
+                normalSenha = normalSenha,
+                normalFoto = normalFoto,
+            )
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(if (vertical) 0.62f else 0.78f),
+        ) {
+            key(item?.id, item?.arquivo, item?.tipo) {
+                TvMediaSlide(
+                    item = item,
+                    mediaUrl = mediaUrl,
+                    loop = loop,
+                    onEnded = onEnded,
+                    emptyLabel = "Sem mídia de propaganda",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+        if (!senhasNoTopo) {
+            SenhasFaixa(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(if (vertical) 0.38f else 0.22f),
+                vertical = vertical,
+                preferencialSenha = preferencialSenha,
+                preferencialFoto = preferencialFoto,
+                normalSenha = normalSenha,
+                normalFoto = normalFoto,
+            )
+        }
+    }
+}
+
+@Composable
+private fun SenhasFaixa(
+    modifier: Modifier,
+    vertical: Boolean,
+    preferencialSenha: String?,
+    preferencialFoto: String?,
+    normalSenha: String?,
+    normalFoto: String?,
+) {
+    if (vertical) {
+        Column(
+            modifier = modifier,
+        ) {
+            TipoSenhaPanel(
+                titulo = "PREFERENCIAL",
+                senha = preferencialSenha,
+                foto = preferencialFoto,
+                background = PreferencialPanel,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            )
+            TipoSenhaPanel(
+                titulo = "NORMAL",
+                senha = normalSenha,
+                foto = normalFoto,
+                background = NormalPanel,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+            )
+        }
+    } else {
+        Row(
+            modifier = modifier,
+        ) {
+            TipoSenhaPanel(
+                titulo = "PREFERENCIAL",
+                senha = preferencialSenha,
+                foto = preferencialFoto,
+                background = PreferencialPanel,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+            TipoSenhaPanel(
+                titulo = "NORMAL",
+                senha = normalSenha,
+                foto = normalFoto,
+                background = NormalPanel,
+                modifier = Modifier.weight(1f).fillMaxHeight(),
+            )
+>>>>>>> e95f65d535c84892edf092b26d612e70a7c008fc
         }
     }
 }
