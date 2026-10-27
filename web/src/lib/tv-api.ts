@@ -24,6 +24,7 @@ export type TvAtendimento = {
   senha: string;
   tipo: string;
   senha_id?: number | null;
+  chamada_em?: string | null;
 };
 
 export type TvFila = {

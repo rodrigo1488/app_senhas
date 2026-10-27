@@ -255,7 +255,7 @@ def serializar_fila(
     ultimo_por_operador: dict[int, tuple] = {}
     for atendimento, operador, senha in atendimentos_query.all():
         if operador.id not in ultimo_por_operador:
-            ultimo_por_operador[operador.id] = (operador, senha)
+            ultimo_por_operador[operador.id] = (operador, senha, atendimento)
 
     return {
         "setor_id": setor_id,
@@ -286,6 +286,7 @@ def serializar_fila(
                 "senha": senha.senha,
                 "tipo": senha.tipo,
                 "senha_id": senha.id,
+                "chamada_em": _iso_chamada(senha, atendimento),
                 **(
                     {
                         "tem_pedido": bool(senha.tem_pedido),
@@ -296,9 +297,28 @@ def serializar_fila(
                     else {}
                 ),
             }
-            for operador, senha in sorted(ultimo_por_operador.values(), key=lambda t: t[0].nome or "")
+            for operador, senha, atendimento in sorted(
+                ultimo_por_operador.values(), key=lambda t: t[0].nome or ""
+            )
         ],
     }
+
+
+def _iso_chamada(senha, atendimento=None) -> str | None:
+    valor = getattr(senha, "chamada_em", None)
+    if valor is None and atendimento is not None:
+        valor = getattr(atendimento, "data_hora", None)
+    return valor.isoformat() if valor else None
+
+
+def mais_recente_do_tipo(atendimentos: list[dict], tipo: str) -> dict | None:
+    candidatos = [item for item in atendimentos if item.get("tipo") == tipo]
+    if not candidatos:
+        return None
+    return max(
+        candidatos,
+        key=lambda item: (item.get("chamada_em") or "", item.get("senha_id") or 0),
+    )
 
 
 def listar_chamadas_recentes(setor_id: int, limite: int = 8) -> list[dict]:
@@ -352,8 +372,12 @@ def listar_chamadas_recentes(setor_id: int, limite: int = 8) -> list[dict]:
             }
         )
 
-    chamadas.sort(key=lambda item: item["chamada_em"] or "", reverse=True)
-    return chamadas[:limite]
+    por_id: dict[int, dict] = {}
+    for item in chamadas:
+        atual = por_id.get(item["senha_id"])
+        if atual is None or (item.get("chamada_em") or "") >= (atual.get("chamada_em") or ""):
+            por_id[item["senha_id"]] = item
+    return sorted(por_id.values(), key=lambda item: item.get("chamada_em") or "", reverse=True)[:limite]
 
 
 def criar_senha(setor_id: int, tipo: str) -> Senha:
@@ -693,6 +717,7 @@ def estado_atendimento_atual(setor_id: int, operador_id: int | None = None) -> O
         "operador_id": operador.id,
         "operador_nome": operador.nome,
         "operador_foto": operador.foto_perfil,
+        "chamada_em": senha.chamada_em.isoformat() if senha.chamada_em else None,
         "tem_pedido": bool(senha.tem_pedido),
         "pedido": senha.pedido,
         "pedido_confirmado": bool(senha.pedido_confirmado),

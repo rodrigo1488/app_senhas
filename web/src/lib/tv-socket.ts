@@ -16,6 +16,7 @@ export type SenhaChamadaTv = {
   operador_id?: number | null;
   operador_nome?: string | null;
   operador_foto?: string | null;
+  chamada_em?: string | null;
 };
 
 /** True quando o browser fala com a API pelo mesmo origin HTTPS (rewrite Next). */

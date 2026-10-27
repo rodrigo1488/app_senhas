@@ -58,6 +58,7 @@ data class AtendimentoDto(
     val senha: String,
     val tipo: String,
     val senha_id: Int? = null,
+    val chamada_em: String? = null,
     val tem_pedido: Boolean = false,
     val pedido: String? = null,
     val pedido_confirmado: Boolean = false,

@@ -66,6 +66,7 @@ def emit_senha_chamada(
         "operador_id": operador_id,
         "operador_nome": operador_nome,
         "operador_foto": operador_foto,
+        "chamada_em": senha.chamada_em.isoformat() if senha.chamada_em else None,
         "alerta_preferenciais": alerta_preferenciais,
     }
     if senha.setor_id:

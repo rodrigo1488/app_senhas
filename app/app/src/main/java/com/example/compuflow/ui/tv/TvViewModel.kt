@@ -40,6 +40,12 @@ class TvViewModel : ViewModel() {
     var ultimaPreferencialSenha by mutableStateOf<String?>(null)
     var ultimaPreferencialFoto by mutableStateOf<String?>(null)
 
+    private var ultimaChamadaEm: String? = null
+    private var ultimaNormalEm: String? = null
+    private var ultimaPreferencialEm: String? = null
+    private var ultimaNormalId: Int? = null
+    private var ultimaPreferencialId: Int? = null
+
     var layoutTvWeb by mutableStateOf("propaganda")
     var orientacaoTv by mutableStateOf("horizontal")
     var posicaoSenhasTv by mutableStateOf("superior")
@@ -79,6 +85,7 @@ class TvViewModel : ViewModel() {
             while (isActive) {
                 delay(4_000)
                 refreshFila(silent = true)
+                refreshChamadas(silent = true)
             }
         }
         viewModelScope.launch {
@@ -109,7 +116,7 @@ class TvViewModel : ViewModel() {
 
     private suspend fun refreshChamadas(silent: Boolean) {
         try {
-            chamadas = NetworkModule.apiService().tvChamadasRecentes().chamadas
+            chamadas = mesclarChamadas(chamadas, NetworkModule.apiService().tvChamadasRecentes().chamadas)
         } catch (_: Exception) {
             if (!silent) {
                 // Painel segue sem histórico até a primeira chamada ao vivo.
@@ -192,17 +199,68 @@ class TvViewModel : ViewModel() {
     }
 
     private fun syncFromAtendimentos(lista: List<AtendimentoDto>) {
-        ultimaChamadaSenha = lista.firstOrNull()?.senha
-        ultimaChamadaOperador = lista.firstOrNull()?.operador_nome
-        ultimaChamadaOperadorFoto = lista.firstOrNull()?.operador_foto
-        lista.firstOrNull { it.tipo == "normal" }?.let {
-            ultimaNormalSenha = it.senha
-            ultimaNormalFoto = it.operador_foto
+        val maisRecente = lista.maxByOrNull { it.chamada_em.orEmpty() to (it.senha_id ?: 0) }
+        if (maisRecente != null && deveAtualizarChamada(ultimaChamadaSenha, ultimaChamadaEm, maisRecente)) {
+            ultimaChamadaSenha = maisRecente.senha
+            ultimaChamadaOperador = maisRecente.operador_nome
+            ultimaChamadaOperadorFoto = maisRecente.operador_foto
+            ultimaChamadaEm = maisRecente.chamada_em
         }
-        lista.firstOrNull { it.tipo == "preferencial" }?.let {
-            ultimaPreferencialSenha = it.senha
-            ultimaPreferencialFoto = it.operador_foto
+        lista.filter { it.tipo == "normal" }
+            .maxByOrNull { it.chamada_em.orEmpty() to (it.senha_id ?: 0) }
+            ?.let { aplicarTipoSeMaisNova("normal", it) }
+        lista.filter { it.tipo == "preferencial" }
+            .maxByOrNull { it.chamada_em.orEmpty() to (it.senha_id ?: 0) }
+            ?.let { aplicarTipoSeMaisNova("preferencial", it) }
+    }
+
+    private fun aplicarTipoSeMaisNova(tipo: String, incoming: AtendimentoDto) {
+        val atualSenha = if (tipo == "preferencial") ultimaPreferencialSenha else ultimaNormalSenha
+        val atualEm = if (tipo == "preferencial") ultimaPreferencialEm else ultimaNormalEm
+        val atualId = if (tipo == "preferencial") ultimaPreferencialId else ultimaNormalId
+        if (atualSenha != null && !deveAtualizarChamada(atualSenha, atualEm, incoming, atualId)) return
+        if (tipo == "preferencial") {
+            ultimaPreferencialSenha = incoming.senha
+            ultimaPreferencialFoto = incoming.operador_foto
+            ultimaPreferencialEm = incoming.chamada_em
+            ultimaPreferencialId = incoming.senha_id
+        } else {
+            ultimaNormalSenha = incoming.senha
+            ultimaNormalFoto = incoming.operador_foto
+            ultimaNormalEm = incoming.chamada_em
+            ultimaNormalId = incoming.senha_id
         }
+    }
+
+    private fun deveAtualizarChamada(
+        atualSenha: String?,
+        atualEm: String?,
+        incoming: AtendimentoDto,
+        atualId: Int? = null,
+    ): Boolean {
+        if (atualSenha.isNullOrBlank()) return true
+        if (atualSenha == incoming.senha) return true
+        val atual = atualEm.orEmpty()
+        val nova = incoming.chamada_em.orEmpty()
+        if (atual.isNotEmpty() && nova.isNotEmpty() && nova < atual) return false
+        if (nova.isEmpty() && atualId != null && incoming.senha_id != null && incoming.senha_id < atualId) {
+            return false
+        }
+        return true
+    }
+
+    private fun mesclarChamadas(
+        locais: List<TvChamadaRecenteDto>,
+        remotas: List<TvChamadaRecenteDto>,
+    ): List<TvChamadaRecenteDto> {
+        val porId = linkedMapOf<Int, TvChamadaRecenteDto>()
+        for (item in remotas + locais) {
+            val existente = porId[item.senha_id]
+            if (existente == null || (item.chamada_em.orEmpty()) >= existente.chamada_em.orEmpty()) {
+                porId[item.senha_id] = item
+            }
+        }
+        return porId.values.sortedByDescending { it.chamada_em.orEmpty() }.take(8)
     }
 
     private fun prependChamada(event: SocketEvent.SenhaChamada) {
@@ -213,7 +271,7 @@ class TvViewModel : ViewModel() {
             operador_id = event.operadorId,
             operador_nome = event.operadorNome,
             operador_foto = event.operadorFoto,
-            chamada_em = System.currentTimeMillis().toString(),
+            chamada_em = event.chamadaEm,
             status = "atual",
         )
         chamadas = listOf(next) + chamadas.filter { item ->
@@ -229,17 +287,23 @@ class TvViewModel : ViewModel() {
                 syncFromAtendimentos(event.atendimentos)
             }
             is SocketEvent.SenhaChamada -> {
+                val agora = event.chamadaEm
                 ultimaChamadaSenha = event.senha
                 ultimaChamadaOperador = event.operadorNome
                 ultimaChamadaOperadorFoto = event.operadorFoto
+                ultimaChamadaEm = agora
                 when (event.tipo) {
                     "preferencial" -> {
                         ultimaPreferencialSenha = event.senha
                         ultimaPreferencialFoto = event.operadorFoto
+                        ultimaPreferencialEm = agora
+                        ultimaPreferencialId = event.senhaId
                     }
                     "normal" -> {
                         ultimaNormalSenha = event.senha
                         ultimaNormalFoto = event.operadorFoto
+                        ultimaNormalEm = agora
+                        ultimaNormalId = event.senhaId
                     }
                     else -> Unit
                 }

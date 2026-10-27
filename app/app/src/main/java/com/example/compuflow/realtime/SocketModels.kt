@@ -25,6 +25,7 @@ sealed class SocketEvent {
         val operadorId: Int?,
         val operadorNome: String?,
         val operadorFoto: String?,
+        val chamadaEm: String? = null,
         val temPedido: Boolean,
         val pedido: String?,
         val pedidoConfirmado: Boolean,

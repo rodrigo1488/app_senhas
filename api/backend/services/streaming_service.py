@@ -526,7 +526,7 @@ def listar_tvs_admin() -> list[dict]:
 
 def listar_simulacao_telas(setor_ids: list[int] | None = None) -> list[dict]:
     """Estado atual de cada TV para o painel de simulação."""
-    from backend.services.fila_service import listar_chamadas_recentes, serializar_fila
+    from backend.services.fila_service import listar_chamadas_recentes, mais_recente_do_tipo, serializar_fila
 
     telas: list[dict] = []
     for tv in listar_tvs_admin():
@@ -538,8 +538,8 @@ def listar_simulacao_telas(setor_ids: list[int] | None = None) -> list[dict]:
             fila = serializar_fila(tv["id"])
             chamadas = listar_chamadas_recentes(tv["id"], limite=4)
             atendimentos = fila.get("atendimentos") or []
-            normal = next((item for item in atendimentos if item.get("tipo") == "normal"), None)
-            preferencial = next((item for item in atendimentos if item.get("tipo") == "preferencial"), None)
+            normal = mais_recente_do_tipo(atendimentos, "normal")
+            preferencial = mais_recente_do_tipo(atendimentos, "preferencial")
             chamada_atual = chamadas[0] if chamadas else None
             telas.append(
                 {

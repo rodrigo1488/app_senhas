@@ -33,6 +33,8 @@ type Props = {
 type ChamadaTipo = {
   senha: string | null;
   foto: string | null;
+  senhaId?: number | null;
+  chamadaEm?: string | null;
 };
 
 export function TvPanel({ initialCodigo }: Props) {
@@ -74,19 +76,13 @@ export function TvPanel({ initialCodigo }: Props) {
   }, []);
 
   const syncFromAtendimentos = useCallback((lista: TvAtendimento[]) => {
-    const n = lista.find((a) => a.tipo === "normal");
-    const p = lista.find((a) => a.tipo === "preferencial");
+    const n = maisRecenteDoTipo(lista, "normal");
+    const p = maisRecenteDoTipo(lista, "preferencial");
     if (n) {
-      const foto = n.operador_foto ?? null;
-      setNormal((current) =>
-        current.senha === n.senha && current.foto === foto ? current : { senha: n.senha, foto },
-      );
+      setNormal((current) => aplicarChamadaSeMaisNova(current, n));
     }
     if (p) {
-      const foto = p.operador_foto ?? null;
-      setPreferencial((current) =>
-        current.senha === p.senha && current.foto === foto ? current : { senha: p.senha, foto },
-      );
+      setPreferencial((current) => aplicarChamadaSeMaisNova(current, p));
     }
   }, []);
 
@@ -220,9 +216,12 @@ export function TvPanel({ initialCodigo }: Props) {
 
     socket.on("senha:chamada", (data: SenhaChamadaTv) => {
       if (data.senha) playCallSound(data.senha);
+      const chamadaEm = data.chamada_em ?? null;
       const chamada: ChamadaTipo = {
         senha: data.senha ?? null,
         foto: data.operador_foto ?? null,
+        senhaId: data.senha_id ?? null,
+        chamadaEm,
       };
       if (data.tipo === "preferencial") setPreferencial(chamada);
       if (data.tipo === "normal") setNormal(chamada);
@@ -234,7 +233,7 @@ export function TvPanel({ initialCodigo }: Props) {
           operador_id: data.operador_id,
           operador_nome: data.operador_nome,
           operador_foto: data.operador_foto,
-          chamada_em: new Date().toISOString(),
+          chamada_em: chamadaEm,
           status: "atual",
         };
         return [
@@ -278,11 +277,14 @@ export function TvPanel({ initialCodigo }: Props) {
         .catch(() => undefined);
       tvApiFetch<TvRecentCallsResponse>("/api/v1/setor/tv_chamadas_recentes", { token })
         .then((res) => {
-          const chamadas = res.chamadas ?? [];
-          const fp = tvChamadasFingerprint(chamadas);
-          if (fp === chamadasFpRef.current) return;
-          chamadasFpRef.current = fp;
-          setChamadas(chamadas);
+          const remotas = res.chamadas ?? [];
+          setChamadas((atuais) => {
+            const mescladas = mesclarChamadas(atuais, remotas);
+            const fp = tvChamadasFingerprint(mescladas);
+            if (fp === chamadasFpRef.current) return atuais;
+            chamadasFpRef.current = fp;
+            return mescladas;
+          });
         })
         .catch(() => undefined);
     };
@@ -456,9 +458,54 @@ function tvConfigFingerprint(config: TvConfig) {
   ].join("#");
 }
 
+function maisRecenteDoTipo(lista: TvAtendimento[], tipo: string): TvAtendimento | undefined {
+  const candidatos = lista.filter((item) => item.tipo === tipo);
+  if (!candidatos.length) return undefined;
+  return candidatos.reduce((melhor, item) => {
+    const a = item.chamada_em || "";
+    const b = melhor.chamada_em || "";
+    if (a !== b) return a > b ? item : melhor;
+    return (item.senha_id ?? 0) > (melhor.senha_id ?? 0) ? item : melhor;
+  });
+}
+
+function aplicarChamadaSeMaisNova(current: ChamadaTipo, incoming: TvAtendimento): ChamadaTipo {
+  const foto = incoming.operador_foto ?? null;
+  const next: ChamadaTipo = {
+    senha: incoming.senha,
+    foto,
+    senhaId: incoming.senha_id ?? null,
+    chamadaEm: incoming.chamada_em ?? null,
+  };
+  if (!current.senha) return next;
+  if (current.senha === incoming.senha && current.foto === foto) {
+    return current.chamadaEm || current.senhaId ? current : { ...current, ...next };
+  }
+  const atual = current.chamadaEm || "";
+  const nova = incoming.chamada_em || "";
+  if (atual && nova && nova < atual) return current;
+  if (!nova && current.senhaId && incoming.senha_id && incoming.senha_id < current.senhaId) {
+    return current;
+  }
+  return next;
+}
+
+function mesclarChamadas(locais: TvRecentCall[], remotas: TvRecentCall[]): TvRecentCall[] {
+  const porId = new Map<number, TvRecentCall>();
+  for (const item of [...remotas, ...locais]) {
+    const existente = porId.get(item.senha_id);
+    if (!existente || (item.chamada_em || "") >= (existente.chamada_em || "")) {
+      porId.set(item.senha_id, item);
+    }
+  }
+  return [...porId.values()]
+    .sort((a, b) => (b.chamada_em || "").localeCompare(a.chamada_em || ""))
+    .slice(0, 8);
+}
+
 function tvFilaFingerprint(fila: { atendimentos?: TvAtendimento[]; pendentes?: TvSenha[] }) {
   const atendimentos = (fila.atendimentos ?? [])
-    .map((item) => `${item.tipo}|${item.senha}|${item.operador_foto ?? ""}`)
+    .map((item) => `${item.tipo}|${item.senha}|${item.senha_id ?? ""}|${item.chamada_em ?? ""}|${item.operador_foto ?? ""}`)
     .join(";");
   const pendentes = (fila.pendentes ?? []).map((item) => `${item.id}|${item.senha}|${item.tipo}`).join(";");
   return `${atendimentos}#${pendentes}`;

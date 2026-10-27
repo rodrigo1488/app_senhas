@@ -1,10 +1,18 @@
+import os
 from pathlib import Path
 
 from PIL import Image
 
-ASSETS = Path(r"C:\Users\cesar\.cursor\projects\d-Projetos-Base44-Senhas-app-senhas\assets")
-OUT = Path(__file__).resolve().parent / "graficos"
+SCRIPT_DIR = Path(__file__).resolve().parent
+ASSETS = Path(os.environ["PLAYSTORE_ASSETS"]) if os.environ.get("PLAYSTORE_ASSETS") else SCRIPT_DIR / "assets"
+OUT = SCRIPT_DIR / "graficos"
 OUT.mkdir(parents=True, exist_ok=True)
+
+if not ASSETS.is_dir():
+    raise SystemExit(
+        f"Pasta de origem não encontrada: {ASSETS}\n"
+        "Coloque as imagens em playstore/assets ou defina PLAYSTORE_ASSETS."
+    )
 
 
 def fit(src: Path, size: tuple[int, int], dest: Path, rgb: bool = False) -> None:

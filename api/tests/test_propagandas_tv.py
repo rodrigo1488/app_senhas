@@ -7,7 +7,7 @@ from backend import create_app
 from backend.auth import create_session_token
 from backend.extensions import db
 from backend.models import AtendimentoAtual, Finalizado, Operador, Propaganda, Senha, Setor, TvDispositivo, dispositivo_propagandas
-from backend.services.fila_service import listar_chamadas_recentes
+from backend.services.fila_service import listar_chamadas_recentes, mais_recente_do_tipo, serializar_fila
 from backend.services.streaming_service import chave_by_sid, connected_by_chave
 from backend.services.usuario_service import criar_ou_atualizar_admin
 
@@ -300,6 +300,53 @@ class PropagandasTvTest(unittest.TestCase):
             chamadas = listar_chamadas_recentes(self.setor_id, limite=4)
             self.assertEqual(4, len(chamadas))
             self.assertEqual(["N1", "N2", "N3", "N4"], [item["senha"] for item in chamadas])
+
+    def test_fila_tv_usa_senha_mais_recente_do_tipo_nao_ordem_do_operador(self):
+        agora = datetime.now()
+        with self.app.app_context():
+            ana = Operador(nome="Ana", setor_id=self.setor_id)
+            bruno = Operador(nome="Bruno", setor_id=self.setor_id)
+            db.session.add_all([ana, bruno])
+            db.session.flush()
+            antiga = Senha(
+                senha="N10",
+                tipo="normal",
+                setor_id=self.setor_id,
+                status="C",
+                chamada_em=agora - timedelta(minutes=5),
+            )
+            nova = Senha(
+                senha="N11",
+                tipo="normal",
+                setor_id=self.setor_id,
+                status="C",
+                chamada_em=agora,
+            )
+            db.session.add_all([antiga, nova])
+            db.session.flush()
+            db.session.add_all(
+                [
+                    AtendimentoAtual(
+                        senha_id=antiga.id,
+                        setor_id=self.setor_id,
+                        operador_id=ana.id,
+                        data_hora=agora - timedelta(minutes=5),
+                    ),
+                    AtendimentoAtual(
+                        senha_id=nova.id,
+                        setor_id=self.setor_id,
+                        operador_id=bruno.id,
+                        data_hora=agora,
+                    ),
+                ]
+            )
+            db.session.commit()
+            fila = serializar_fila(self.setor_id)
+            self.assertEqual("N10", fila["atendimentos"][0]["senha"])
+            mais_recente = mais_recente_do_tipo(fila["atendimentos"], "normal")
+            self.assertEqual("N11", mais_recente["senha"])
+            chamadas = listar_chamadas_recentes(self.setor_id, limite=8)
+            self.assertEqual("N11", chamadas[0]["senha"])
 
     @patch("backend.blueprints.admin_api_bp.process_propaganda_image", return_value="promo_tv.jpg")
     def test_admin_upload_propaganda(self, _mock_process):
