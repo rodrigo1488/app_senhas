@@ -51,6 +51,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.compuflow.ui.theme.IndigoApp
 import com.example.compuflow.ui.theme.IndigoAppClaro
+import com.example.compuflow.update.AppUpdateController
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -247,6 +248,33 @@ fun LoginScreen(
                             color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodySmall,
                             modifier = Modifier.padding(top = 12.dp),
+                        )
+                    }
+
+                    val atualizacao = AppUpdateController.atual
+                    OutlinedButton(
+                        onClick = { atualizacao?.verificarAgora() },
+                        enabled = atualizacao?.verificando != true && !ocupado,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp),
+                    ) {
+                        Text(
+                            if (atualizacao?.verificando == true) {
+                                "Verificando…"
+                            } else {
+                                "Atualizar aplicativo"
+                            },
+                        )
+                    }
+                    atualizacao?.mensagem?.let { aviso ->
+                        Text(
+                            text = aviso,
+                            color = IndigoApp,
+                            style = MaterialTheme.typography.bodySmall,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.padding(top = 8.dp),
                         )
                     }
 

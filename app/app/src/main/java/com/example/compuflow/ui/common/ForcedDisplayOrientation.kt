@@ -74,13 +74,18 @@ fun ForcedDisplayOrientation(
             else -> 0f
         }
 
+        // clip=false: o layout pré-rotação ultrapassa o parent (swap W↔H);
+        // sem isso o conteúdo inferior pode ser cortado antes do graphicsLayer.
         if (needsSwap) {
             Box(
                 modifier = Modifier
                     .requiredWidth(maxHeight)
                     .requiredHeight(maxWidth)
                     .align(Alignment.Center)
-                    .graphicsLayer { rotationZ = layerRotation },
+                    .graphicsLayer {
+                        rotationZ = layerRotation
+                        clip = false
+                    },
             ) {
                 content()
             }
@@ -88,7 +93,10 @@ fun ForcedDisplayOrientation(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer { rotationZ = layerRotation },
+                    .graphicsLayer {
+                        rotationZ = layerRotation
+                        clip = false
+                    },
             ) {
                 content()
             }
