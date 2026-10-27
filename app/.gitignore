@@ -15,5 +15,6 @@
 .cxx
 local.properties
 keystore.properties
+atualizacao.properties
 *.jks
 *.keystore

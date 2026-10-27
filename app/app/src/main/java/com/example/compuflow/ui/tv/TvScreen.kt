@@ -104,74 +104,6 @@ private fun PropagandaTvLayout(
     vertical: Boolean = false,
     senhasNoTopo: Boolean = true,
 ) {
-<<<<<<< HEAD
-    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
-        // Garante espaço mínimo visível para as senhas; mídia fica com o restante.
-        val panelWeight = passwordPanelWeight(maxHeight = maxHeight, vertical = vertical)
-        val mediaWeight = (1f - panelWeight).coerceAtLeast(0.45f)
-
-        Column(modifier = Modifier.fillMaxSize()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(mediaWeight),
-            ) {
-                key(item?.id, item?.arquivo, item?.tipo) {
-                    TvMediaSlide(
-                        item = item,
-                        mediaUrl = mediaUrl,
-                        loop = loop,
-                        onEnded = onEnded,
-                        emptyLabel = "Sem mídia de propaganda",
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                }
-            }
-            if (vertical) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(panelWeight),
-                ) {
-                    TipoSenhaPanel(
-                        titulo = "PREFERENCIAL",
-                        senha = preferencialSenha,
-                        foto = preferencialFoto,
-                        background = PreferencialPanel,
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                    )
-                    TipoSenhaPanel(
-                        titulo = "NORMAL",
-                        senha = normalSenha,
-                        foto = normalFoto,
-                        background = NormalPanel,
-                        modifier = Modifier.weight(1f).fillMaxWidth(),
-                    )
-                }
-            } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(panelWeight),
-                ) {
-                    TipoSenhaPanel(
-                        titulo = "PREFERENCIAL",
-                        senha = preferencialSenha,
-                        foto = preferencialFoto,
-                        background = PreferencialPanel,
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                    )
-                    TipoSenhaPanel(
-                        titulo = "NORMAL",
-                        senha = normalSenha,
-                        foto = normalFoto,
-                        background = NormalPanel,
-                        modifier = Modifier.weight(1f).fillMaxHeight(),
-                    )
-                }
-            }
-=======
     Column(modifier = Modifier.fillMaxSize()) {
         if (senhasNoTopo) {
             SenhasFaixa(
@@ -263,22 +195,8 @@ private fun SenhasFaixa(
                 background = NormalPanel,
                 modifier = Modifier.weight(1f).fillMaxHeight(),
             )
->>>>>>> e95f65d535c84892edf092b26d612e70a7c008fc
         }
     }
-}
-
-/**
- * Fração da tela reservada aos painéis de senha.
- * Em telas baixas (densidade alta / 720p) aumenta a fração para caber o conteúdo.
- */
-private fun passwordPanelWeight(maxHeight: Dp, vertical: Boolean): Float {
-    val minNeeded = if (vertical) 220.dp else 110.dp
-    val fraction = (minNeeded / maxHeight).coerceIn(
-        minimumValue = if (vertical) 0.32f else 0.20f,
-        maximumValue = if (vertical) 0.48f else 0.40f,
-    )
-    return fraction
 }
 
 @Composable
