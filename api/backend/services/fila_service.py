@@ -228,9 +228,18 @@ def _proximo_codigo_senha(setor_id: int, tipo: str, agora: Optional[datetime] = 
     return f"{prefixo}{maior + 1}"
 
 
-def serializar_fila(setor_id: int, incluir_pedidos: bool = False) -> dict:
-    """Monta a fila, incluindo pedidos somente para a tela Operador."""
-    encerrar_senhas_vencidas()
+def serializar_fila(
+    setor_id: int,
+    incluir_pedidos: bool = False,
+    encerrar_vencidas: bool = True,
+) -> dict:
+    """Monta a fila, incluindo pedidos somente para a tela Operador.
+
+    `encerrar_vencidas=False` quando o chamador acabou de rodar
+    `encerrar_senhas_vencidas` (caminho de chamar próxima).
+    """
+    if encerrar_vencidas:
+        encerrar_senhas_vencidas()
     pendentes = (
         Senha.query.filter_by(setor_id=setor_id, status="A")
         .order_by(Senha.tipo.desc(), Senha.id.asc())
@@ -554,18 +563,19 @@ def confirmar_pedido(
     return senha
 
 
-def _posicao_aguardando(senha: Senha) -> int:
-    """Quantas senhas serão chamadas antes desta, no modo de fila configurado."""
+def _ordenar_aguardando(setor_id: int) -> list[tuple[Senha, int]]:
+    """Uma passada na fila: cada senha aguardando e quantas vêm antes dela."""
     todas = (
-        Senha.query.filter_by(setor_id=senha.setor_id, status="A")
+        Senha.query.filter_by(setor_id=setor_id, status="A")
         .order_by(Senha.id.asc())
         .all()
     )
     normais = [s for s in todas if s.tipo == "normal"]
     preferenciais = [s for s in todas if s.tipo == "preferencial"]
     modo, proporcao_normais, limite_preferenciais_alerta, normais_chamadas = _parametros_chamada(
-        senha.setor_id
+        setor_id
     )
+    posicao_por_id: dict[int, int] = {}
     posicao = 0
     while normais or preferenciais:
         proxima, tipo_a_chamar, normais_chamadas, _ = _selecionar_proxima(
@@ -578,14 +588,50 @@ def _posicao_aguardando(senha: Senha) -> int:
         )
         if proxima is None:
             break
-        if proxima.id == senha.id:
-            return posicao
+        posicao_por_id[proxima.id] = posicao
         if tipo_a_chamar == "preferencial":
             preferenciais = preferenciais[1:]
         else:
             normais = normais[1:]
         posicao += 1
-    return posicao
+    return [(senha, posicao_por_id.get(senha.id, posicao)) for senha in todas]
+
+
+def _posicao_aguardando(senha: Senha) -> int:
+    """Quantas senhas serão chamadas antes desta, no modo de fila configurado."""
+    if not senha.setor_id:
+        return 0
+    for candidata, posicao in _ordenar_aguardando(senha.setor_id):
+        if candidata.id == senha.id:
+            return posicao
+    return 0
+
+
+def listar_posicoes_aguardando(setor_id: int) -> list[dict]:
+    """Posição de todas as senhas aguardando do setor, calculada numa única passada."""
+    ordenadas = _ordenar_aguardando(setor_id)
+    if not ordenadas:
+        return []
+    setor = Setor.query.get(setor_id)
+    setor_nome = setor.nome if setor else "Geral"
+    posicoes = []
+    for senha, posicao in ordenadas:
+        if not senha.token_unico:
+            continue
+        posicoes.append(
+            {
+                "token_unico": senha.token_unico,
+                "posicao": posicao,
+                "senha": senha.senha,
+                "status": senha.status,
+                "setor_nome": setor_nome,
+                "tem_pedido": bool(senha.tem_pedido),
+                "pedido": senha.pedido,
+                "pedido_confirmado": bool(senha.pedido_confirmado),
+                "avaliacao_pendente": False,
+            }
+        )
+    return posicoes
 
 
 def posicao_na_fila(token_unico: str) -> dict:

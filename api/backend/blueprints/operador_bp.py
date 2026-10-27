@@ -18,12 +18,9 @@ from backend.services.fila_service import (
     serializar_fila,
 )
 from backend.sockets.emitters import (
-    broadcast_posicao_fila,
-    emit_avaliacao_solicitada,
-    emit_fila_atualizada,
+    agendar_efeitos_chamada,
     emit_pedido_status,
     emit_senha_chamada,
-    emit_senha_posicao,
 )
 
 operador_bp = Blueprint("operador", __name__)
@@ -91,29 +88,17 @@ def chamar_proxima_route():
     except FilaError as exc:
         return make_response(jsonify({"success": False, "error": str(exc)}), 400)
 
-    emit_fila_atualizada(int(setor_id))
-    if resultado.senha:
-        emit_senha_chamada(
-            resultado.senha,
-            resultado.operador.nome,
-            resultado.operador.foto_perfil,
-            resultado.alerta_preferenciais,
-            resultado.operador.id,
-        )
-    broadcast_posicao_fila(int(setor_id))
-
-    if resultado.senha_anterior_finalizada and resultado.senha_anterior_finalizada.token_unico:
-        try:
-            from backend.services.fila_service import posicao_na_fila
-            emit_senha_posicao(posicao_na_fila(resultado.senha_anterior_finalizada.token_unico))
-        except FilaError:
-            pass
-
-    if resultado.senha_anterior_finalizada:
-        emit_avaliacao_solicitada(
-            int(setor_id), int(operador_id), resultado.operador.nome, resultado.operador.foto_perfil,
-            resultado.senha_anterior_finalizada.id, resultado.senha_anterior_finalizada.senha,
-        )
+    anterior = resultado.senha_anterior_finalizada
+    agendar_efeitos_chamada(
+        int(setor_id),
+        int(operador_id),
+        resultado.operador.nome,
+        resultado.operador.foto_perfil,
+        resultado.alerta_preferenciais,
+        resultado.senha.id if resultado.senha else None,
+        anterior.id if anterior else None,
+        anterior.senha if anterior else None,
+    )
 
     resp = make_response(jsonify({
         "success": True,

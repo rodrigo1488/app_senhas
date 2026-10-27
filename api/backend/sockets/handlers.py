@@ -26,8 +26,8 @@ from backend.services.fila_service import (
 )
 from backend.services.impressao_service import despachar_impressao_senha
 from backend.sockets.emitters import (
+    agendar_efeitos_chamada,
     broadcast_posicao_fila,
-    emit_avaliacao_solicitada,
     emit_fila_atualizada,
     emit_pedido_status,
     emit_senha_chamada,
@@ -255,29 +255,17 @@ def handle_operador_chamar_proxima(data):
         emit("erro", {"mensagem": str(exc)})
         return
 
-    emit_fila_atualizada(setor_id)
-    if resultado.senha:
-        emit_senha_chamada(
-            resultado.senha,
-            resultado.operador.nome,
-            resultado.operador.foto_perfil,
-            resultado.alerta_preferenciais,
-            resultado.operador.id,
-        )
-    broadcast_posicao_fila(setor_id)
-
-    if resultado.senha_anterior_finalizada and resultado.senha_anterior_finalizada.token_unico:
-        try:
-            emit_senha_posicao(posicao_na_fila(resultado.senha_anterior_finalizada.token_unico))
-        except FilaError:
-            pass
-
-    if resultado.senha_anterior_finalizada:
-        operador = Operador.query.get(operador_id)
-        emit_avaliacao_solicitada(
-            setor_id, operador_id, operador.nome, operador.foto_perfil,
-            resultado.senha_anterior_finalizada.id, resultado.senha_anterior_finalizada.senha,
-        )
+    anterior = resultado.senha_anterior_finalizada
+    agendar_efeitos_chamada(
+        setor_id,
+        operador_id,
+        resultado.operador.nome,
+        resultado.operador.foto_perfil,
+        resultado.alerta_preferenciais,
+        resultado.senha.id if resultado.senha else None,
+        anterior.id if anterior else None,
+        anterior.senha if anterior else None,
+    )
 
     emit(
         "operador:chamar_proxima:resultado",

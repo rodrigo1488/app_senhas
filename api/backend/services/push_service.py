@@ -119,6 +119,7 @@ def enviar_web_push(
             vapid_private_key=private_key,
             vapid_claims={"sub": email},
             ttl=300,
+            timeout=3,
         )
         return True
     except ImportError:
@@ -129,10 +130,39 @@ def enviar_web_push(
         return False
 
 
+def _disparar_push(senha: Senha, **kwargs: Any) -> None:
+    """Manda o push fora do pedido que chamou a senha.
+
+    Sem subscription não há o que enviar. Nos testes o envio continua
+    síncrono. Fora deles, uma task do Socket.IO fala com o serviço de push
+    para o operador não esperar a rede do Google/Mozilla.
+    """
+    if not senha or not senha.id or not senha.push_subscription:
+        return
+    if current_app.config.get("TESTING"):
+        enviar_web_push(senha, **kwargs)
+        return
+
+    app = current_app._get_current_object()
+    senha_id = senha.id
+
+    def _job() -> None:
+        with app.app_context():
+            from backend.extensions import db
+
+            carregada = db.session.get(Senha, senha_id)
+            if carregada:
+                enviar_web_push(carregada, **kwargs)
+
+    from backend.extensions import socketio
+
+    socketio.start_background_task(_job)
+
+
 def push_posicao(senha: Senha, posicao: int, status: str) -> None:
     codigo = senha.senha or ""
     if status == "F" or posicao == -1:
-        enviar_web_push(
+        _disparar_push(
             senha,
             title="Atendimento finalizado",
             body=f"Senha {codigo}: avalie seu atendimento.",
@@ -144,7 +174,7 @@ def push_posicao(senha: Senha, posicao: int, status: str) -> None:
         # Chamada já notifica em emit_senha_chamada; evita duplicar.
         return
     if 0 < posicao <= 3:
-        enviar_web_push(
+        _disparar_push(
             senha,
             title="Sua vez está próxima",
             body=f"Senha {codigo}: {posicao} à frente. Fique atento!",
@@ -155,7 +185,7 @@ def push_posicao(senha: Senha, posicao: int, status: str) -> None:
 
 def push_chamada(senha: Senha, operador_nome: str | None = None) -> None:
     quem = f" com {operador_nome}" if operador_nome else ""
-    enviar_web_push(
+    _disparar_push(
         senha,
         title=f"Senha {senha.senha} chamada!",
         body=f"Dirija-se ao atendimento{quem}.",
@@ -165,7 +195,7 @@ def push_chamada(senha: Senha, operador_nome: str | None = None) -> None:
 
 
 def push_pedido(senha: Senha, mensagem: str) -> None:
-    enviar_web_push(
+    _disparar_push(
         senha,
         title="Pedido em preparo",
         body=mensagem or f"Seu pedido da senha {senha.senha} está sendo preparado.",

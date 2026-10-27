@@ -28,11 +28,15 @@ from backend.sockets.events import (
 )
 
 
-def emit_fila_atualizada(setor_id: int) -> None:
-    socketio.emit(EV_FILA_ATUALIZADA, serializar_fila(setor_id), room=room_setor(setor_id))
+def emit_fila_atualizada(setor_id: int, encerrar_vencidas: bool = True) -> None:
     socketio.emit(
         EV_FILA_ATUALIZADA,
-        serializar_fila(setor_id, incluir_pedidos=True),
+        serializar_fila(setor_id, encerrar_vencidas=encerrar_vencidas),
+        room=room_setor(setor_id),
+    )
+    socketio.emit(
+        EV_FILA_ATUALIZADA,
+        serializar_fila(setor_id, incluir_pedidos=True, encerrar_vencidas=encerrar_vencidas),
         room=room_operadores(setor_id),
     )
 
@@ -113,14 +117,102 @@ def emit_senha_posicao(posicao_info: dict) -> None:
 
 def broadcast_posicao_fila(setor_id: int) -> None:
     """Recalcula e emite a posição de todas as senhas aguardando de um setor."""
-    from backend.services.fila_service import posicao_na_fila
+    from backend.services.fila_service import listar_posicoes_aguardando
 
-    pendentes = Senha.query.filter_by(setor_id=setor_id, status="A").filter(Senha.token_unico.isnot(None)).all()
-    for senha in pendentes:
+    for posicao_info in listar_posicoes_aguardando(setor_id):
         try:
-            emit_senha_posicao(posicao_na_fila(senha.token_unico))
+            emit_senha_posicao(posicao_info)
         except Exception:
             continue
+
+
+def agendar_efeitos_chamada(
+    setor_id: int,
+    operador_id: int,
+    operador_nome: str,
+    operador_foto: str | None,
+    alerta_preferenciais: bool,
+    senha_id: int | None,
+    senha_anterior_id: int | None,
+    senha_anterior_codigo: str | None,
+) -> None:
+    """Publica fila, chamada, posições e avaliação sem segurar a resposta ao operador.
+
+    Nos testes roda na hora, para os asserts enxergarem os emits. Em produção
+    vai para uma task do Socket.IO: o POST de chamar já devolveu a senha.
+    """
+    from flask import current_app
+
+    kwargs = {
+        "setor_id": setor_id,
+        "operador_id": operador_id,
+        "operador_nome": operador_nome,
+        "operador_foto": operador_foto,
+        "alerta_preferenciais": alerta_preferenciais,
+        "senha_id": senha_id,
+        "senha_anterior_id": senha_anterior_id,
+        "senha_anterior_codigo": senha_anterior_codigo,
+    }
+    if current_app.config.get("TESTING"):
+        _publicar_efeitos_chamada(**kwargs)
+        return
+
+    app = current_app._get_current_object()
+
+    def _job() -> None:
+        with app.app_context():
+            try:
+                _publicar_efeitos_chamada(**kwargs)
+            except Exception:
+                app.logger.exception("Falha ao publicar efeitos da chamada no setor %s", setor_id)
+
+    socketio.start_background_task(_job)
+
+
+def _publicar_efeitos_chamada(
+    setor_id: int,
+    operador_id: int,
+    operador_nome: str,
+    operador_foto: str | None,
+    alerta_preferenciais: bool,
+    senha_id: int | None,
+    senha_anterior_id: int | None,
+    senha_anterior_codigo: str | None,
+) -> None:
+    from backend.extensions import db
+    from backend.services.fila_service import FilaError, posicao_na_fila
+
+    # chamar_proxima já encerrou senhas vencidas antes do commit.
+    emit_fila_atualizada(setor_id, encerrar_vencidas=False)
+    if senha_id:
+        senha = db.session.get(Senha, senha_id)
+        if senha:
+            emit_senha_chamada(
+                senha,
+                operador_nome,
+                operador_foto,
+                alerta_preferenciais,
+                operador_id,
+            )
+    broadcast_posicao_fila(setor_id)
+
+    if not senha_anterior_id:
+        return
+    anterior = db.session.get(Senha, senha_anterior_id)
+    if anterior and anterior.token_unico:
+        try:
+            emit_senha_posicao(posicao_na_fila(anterior.token_unico))
+        except FilaError:
+            pass
+    if anterior and senha_anterior_codigo:
+        emit_avaliacao_solicitada(
+            setor_id,
+            operador_id,
+            operador_nome,
+            operador_foto,
+            anterior.id,
+            senha_anterior_codigo,
+        )
 
 
 def emit_pedido_status(ticket_token: str, pedido: str, status: str, mensagem: str) -> None:

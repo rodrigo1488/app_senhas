@@ -299,15 +299,15 @@ class OperatorIdentificationTest(unittest.TestCase):
         self.assertEqual(200, identified.status_code)
 
         with (
-            patch("backend.blueprints.api_bp.emit_fila_atualizada") as fila_emitida,
-            patch("backend.blueprints.api_bp.emit_avaliacao_solicitada") as avaliacao_emitida,
+            patch("backend.sockets.emitters.emit_fila_atualizada") as fila_emitida,
+            patch("backend.sockets.emitters.emit_avaliacao_solicitada") as avaliacao_emitida,
         ):
             response = client.post(
                 "/api/v1/operador/chamar_proxima",
                 json={},
                 headers={"Authorization": f"Bearer {identified.get_json()['session_token']}"},
             )
-            fila_emitida.assert_called_once_with(self.setor_id)
+            fila_emitida.assert_called_once_with(self.setor_id, encerrar_vencidas=False)
             avaliacao_emitida.assert_called_once()
 
         self.assertEqual(200, response.status_code)

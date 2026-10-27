@@ -46,12 +46,11 @@ from backend.services.fila_service import (
 from backend.services.impressao_service import despachar_impressao_senha
 from backend.services.operador_pin_service import identificar_operador_por_pin
 from backend.sockets.emitters import (
+    agendar_efeitos_chamada,
     broadcast_posicao_fila,
-    emit_avaliacao_solicitada,
     emit_fila_atualizada,
     emit_pedido_status,
     emit_senha_chamada,
-    emit_senha_posicao,
 )
 
 api_bp = Blueprint("api_v1", __name__, url_prefix="/api/v1")
@@ -433,30 +432,17 @@ def chamar_proxima_route(session_payload):
     except FilaError as exc:
         return jsonify({"error": str(exc)}), 400
 
-    emit_fila_atualizada(setor_id)
-    if resultado.senha:
-        emit_senha_chamada(
-            resultado.senha,
-            resultado.operador.nome,
-            resultado.operador.foto_perfil,
-            resultado.alerta_preferenciais,
-            resultado.operador.id,
-        )
-    broadcast_posicao_fila(setor_id)
-
-    if resultado.senha_anterior_finalizada:
-        finalizada = resultado.senha_anterior_finalizada
-        if finalizada.token_unico:
-            from backend.services.fila_service import posicao_na_fila
-
-            try:
-                emit_senha_posicao(posicao_na_fila(finalizada.token_unico))
-            except FilaError:
-                pass
-        emit_avaliacao_solicitada(
-            setor_id, int(operador_id), resultado.operador.nome, resultado.operador.foto_perfil,
-            finalizada.id, finalizada.senha,
-        )
+    anterior = resultado.senha_anterior_finalizada
+    agendar_efeitos_chamada(
+        setor_id,
+        int(operador_id),
+        resultado.operador.nome,
+        resultado.operador.foto_perfil,
+        resultado.alerta_preferenciais,
+        resultado.senha.id if resultado.senha else None,
+        anterior.id if anterior else None,
+        anterior.senha if anterior else None,
+    )
 
     mensagem = (
         f"Senha {resultado.senha.senha} chamada com sucesso."
