@@ -205,7 +205,16 @@ class TvViewModel : ViewModel() {
     private fun syncFromAtendimentos(lista: List<AtendimentoDto>) {
         val porChamada = compareBy<AtendimentoDto>({ it.chamada_em.orEmpty() }, { it.senha_id ?: 0 })
         val maisRecente = lista.maxWithOrNull(porChamada)
-        if (maisRecente != null && deveAtualizarChamada(ultimaChamadaSenha, ultimaChamadaEm, maisRecente)) {
+        if (
+            maisRecente != null &&
+            deveAtualizarChamada(
+                atualSenha = ultimaChamadaSenha,
+                atualEm = ultimaChamadaEm,
+                incoming = maisRecente,
+                atualFoto = ultimaChamadaOperadorFoto,
+                atualOperador = ultimaChamadaOperador,
+            )
+        ) {
             ultimaChamadaSenha = maisRecente.senha
             ultimaChamadaOperador = maisRecente.operador_nome
             ultimaChamadaOperadorFoto = maisRecente.operador_foto
@@ -223,7 +232,19 @@ class TvViewModel : ViewModel() {
         val atualSenha = if (tipo == "preferencial") ultimaPreferencialSenha else ultimaNormalSenha
         val atualEm = if (tipo == "preferencial") ultimaPreferencialEm else ultimaNormalEm
         val atualId = if (tipo == "preferencial") ultimaPreferencialId else ultimaNormalId
-        if (atualSenha != null && !deveAtualizarChamada(atualSenha, atualEm, incoming, atualId)) return
+        val atualFoto = if (tipo == "preferencial") ultimaPreferencialFoto else ultimaNormalFoto
+        if (
+            atualSenha != null &&
+            !deveAtualizarChamada(
+                atualSenha = atualSenha,
+                atualEm = atualEm,
+                incoming = incoming,
+                atualId = atualId,
+                atualFoto = atualFoto,
+            )
+        ) {
+            return
+        }
         if (tipo == "preferencial") {
             ultimaPreferencialSenha = incoming.senha
             ultimaPreferencialFoto = incoming.operador_foto
@@ -242,9 +263,16 @@ class TvViewModel : ViewModel() {
         atualEm: String?,
         incoming: AtendimentoDto,
         atualId: Int? = null,
+        atualFoto: String? = null,
+        atualOperador: String? = null,
     ): Boolean {
         if (atualSenha.isNullOrBlank()) return true
-        if (atualSenha == incoming.senha) return true
+        if (atualSenha == incoming.senha) {
+            val fotoMudou = atualFoto != incoming.operador_foto
+            val operadorMudou = atualOperador != null && atualOperador != incoming.operador_nome
+            val faltaHorario = atualEm.isNullOrBlank() && !incoming.chamada_em.isNullOrBlank()
+            return fotoMudou || operadorMudou || faltaHorario
+        }
         val atual = atualEm.orEmpty()
         val nova = incoming.chamada_em.orEmpty()
         if (atual.isNotEmpty() && nova.isNotEmpty() && nova < atual) return false
