@@ -115,6 +115,7 @@ export function TvPanel({ initialCodigo }: Props) {
               setor_nome: null,
               imagens: [] as TvPropagandaImagem[],
               intervalo_ms: 15_000,
+              som_chamada: null,
             }) satisfies TvConfig,
         ),
         tvApiFetch<TvRecentCallsResponse>("/api/v1/setor/tv_chamadas_recentes", {
@@ -138,13 +139,15 @@ export function TvPanel({ initialCodigo }: Props) {
   );
 
   useEffect(() => {
-    audioRef.current = new Audio("/sounds/call-chime.mp3");
-    audioRef.current.preload = "auto";
+    const src = uploadsUrl(config?.som_chamada) || "/sounds/call-chime.mp3";
+    const audio = new Audio(src);
+    audio.preload = "auto";
+    audioRef.current = audio;
     return () => {
-      audioRef.current?.pause();
+      audio.pause();
       audioRef.current = null;
     };
-  }, []);
+  }, [config?.som_chamada]);
 
   useEffect(() => {
     const syncFullscreen = () => setIsFullscreen(tvIsFullscreen());
@@ -454,6 +457,7 @@ function tvConfigFingerprint(config: TvConfig) {
     config.posicao_senhas_tv ?? "superior",
     config.intervalo_ms,
     config.propagandas_ativas ? "1" : "0",
+    config.som_chamada ?? "",
     imagens,
   ].join("#");
 }

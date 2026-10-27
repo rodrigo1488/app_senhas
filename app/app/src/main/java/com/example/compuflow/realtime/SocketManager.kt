@@ -87,6 +87,7 @@ object SocketManager {
                     posicaoSenhasTv = obj.optString("posicao_senhas_tv", "superior").ifBlank { "superior" },
                     imagens = obj.optJSONArray("imagens").toPropagandaList(),
                     intervaloMs = obj.optLong("intervalo_ms", 15_000L).coerceAtLeast(1_000L),
+                    somChamada = obj.optStringOrNull("som_chamada"),
                 )
             )
         })

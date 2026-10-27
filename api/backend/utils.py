@@ -30,6 +30,26 @@ def is_video_filename(filename: str) -> bool:
     return bool(ext) and ext in current_app.config.get("ALLOWED_VIDEO_EXTENSIONS", set())
 
 
+def allowed_audio_file(filename: str) -> bool:
+    ext = _file_extension(filename)
+    return bool(ext) and ext in current_app.config.get("ALLOWED_AUDIO_EXTENSIONS", set())
+
+
+def process_call_sound(file) -> str | None:
+    """Salva o áudio de chamada do setor (mp3/wav/ogg/m4a/aac)."""
+    try:
+        ext = _file_extension(getattr(file, "filename", "") or "")
+        if not ext:
+            return None
+        filename = f"{uuid.uuid4()}.{ext}"
+        filepath = os.path.join(current_app.config["UPLOAD_FOLDER"], filename)
+        file.save(filepath)
+        return filename
+    except Exception as exc:  # pragma: no cover
+        current_app.logger.error(f"Erro ao salvar som de chamada: {exc}")
+        return None
+
+
 def process_image(file, max_size: tuple[int, int] = (500, 500), quality: int = 85) -> str | None:
     """Processa e salva a imagem com UUID único, retorna o nome do arquivo."""
     try:

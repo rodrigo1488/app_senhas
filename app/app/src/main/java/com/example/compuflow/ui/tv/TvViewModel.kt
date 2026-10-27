@@ -49,6 +49,7 @@ class TvViewModel : ViewModel() {
     var layoutTvWeb by mutableStateOf("propaganda")
     var orientacaoTv by mutableStateOf("horizontal")
     var posicaoSenhasTv by mutableStateOf("superior")
+    var somChamada by mutableStateOf<String?>(null)
     var imagens by mutableStateOf<List<PropagandaImagemDto>>(emptyList())
     var intervaloMs by mutableStateOf(15_000L)
     var imagemIndex by mutableStateOf(0)
@@ -133,6 +134,7 @@ class TvViewModel : ViewModel() {
                 posicao = config.posicao_senhas_tv,
                 imgs = config.imagens,
                 intervalo = config.intervalo_ms.coerceAtLeast(1_000L),
+                som = config.som_chamada,
             )
         } catch (_: Exception) {
             if (!silent) {
@@ -147,10 +149,12 @@ class TvViewModel : ViewModel() {
         posicao: String,
         imgs: List<PropagandaImagemDto>,
         intervalo: Long,
+        som: String? = null,
     ) {
         layoutTvWeb = if (layout == "fila") "fila" else "propaganda"
         orientacaoTv = if (orientacao == "vertical") "vertical" else "horizontal"
         posicaoSenhasTv = if (posicao == "inferior") "inferior" else "superior"
+        somChamada = som?.trim()?.takeIf { it.isNotEmpty() }
         val fingerprint = buildString {
             append(intervalo)
             imgs.forEach { item ->
@@ -199,7 +203,8 @@ class TvViewModel : ViewModel() {
     }
 
     private fun syncFromAtendimentos(lista: List<AtendimentoDto>) {
-        val maisRecente = lista.maxByOrNull { it.chamada_em.orEmpty() to (it.senha_id ?: 0) }
+        val porChamada = compareBy<AtendimentoDto>({ it.chamada_em.orEmpty() }, { it.senha_id ?: 0 })
+        val maisRecente = lista.maxWithOrNull(porChamada)
         if (maisRecente != null && deveAtualizarChamada(ultimaChamadaSenha, ultimaChamadaEm, maisRecente)) {
             ultimaChamadaSenha = maisRecente.senha
             ultimaChamadaOperador = maisRecente.operador_nome
@@ -207,10 +212,10 @@ class TvViewModel : ViewModel() {
             ultimaChamadaEm = maisRecente.chamada_em
         }
         lista.filter { it.tipo == "normal" }
-            .maxByOrNull { it.chamada_em.orEmpty() to (it.senha_id ?: 0) }
+            .maxWithOrNull(porChamada)
             ?.let { aplicarTipoSeMaisNova("normal", it) }
         lista.filter { it.tipo == "preferencial" }
-            .maxByOrNull { it.chamada_em.orEmpty() to (it.senha_id ?: 0) }
+            .maxWithOrNull(porChamada)
             ?.let { aplicarTipoSeMaisNova("preferencial", it) }
     }
 
@@ -319,6 +324,7 @@ class TvViewModel : ViewModel() {
                     posicao = event.posicaoSenhasTv,
                     imgs = event.imagens,
                     intervalo = event.intervaloMs,
+                    som = event.somChamada,
                 )
             }
             else -> Unit

@@ -64,6 +64,7 @@ class Setor(db.Model):
     impressao_via_cliente = db.Column(db.Boolean, nullable=False, default=False)
     layout_tv_web = db.Column(db.String(20), nullable=False, default="propaganda")
     orientacao_tv = db.Column(db.String(20), nullable=False, default="horizontal")
+    som_chamada = db.Column(db.Text)
 
     operadores = db.relationship("Operador", backref="setor", lazy="dynamic")
     impressoras = db.relationship("Impressora", backref="setor", lazy="dynamic")
@@ -95,6 +96,7 @@ class Setor(db.Model):
             "impressao_via_cliente": bool(self.impressao_via_cliente),
             "layout_tv_web": self.layout_tv_web or "propaganda",
             "orientacao_tv": self.orientacao_tv or "horizontal",
+            "som_chamada": self.som_chamada,
         }
 
 

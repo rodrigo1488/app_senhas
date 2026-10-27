@@ -65,6 +65,7 @@ sealed class SocketEvent {
         val posicaoSenhasTv: String = "superior",
         val imagens: List<PropagandaImagemDto>,
         val intervaloMs: Long,
+        val somChamada: String? = null,
     ) : SocketEvent()
 
     data class ClienteConfigAtualizada(

@@ -138,6 +138,7 @@ class PropagandasTvTest(unittest.TestCase):
         self.assertEqual("Balcão", payload["setor_nome"])
         self.assertEqual([], payload["imagens"])
         self.assertEqual(15_000, payload["intervalo_ms"])
+        self.assertIsNone(payload.get("som_chamada"))
 
     def test_tv_config_lists_only_active_ordered(self):
         with self.app.app_context():
@@ -300,6 +301,39 @@ class PropagandasTvTest(unittest.TestCase):
             chamadas = listar_chamadas_recentes(self.setor_id, limite=4)
             self.assertEqual(4, len(chamadas))
             self.assertEqual(["N1", "N2", "N3", "N4"], [item["senha"] for item in chamadas])
+
+    def test_admin_upload_som_chamada_por_setor(self):
+        import tempfile
+
+        folder = tempfile.mkdtemp()
+        self.app.config["UPLOAD_FOLDER"] = folder
+        client = self._admin_client()
+        response = client.post(
+            f"/api/v1/admin/setores/{self.setor_id}/som-chamada",
+            data={"arquivo": (io.BytesIO(b"ID3fake-audio"), "campainha.mp3")},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(200, response.status_code)
+        nome = response.get_json()["som_chamada"]
+        self.assertTrue(nome.endswith(".mp3"))
+
+        tv = self.app.test_client().get(
+            "/api/v1/setor/tv_config",
+            headers={"Authorization": f"Bearer {self._token()}"},
+        )
+        self.assertEqual(200, tv.status_code)
+        self.assertEqual(nome, tv.get_json()["som_chamada"])
+
+        removed = client.delete(f"/api/v1/admin/setores/{self.setor_id}/som-chamada")
+        self.assertEqual(200, removed.status_code)
+        self.assertIsNone(removed.get_json()["som_chamada"])
+
+        invalid = client.post(
+            f"/api/v1/admin/setores/{self.setor_id}/som-chamada",
+            data={"arquivo": (io.BytesIO(b"not-audio"), "som.exe")},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(400, invalid.status_code)
 
     def test_fila_tv_usa_senha_mais_recente_do_tipo_nao_ordem_do_operador(self):
         agora = datetime.now()

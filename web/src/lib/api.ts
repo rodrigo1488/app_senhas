@@ -89,6 +89,7 @@ export type Setor = {
   propaganda_ids_cliente?: number[];
   layout_tv_web: "propaganda" | "fila";
   orientacao_tv: "horizontal" | "vertical";
+  som_chamada?: string | null;
 };
 
 export function setorEhAtendimento(setor: { tipo_setor?: string | null }): boolean {

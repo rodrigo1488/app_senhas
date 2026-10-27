@@ -171,6 +171,7 @@ data class TvConfigDto(
     val setor_nome: String? = null,
     val imagens: List<PropagandaImagemDto> = emptyList(),
     val intervalo_ms: Long = 15_000,
+    val som_chamada: String? = null,
 )
 
 @Serializable

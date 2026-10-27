@@ -56,11 +56,13 @@ from backend.services.usuario_service import (
     criar_usuario,
 )
 from backend.utils import (
+    allowed_audio_file,
     allowed_file,
     delete_old_image,
     get_configuracao,
     get_ngrok_url,
     is_video_filename,
+    process_call_sound,
     process_image,
     process_propaganda_image,
     save_propaganda_video,
@@ -131,6 +133,7 @@ def _setor_admin_dict(setor: Setor, *, ocultar_senha: bool = False) -> dict:
         "propaganda_ids_cliente": propaganda_ids_cliente(setor.id),
         "layout_tv_web": setor.layout_tv_web or "propaganda",
         "orientacao_tv": setor.orientacao_tv or "horizontal",
+        "som_chamada": setor.som_chamada,
     }
 
 
@@ -659,11 +662,62 @@ def update_setor(setor_id: int):
     return jsonify(_setor_admin_dict(setor))
 
 
+@admin_api_bp.route("/setores/<int:setor_id>/som-chamada", methods=["POST"])
+@api_login_required
+def upload_som_chamada(setor_id: int):
+    setor = Setor.query.get_or_404(setor_id)
+    try:
+        assert_setor_permitido(setor_id)
+        _assert_setor_atendimento(setor, "som de chamada")
+    except AdminAccessError as exc:
+        return _access_error_response(exc)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    file = request.files.get("arquivo")
+    if not file or not file.filename:
+        return jsonify({"error": "Envie um arquivo de áudio"}), 400
+    if not allowed_audio_file(file.filename):
+        return jsonify({"error": "Use MP3, WAV, OGG, M4A ou AAC"}), 400
+    file.seek(0, 2)
+    tamanho = file.tell()
+    file.seek(0)
+    max_size = current_app.config.get("MAX_AUDIO_SIZE") or current_app.config["MAX_FILE_SIZE"]
+    if tamanho > max_size:
+        return jsonify({"error": "Arquivo muito grande (máx. 5MB)"}), 400
+    filename = process_call_sound(file)
+    if not filename:
+        return jsonify({"error": "Falha ao salvar o áudio"}), 400
+    delete_old_image(setor.som_chamada)
+    setor.som_chamada = filename
+    db.session.commit()
+    notificar_tvs([setor.id])
+    return jsonify(_setor_admin_dict(setor))
+
+
+@admin_api_bp.route("/setores/<int:setor_id>/som-chamada", methods=["DELETE"])
+@api_login_required
+def delete_som_chamada(setor_id: int):
+    setor = Setor.query.get_or_404(setor_id)
+    try:
+        assert_setor_permitido(setor_id)
+        _assert_setor_atendimento(setor, "som de chamada")
+    except AdminAccessError as exc:
+        return _access_error_response(exc)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    delete_old_image(setor.som_chamada)
+    setor.som_chamada = None
+    db.session.commit()
+    notificar_tvs([setor.id])
+    return jsonify(_setor_admin_dict(setor))
+
+
 @admin_api_bp.route("/setores/<int:setor_id>", methods=["DELETE"])
 @api_login_required
 @require_admin
 def delete_setor(setor_id: int):
     setor = Setor.query.get_or_404(setor_id)
+    delete_old_image(setor.som_chamada)
     db.session.delete(setor)
     db.session.commit()
     return jsonify({"ok": True})

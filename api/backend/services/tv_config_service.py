@@ -138,6 +138,7 @@ def serializar_tv_config(setor: Setor | None) -> dict:
         "setor_nome": setor.nome if setor else None,
         "imagens": imagens,
         "intervalo_ms": INTERVALO_IMAGEM_MS,
+        "som_chamada": (setor.som_chamada if setor else None) or None,
     }
 
 

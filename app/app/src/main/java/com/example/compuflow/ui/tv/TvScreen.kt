@@ -40,6 +40,9 @@ fun TvScreen(viewModel: TvViewModel = viewModel()) {
     val context = LocalContext.current
     val soundPlayer = remember(context.applicationContext) { TvCallSoundPlayer(context) }
 
+    LaunchedEffect(viewModel.somChamada) {
+        soundPlayer.setCustomUrl(mediaUrl(viewModel.somChamada))
+    }
     LaunchedEffect(viewModel, soundPlayer) {
         viewModel.callSoundEvents.collect { soundPlayer.play() }
     }

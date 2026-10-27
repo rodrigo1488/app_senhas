@@ -52,6 +52,7 @@ export type TvConfig = {
   setor_nome?: string | null;
   imagens: TvPropagandaImagem[];
   intervalo_ms: number;
+  som_chamada?: string | null;
 };
 
 export type TvRecentCall = {

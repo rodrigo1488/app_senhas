@@ -145,7 +145,9 @@ def create_app(config_overrides: dict | None = None) -> Flask:
         UPLOAD_FOLDER=upload_folder,
         ALLOWED_EXTENSIONS={"png", "jpg", "jpeg", "gif", "webp"},
         ALLOWED_VIDEO_EXTENSIONS={"mp4"},
+        ALLOWED_AUDIO_EXTENSIONS={"mp3", "wav", "ogg", "m4a", "aac"},
         MAX_FILE_SIZE=5 * 1024 * 1024,
+        MAX_AUDIO_SIZE=5 * 1024 * 1024,
         MAX_VIDEO_SIZE=80 * 1024 * 1024,
         MAX_CONTENT_LENGTH=400 * 1024 * 1024,
         DB_PATH=db_path,
@@ -281,6 +283,7 @@ def _init_database(app: Flask) -> None:
         _ensure_column(conn, "senhas", "chamada_em", "TIMESTAMP" if not is_sqlite else "DATETIME", is_sqlite)
         _ensure_column(conn, "senhas", "finalizado_em", "TIMESTAMP" if not is_sqlite else "DATETIME", is_sqlite)
         _ensure_column(conn, "senhas", "pedido_em", "TIMESTAMP" if not is_sqlite else "DATETIME", is_sqlite)
+        _ensure_column(conn, "setores", "som_chamada", "TEXT", is_sqlite)
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_senhas_setor_status ON senhas (setor_id, status)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_senhas_token_unico ON senhas (token_unico)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_senhas_data_hora ON senhas (data_hora)"))

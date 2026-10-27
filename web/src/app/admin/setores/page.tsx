@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, type ReactNode, useEffect, useState } from "react";
-import { GalleryHorizontalEnd, ListStart, MonitorPlay, RectangleHorizontal, RectangleVertical, Users } from "lucide-react";
+import { GalleryHorizontalEnd, ListStart, MonitorPlay, RectangleHorizontal, RectangleVertical, Users, Volume2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,6 +23,7 @@ export default function SetoresPage() {
   const [tipoSetor, setTipoSetor] = useState<"atendimento" | "streaming">("atendimento");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [uploadingSom, setUploadingSom] = useState(false);
 
   async function load() {
     setSetores(await apiFetch<Setor[]>("/api/v1/admin/setores"));
@@ -103,6 +104,40 @@ export default function SetoresPage() {
       body: JSON.stringify({ propagandas_ativas: !setor.propagandas_ativas }),
     });
     await load();
+  }
+
+  async function onUploadSom(setor: Setor, file: File | null) {
+    if (!file) return;
+    setUploadingSom(true);
+    setError(null);
+    try {
+      const form = new FormData();
+      form.set("arquivo", file);
+      const atualizado = await apiFetch<Setor>(`/api/v1/admin/setores/${setor.id}/som-chamada`, {
+        method: "POST",
+        body: form,
+      });
+      setEditing(atualizado);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao enviar o som");
+    } finally {
+      setUploadingSom(false);
+    }
+  }
+
+  async function onRemoverSom(setor: Setor) {
+    if (!confirm("Voltar ao som padrão de chamada neste setor?")) return;
+    setError(null);
+    try {
+      const atualizado = await apiFetch<Setor>(`/api/v1/admin/setores/${setor.id}/som-chamada`, {
+        method: "DELETE",
+      });
+      setEditing(atualizado);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao remover o som");
+    }
   }
 
   async function togglePropagandasCliente(setor: Setor) {
@@ -271,6 +306,44 @@ export default function SetoresPage() {
                 A orientação de cada TV de streaming é definida em Mídias → TVs cadastradas (por dispositivo).
               </p>
             )}
+            {tipoSetor === "atendimento" ? (
+            <div className="space-y-2 md:col-span-2">
+              <Label>Som de chamada</Label>
+              <p className="text-sm text-muted-foreground">
+                Cada departamento usa o próprio áudio na TV e no app. Sem arquivo, toca o som padrão.
+                Formatos: MP3, WAV, OGG, M4A ou AAC (até 5 MB).
+              </p>
+              {editing ? (
+                <div className="flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-center">
+                  <Volume2 className="h-5 w-5 shrink-0 text-muted-foreground" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    {editing.som_chamada ? (
+                      <audio controls src={`/uploads/${editing.som_chamada}`} className="w-full max-w-md" />
+                    ) : (
+                      <p className="text-sm text-muted-foreground">Som padrão do sistema</p>
+                    )}
+                    <Input
+                      type="file"
+                      accept="audio/mpeg,audio/wav,audio/ogg,audio/mp4,audio/aac,.mp3,.wav,.ogg,.m4a,.aac"
+                      disabled={uploadingSom}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] ?? null;
+                        void onUploadSom(editing, file);
+                        e.target.value = "";
+                      }}
+                    />
+                  </div>
+                  {editing.som_chamada ? (
+                    <Button type="button" variant="outline" onClick={() => void onRemoverSom(editing)}>
+                      Usar padrão
+                    </Button>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">Salve o setor para enviar um som próprio.</p>
+              )}
+            </div>
+            ) : null}
             <div className="space-y-2 md:col-span-2">
               <Label>Descrição</Label>
               <Input value={descricao} onChange={(e) => setDescricao(e.target.value)} />
@@ -326,6 +399,7 @@ export default function SetoresPage() {
                       Tela: {s.orientacao_tv === "vertical" ? "Vertical" : "Horizontal"}
                       {s.layout_tv_web !== "fila" && !s.propagandas_ativas ? " (sem imagens ativas)" : ""}
                       {s.propagandas_cliente_ativas ? " · Espera do cliente: ligada" : " · Espera do cliente: desligada"}
+                      {s.som_chamada ? " · Som próprio" : " · Som padrão"}
                     </>
                   )}
                 </p>
