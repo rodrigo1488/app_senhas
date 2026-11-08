@@ -41,11 +41,14 @@ class TvViewModel : ViewModel() {
     var ultimaPreferencialFoto by mutableStateOf<String?>(null)
 
     private var ultimaChamadaEm: String? = null
+    private var ultimaChamadaId: Int? = null
     private var ultimaChamadaAtendimentoId: Int? = null
     private var ultimaNormalEm: String? = null
     private var ultimaPreferencialEm: String? = null
     private var ultimaNormalId: Int? = null
     private var ultimaPreferencialId: Int? = null
+    private var ultimaNormalOperador: String? = null
+    private var ultimaPreferencialOperador: String? = null
     private var ultimaNormalAtendimentoId: Int? = null
     private var ultimaPreferencialAtendimentoId: Int? = null
 
@@ -219,6 +222,7 @@ class TvViewModel : ViewModel() {
                 atualSenha = ultimaChamadaSenha,
                 atualEm = ultimaChamadaEm,
                 incoming = maisRecente,
+                atualId = ultimaChamadaId,
                 atualFoto = ultimaChamadaOperadorFoto,
                 atualOperador = ultimaChamadaOperador,
                 atualAtendimentoId = ultimaChamadaAtendimentoId,
@@ -228,6 +232,7 @@ class TvViewModel : ViewModel() {
             ultimaChamadaOperador = maisRecente.operador_nome
             ultimaChamadaOperadorFoto = maisRecente.operador_foto
             ultimaChamadaEm = maisRecente.chamada_em
+            ultimaChamadaId = maisRecente.senha_id
             ultimaChamadaAtendimentoId = maisRecente.atendimento_id
         }
         lista.filter { it.tipo == "normal" }
@@ -243,6 +248,8 @@ class TvViewModel : ViewModel() {
         val atualEm = if (tipo == "preferencial") ultimaPreferencialEm else ultimaNormalEm
         val atualId = if (tipo == "preferencial") ultimaPreferencialId else ultimaNormalId
         val atualFoto = if (tipo == "preferencial") ultimaPreferencialFoto else ultimaNormalFoto
+        val atualOperador =
+            if (tipo == "preferencial") ultimaPreferencialOperador else ultimaNormalOperador
         val atualAtendimentoId =
             if (tipo == "preferencial") ultimaPreferencialAtendimentoId else ultimaNormalAtendimentoId
         if (
@@ -253,6 +260,7 @@ class TvViewModel : ViewModel() {
                 incoming = incoming,
                 atualId = atualId,
                 atualFoto = atualFoto,
+                atualOperador = atualOperador,
                 atualAtendimentoId = atualAtendimentoId,
             )
         ) {
@@ -263,12 +271,14 @@ class TvViewModel : ViewModel() {
             ultimaPreferencialFoto = incoming.operador_foto
             ultimaPreferencialEm = incoming.chamada_em
             ultimaPreferencialId = incoming.senha_id
+            ultimaPreferencialOperador = incoming.operador_nome
             ultimaPreferencialAtendimentoId = incoming.atendimento_id
         } else {
             ultimaNormalSenha = incoming.senha
             ultimaNormalFoto = incoming.operador_foto
             ultimaNormalEm = incoming.chamada_em
             ultimaNormalId = incoming.senha_id
+            ultimaNormalOperador = incoming.operador_nome
             ultimaNormalAtendimentoId = incoming.atendimento_id
         }
     }
@@ -359,6 +369,7 @@ class TvViewModel : ViewModel() {
                 ultimaChamadaOperador = event.operadorNome
                 ultimaChamadaOperadorFoto = event.operadorFoto
                 ultimaChamadaEm = agora
+                ultimaChamadaId = event.senhaId
                 // Socket não traz atendimento_id; zera para o próximo sync usar o da fila.
                 ultimaChamadaAtendimentoId = null
                 when (event.tipo) {
@@ -367,6 +378,7 @@ class TvViewModel : ViewModel() {
                         ultimaPreferencialFoto = event.operadorFoto
                         ultimaPreferencialEm = agora
                         ultimaPreferencialId = event.senhaId
+                        ultimaPreferencialOperador = event.operadorNome
                         ultimaPreferencialAtendimentoId = null
                     }
                     "normal" -> {
@@ -374,6 +386,7 @@ class TvViewModel : ViewModel() {
                         ultimaNormalFoto = event.operadorFoto
                         ultimaNormalEm = agora
                         ultimaNormalId = event.senhaId
+                        ultimaNormalOperador = event.operadorNome
                         ultimaNormalAtendimentoId = null
                     }
                     else -> Unit
