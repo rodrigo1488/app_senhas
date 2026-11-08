@@ -41,10 +41,13 @@ class TvViewModel : ViewModel() {
     var ultimaPreferencialFoto by mutableStateOf<String?>(null)
 
     private var ultimaChamadaEm: String? = null
+    private var ultimaChamadaAtendimentoId: Int? = null
     private var ultimaNormalEm: String? = null
     private var ultimaPreferencialEm: String? = null
     private var ultimaNormalId: Int? = null
     private var ultimaPreferencialId: Int? = null
+    private var ultimaNormalAtendimentoId: Int? = null
+    private var ultimaPreferencialAtendimentoId: Int? = null
 
     var layoutTvWeb by mutableStateOf("propaganda")
     var orientacaoTv by mutableStateOf("horizontal")
@@ -218,13 +221,14 @@ class TvViewModel : ViewModel() {
                 incoming = maisRecente,
                 atualFoto = ultimaChamadaOperadorFoto,
                 atualOperador = ultimaChamadaOperador,
-                atualAtendimentoId = null,
+                atualAtendimentoId = ultimaChamadaAtendimentoId,
             )
         ) {
             ultimaChamadaSenha = maisRecente.senha
             ultimaChamadaOperador = maisRecente.operador_nome
             ultimaChamadaOperadorFoto = maisRecente.operador_foto
             ultimaChamadaEm = maisRecente.chamada_em
+            ultimaChamadaAtendimentoId = maisRecente.atendimento_id
         }
         lista.filter { it.tipo == "normal" }
             .maxWithOrNull(porChamada)
@@ -239,6 +243,8 @@ class TvViewModel : ViewModel() {
         val atualEm = if (tipo == "preferencial") ultimaPreferencialEm else ultimaNormalEm
         val atualId = if (tipo == "preferencial") ultimaPreferencialId else ultimaNormalId
         val atualFoto = if (tipo == "preferencial") ultimaPreferencialFoto else ultimaNormalFoto
+        val atualAtendimentoId =
+            if (tipo == "preferencial") ultimaPreferencialAtendimentoId else ultimaNormalAtendimentoId
         if (
             atualSenha != null &&
             !deveAtualizarChamada(
@@ -247,7 +253,7 @@ class TvViewModel : ViewModel() {
                 incoming = incoming,
                 atualId = atualId,
                 atualFoto = atualFoto,
-                atualAtendimentoId = null,
+                atualAtendimentoId = atualAtendimentoId,
             )
         ) {
             return
@@ -257,11 +263,13 @@ class TvViewModel : ViewModel() {
             ultimaPreferencialFoto = incoming.operador_foto
             ultimaPreferencialEm = incoming.chamada_em
             ultimaPreferencialId = incoming.senha_id
+            ultimaPreferencialAtendimentoId = incoming.atendimento_id
         } else {
             ultimaNormalSenha = incoming.senha
             ultimaNormalFoto = incoming.operador_foto
             ultimaNormalEm = incoming.chamada_em
             ultimaNormalId = incoming.senha_id
+            ultimaNormalAtendimentoId = incoming.atendimento_id
         }
     }
 
@@ -351,18 +359,22 @@ class TvViewModel : ViewModel() {
                 ultimaChamadaOperador = event.operadorNome
                 ultimaChamadaOperadorFoto = event.operadorFoto
                 ultimaChamadaEm = agora
+                // Socket não traz atendimento_id; zera para o próximo sync usar o da fila.
+                ultimaChamadaAtendimentoId = null
                 when (event.tipo) {
                     "preferencial" -> {
                         ultimaPreferencialSenha = event.senha
                         ultimaPreferencialFoto = event.operadorFoto
                         ultimaPreferencialEm = agora
                         ultimaPreferencialId = event.senhaId
+                        ultimaPreferencialAtendimentoId = null
                     }
                     "normal" -> {
                         ultimaNormalSenha = event.senha
                         ultimaNormalFoto = event.operadorFoto
                         ultimaNormalEm = agora
                         ultimaNormalId = event.senhaId
+                        ultimaNormalAtendimentoId = null
                     }
                     else -> Unit
                 }
