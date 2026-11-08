@@ -14,6 +14,7 @@ from backend.services.fila_service import (
     chamar_proxima,
     confirmar_pedido,
     estado_atendimento_atual,
+    listar_chamadas_recentes,
     listar_operadores,
     serializar_fila,
 )
@@ -62,6 +63,7 @@ def senhas_pendentes():
     senhas, operadores, atendimentos = _serializar_fila_legado(int(setor_id))
     session_token = create_session_token(int(setor_id), role="operador")
     senha_atual_info = estado_atendimento_atual(int(setor_id))
+    chamadas_recentes = listar_chamadas_recentes(int(setor_id), limite=8)
     return render_template(
         "senhas_pendentes.html",
         senhas=senhas,
@@ -69,6 +71,7 @@ def senhas_pendentes():
         atendimentos=atendimentos,
         session_token=session_token,
         senha_atual_info=senha_atual_info,
+        chamadas_recentes=chamadas_recentes,
     )
 
 

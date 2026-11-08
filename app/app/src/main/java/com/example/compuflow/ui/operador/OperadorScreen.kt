@@ -64,6 +64,7 @@ import com.example.compuflow.data.remote.NetworkModule
 import com.example.compuflow.data.remote.dto.AtendimentoDto
 import com.example.compuflow.data.remote.dto.OperadorDto
 import com.example.compuflow.data.remote.dto.SenhaDto
+import com.example.compuflow.data.remote.dto.TvChamadaRecenteDto
 import com.example.compuflow.ui.theme.AppBorder
 import com.example.compuflow.ui.theme.AppCard
 import com.example.compuflow.ui.theme.AppForeground
@@ -147,7 +148,7 @@ fun OperadorScreen(viewModel: OperadorViewModel = viewModel()) {
                     item {
                         Column(Modifier.padding(top = 20.dp)) {
                             Text("Atendimentos atuais", color = TextoPrincipal, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                            Text("Todos os operadores em atendimento", color = TextoSecundario, fontSize = 13.sp)
+                            Text("Mais recentes primeiro", color = TextoSecundario, fontSize = 13.sp)
                         }
                     }
                     item {
@@ -170,6 +171,20 @@ fun OperadorScreen(viewModel: OperadorViewModel = viewModel()) {
                                 )
                             }
                         }
+                    }
+                }
+                if (viewModel.chamadasRecentes.isNotEmpty()) {
+                    item {
+                        Column(Modifier.padding(top = 16.dp)) {
+                            Text("Últimas chamadas", color = TextoPrincipal, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                            Text("Histórico recente do setor", color = TextoSecundario, fontSize = 13.sp)
+                        }
+                    }
+                    items(
+                        viewModel.chamadasRecentes,
+                        key = { "${it.senha_id}-${it.chamada_em}-${it.status}" },
+                    ) { chamada ->
+                        ChamadaRecenteCard(chamada)
                     }
                 }
                 item {
@@ -265,6 +280,57 @@ private fun AtendimentoAgoraCard(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ChamadaRecenteCard(chamada: TvChamadaRecenteDto) {
+    val emAtendimento = chamada.status == "atual"
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = AppCard),
+        border = BorderStroke(1.dp, Borda),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                OperatorPhoto(chamada.operador_foto, chamada.operador_nome ?: "Operador", 36)
+                Column(modifier = Modifier.padding(start = 10.dp)) {
+                    Text(
+                        chamada.senha,
+                        color = TextoPrincipal,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 18.sp,
+                    )
+                    Text(
+                        buildString {
+                            append(if (chamada.tipo == "preferencial") "Preferencial" else "Normal")
+                            chamada.operador_nome?.takeIf { it.isNotBlank() }?.let {
+                                append(" · ")
+                                append(it)
+                            }
+                        },
+                        color = if (chamada.tipo == "preferencial") VermelhoPreferencial else TextoSecundario,
+                        fontSize = 12.sp,
+                    )
+                }
+            }
+            Text(
+                if (emAtendimento) "Agora" else "Anterior",
+                color = if (emAtendimento) AppPrimary else TextoSecundario,
+                fontWeight = FontWeight.Bold,
+                fontSize = 11.sp,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(if (emAtendimento) AppSecondary else Color(0xFFF3F4F6))
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
+            )
         }
     }
 }

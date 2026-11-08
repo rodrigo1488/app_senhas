@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.exc import IntegrityError
 
 from backend.extensions import db
@@ -286,6 +286,7 @@ def serializar_fila(
                 "senha": senha.senha,
                 "tipo": senha.tipo,
                 "senha_id": senha.id,
+                "atendimento_id": atendimento.id,
                 "chamada_em": _iso_chamada(senha, atendimento),
                 **(
                     {
@@ -298,7 +299,15 @@ def serializar_fila(
                 ),
             }
             for operador, senha, atendimento in sorted(
-                ultimo_por_operador.values(), key=lambda t: t[0].nome or ""
+                ultimo_por_operador.values(),
+                # Ordem de quem solicitou a chamada (AtendimentoAtual.id), não
+                # o id da senha — preferencial pode ter id maior e inverter o
+                # destaque entre operadores no mesmo segundo.
+                key=lambda t: (
+                    _iso_chamada(t[1], t[2]) or "",
+                    t[2].id or 0,
+                ),
+                reverse=True,
             )
         ],
     }
@@ -317,7 +326,10 @@ def mais_recente_do_tipo(atendimentos: list[dict], tipo: str) -> dict | None:
         return None
     return max(
         candidatos,
-        key=lambda item: (item.get("chamada_em") or "", item.get("senha_id") or 0),
+        key=lambda item: (
+            item.get("chamada_em") or "",
+            item.get("atendimento_id") or item.get("senha_id") or 0,
+        ),
     )
 
 
@@ -344,6 +356,7 @@ def listar_chamadas_recentes(setor_id: int, limite: int = 8) -> list[dict]:
                 "operador_nome": operador.nome,
                 "operador_foto": operador.foto_perfil,
                 "chamada_em": chamada_em.isoformat() if chamada_em else None,
+                "atendimento_id": atendimento.id,
                 "status": "atual",
             }
         )
@@ -368,6 +381,7 @@ def listar_chamadas_recentes(setor_id: int, limite: int = 8) -> list[dict]:
                 "operador_nome": operador.nome,
                 "operador_foto": operador.foto_perfil,
                 "chamada_em": chamada_em.isoformat() if chamada_em else None,
+                "atendimento_id": finalizado.id,
                 "status": "finalizada",
             }
         )
@@ -375,9 +389,19 @@ def listar_chamadas_recentes(setor_id: int, limite: int = 8) -> list[dict]:
     por_id: dict[int, dict] = {}
     for item in chamadas:
         atual = por_id.get(item["senha_id"])
-        if atual is None or (item.get("chamada_em") or "") >= (atual.get("chamada_em") or ""):
+        if atual is None or (
+            item.get("chamada_em") or "",
+            item.get("atendimento_id") or 0,
+        ) >= (
+            atual.get("chamada_em") or "",
+            atual.get("atendimento_id") or 0,
+        ):
             por_id[item["senha_id"]] = item
-    return sorted(por_id.values(), key=lambda item: item.get("chamada_em") or "", reverse=True)[:limite]
+    return sorted(
+        por_id.values(),
+        key=lambda item: (item.get("chamada_em") or "", item.get("atendimento_id") or 0),
+        reverse=True,
+    )[:limite]
 
 
 def criar_senha(setor_id: int, tipo: str) -> Senha:
@@ -694,13 +718,19 @@ def posicao_na_fila(token_unico: str) -> dict:
 def estado_atendimento_atual(setor_id: int, operador_id: int | None = None) -> Optional[dict]:
     """Estado da senha em atendimento no momento, no formato do payload de
     `senha:chamada` — usado para hidratar a tela sem precisar de fetch quando
-    ela é aberta/recarregada (ver `operador_bp.py` e `filas_bp.py`)."""
+    ela é aberta/recarregada (ver `operador_bp.py` e `filas_bp.py`).
+
+    Sem `operador_id`, devolve a chamada mais recente do setor (por horário),
+    não a senha de maior ID — com vários operadores isso evita exibir a senha
+    de outro atendente no lugar da que acabou de ser chamada.
+    """
+    chamado_em = func.coalesce(Senha.chamada_em, AtendimentoAtual.data_hora)
     query = (
         db.session.query(AtendimentoAtual, Operador, Senha)
         .join(Operador, AtendimentoAtual.operador_id == Operador.id)
         .join(Senha, AtendimentoAtual.senha_id == Senha.id)
         .filter(AtendimentoAtual.setor_id == setor_id, Senha.status == "C")
-        .order_by(Senha.id.desc())
+        .order_by(chamado_em.desc(), AtendimentoAtual.id.desc())
     )
     if operador_id is not None:
         query = query.filter(AtendimentoAtual.operador_id == operador_id)

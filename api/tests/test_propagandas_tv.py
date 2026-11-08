@@ -267,12 +267,19 @@ class PropagandasTvTest(unittest.TestCase):
         self.assertEqual(["atual", "finalizada"], [item["status"] for item in chamadas])
         self.assertEqual("Ana", chamadas[0]["operador_nome"])
 
-    def test_tv_chamadas_recentes_exige_papel_tv(self):
+    def test_tv_chamadas_recentes_exige_papel_tv_ou_operador(self):
         response = self.app.test_client().get(
             "/api/v1/setor/tv_chamadas_recentes",
             headers={"Authorization": f"Bearer {self._token('cliente')}"},
         )
         self.assertEqual(403, response.status_code)
+
+        operador_ok = self.app.test_client().get(
+            "/api/v1/setor/tv_chamadas_recentes",
+            headers={"Authorization": f"Bearer {self._token('operador')}"},
+        )
+        self.assertEqual(200, operador_ok.status_code)
+        self.assertIn("chamadas", operador_ok.get_json())
 
     def test_tv_chamadas_recentes_respeita_limite(self):
         with self.app.app_context():
@@ -376,7 +383,9 @@ class PropagandasTvTest(unittest.TestCase):
             )
             db.session.commit()
             fila = serializar_fila(self.setor_id)
-            self.assertEqual("N10", fila["atendimentos"][0]["senha"])
+            # Atendimentos vêm pela chamada mais recente (não pelo nome do operador).
+            self.assertEqual("N11", fila["atendimentos"][0]["senha"])
+            self.assertEqual("N10", fila["atendimentos"][1]["senha"])
             mais_recente = mais_recente_do_tipo(fila["atendimentos"], "normal")
             self.assertEqual("N11", mais_recente["senha"])
             chamadas = listar_chamadas_recentes(self.setor_id, limite=8)

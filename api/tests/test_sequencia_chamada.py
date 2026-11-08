@@ -3,7 +3,13 @@ import unittest
 from backend import create_app
 from backend.extensions import db
 from backend.models import Operador, Setor
-from backend.services.fila_service import chamar_proxima, criar_senha, posicao_na_fila
+from backend.services.fila_service import (
+    chamar_proxima,
+    criar_senha,
+    estado_atendimento_atual,
+    listar_chamadas_recentes,
+    posicao_na_fila,
+)
 from backend.utils import set_configuracao
 
 
@@ -102,6 +108,37 @@ class SequenciaChamadaTest(unittest.TestCase):
 
         get_resp = client.get("/api/v1/admin/configuracao")
         self.assertEqual("preferencial_primeiro", get_resp.get_json()["modo_chamada"])
+
+    def test_senha_atual_segue_operador_que_solicitou_nao_id_da_senha(self):
+        """Preferencial continua sendo chamado primeiro; o destaque do setor
+        segue quem solicitou por último — mesmo se a senha preferencial tiver
+        id maior que a normal chamada em seguida."""
+        with self.app.app_context():
+            set_configuracao("modo_chamada", "preferencial_primeiro")
+            bruno = Operador(nome="Bruno", setor_id=self.setor_id)
+            db.session.add(bruno)
+            db.session.commit()
+            bruno_id = bruno.id
+
+            criar_senha(self.setor_id, "normal")  # N1 — id menor
+            criar_senha(self.setor_id, "preferencial")  # P1 — id maior
+
+            ana = chamar_proxima(self.setor_id, self.operador_id)
+            self.assertEqual("P1", ana.senha.senha)
+
+            bruno_chamada = chamar_proxima(self.setor_id, bruno_id)
+            self.assertEqual("N1", bruno_chamada.senha.senha)
+
+            atual_setor = estado_atendimento_atual(self.setor_id)
+            self.assertEqual("N1", atual_setor["senha"])
+            self.assertEqual(bruno_id, atual_setor["operador_id"])
+
+            atual_ana = estado_atendimento_atual(self.setor_id, self.operador_id)
+            self.assertEqual("P1", atual_ana["senha"])
+
+            chamadas = listar_chamadas_recentes(self.setor_id, limite=8)
+            self.assertEqual("N1", chamadas[0]["senha"])
+            self.assertEqual(bruno_id, chamadas[0]["operador_id"])
 
 
 if __name__ == "__main__":

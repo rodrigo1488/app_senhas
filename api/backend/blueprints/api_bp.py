@@ -227,9 +227,9 @@ def setor_cliente_config(session_payload):
 @api_bp.route("/setor/tv_chamadas_recentes", methods=["GET"])
 @api_token_required
 def setor_tv_chamadas_recentes(session_payload):
-    """Histórico curto usado exclusivamente para hidratar o painel TV web."""
-    if session_payload.get("role") != "tv":
-        return jsonify({"error": "Sessão de TV obrigatória"}), 403
+    """Histórico curto das últimas chamadas do setor (TV e tela do operador)."""
+    if session_payload.get("role") not in {"tv", "operador"}:
+        return jsonify({"error": "Sessão de TV ou operador obrigatória"}), 403
     return jsonify(
         {
             "chamadas": listar_chamadas_recentes(

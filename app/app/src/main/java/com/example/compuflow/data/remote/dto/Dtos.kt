@@ -58,6 +58,7 @@ data class AtendimentoDto(
     val senha: String,
     val tipo: String,
     val senha_id: Int? = null,
+    val atendimento_id: Int? = null,
     val chamada_em: String? = null,
     val tem_pedido: Boolean = false,
     val pedido: String? = null,
@@ -190,6 +191,7 @@ data class TvChamadaRecenteDto(
     val operador_nome: String? = null,
     val operador_foto: String? = null,
     val chamada_em: String? = null,
+    val atendimento_id: Int? = null,
     val status: String = "finalizada",
 )
 

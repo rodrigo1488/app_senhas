@@ -71,6 +71,9 @@ def emit_senha_chamada(
     }
     if senha.setor_id:
         socketio.emit(EV_SENHA_CHAMADA, payload, room=room_setor(senha.setor_id))
+        # Tela do operador entra em `operadores:<setor>` (sem operador_id no token
+        # genérico). Sem este emit o card "senha atual" não atualiza na chamada.
+        socketio.emit(EV_SENHA_CHAMADA, payload, room=room_operadores(senha.setor_id))
         if operador_id:
             socketio.emit(
                 EV_SENHA_CHAMADA,

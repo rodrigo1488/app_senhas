@@ -229,6 +229,7 @@ export function TvPanel({ initialCodigo }: Props) {
       if (data.tipo === "preferencial") setPreferencial(chamada);
       if (data.tipo === "normal") setNormal(chamada);
       setChamadas((current) => {
+        // Última solicitação do setor sempre no topo ("Chamando agora").
         const next: TvRecentCall = {
           senha_id: data.senha_id ?? Date.now(),
           senha: data.senha,
@@ -237,6 +238,7 @@ export function TvPanel({ initialCodigo }: Props) {
           operador_nome: data.operador_nome,
           operador_foto: data.operador_foto,
           chamada_em: chamadaEm,
+          atendimento_id: null,
           status: "atual",
         };
         return [
@@ -462,14 +464,22 @@ function tvConfigFingerprint(config: TvConfig) {
   ].join("#");
 }
 
+function ordemChamada(item: {
+  chamada_em?: string | null;
+  atendimento_id?: number | null;
+  senha_id?: number | null;
+}): [string, number] {
+  return [item.chamada_em || "", item.atendimento_id ?? item.senha_id ?? 0];
+}
+
 function maisRecenteDoTipo(lista: TvAtendimento[], tipo: string): TvAtendimento | undefined {
   const candidatos = lista.filter((item) => item.tipo === tipo);
   if (!candidatos.length) return undefined;
   return candidatos.reduce((melhor, item) => {
-    const a = item.chamada_em || "";
-    const b = melhor.chamada_em || "";
-    if (a !== b) return a > b ? item : melhor;
-    return (item.senha_id ?? 0) > (melhor.senha_id ?? 0) ? item : melhor;
+    const a = ordemChamada(item);
+    const b = ordemChamada(melhor);
+    if (a[0] !== b[0]) return a[0] > b[0] ? item : melhor;
+    return a[1] > b[1] ? item : melhor;
   });
 }
 
@@ -498,18 +508,29 @@ function mesclarChamadas(locais: TvRecentCall[], remotas: TvRecentCall[]): TvRec
   const porId = new Map<number, TvRecentCall>();
   for (const item of [...remotas, ...locais]) {
     const existente = porId.get(item.senha_id);
-    if (!existente || (item.chamada_em || "") >= (existente.chamada_em || "")) {
+    if (!existente) {
+      porId.set(item.senha_id, item);
+      continue;
+    }
+    const a = ordemChamada(item);
+    const b = ordemChamada(existente);
+    if (a[0] > b[0] || (a[0] === b[0] && a[1] >= b[1])) {
       porId.set(item.senha_id, item);
     }
   }
   return [...porId.values()]
-    .sort((a, b) => (b.chamada_em || "").localeCompare(a.chamada_em || ""))
+    .sort((a, b) => {
+      const xa = ordemChamada(a);
+      const xb = ordemChamada(b);
+      if (xa[0] !== xb[0]) return xb[0].localeCompare(xa[0]);
+      return xb[1] - xa[1];
+    })
     .slice(0, 8);
 }
 
 function tvFilaFingerprint(fila: { atendimentos?: TvAtendimento[]; pendentes?: TvSenha[] }) {
   const atendimentos = (fila.atendimentos ?? [])
-    .map((item) => `${item.tipo}|${item.senha}|${item.senha_id ?? ""}|${item.chamada_em ?? ""}|${item.operador_foto ?? ""}`)
+    .map((item) => `${item.tipo}|${item.senha}|${item.senha_id ?? ""}|${item.atendimento_id ?? ""}|${item.chamada_em ?? ""}|${item.operador_foto ?? ""}`)
     .join(";");
   const pendentes = (fila.pendentes ?? []).map((item) => `${item.id}|${item.senha}|${item.tipo}`).join(";");
   return `${atendimentos}#${pendentes}`;

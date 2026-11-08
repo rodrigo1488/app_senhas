@@ -203,7 +203,12 @@ class TvViewModel : ViewModel() {
     }
 
     private fun syncFromAtendimentos(lista: List<AtendimentoDto>) {
-        val porChamada = compareBy<AtendimentoDto>({ it.chamada_em.orEmpty() }, { it.senha_id ?: 0 })
+        // Última chamada do setor: horário + ordem de solicitação (atendimento_id),
+        // nunca o id da senha (preferencial pode ter id maior e “ganhar” indevido).
+        val porChamada = compareBy<AtendimentoDto>(
+            { it.chamada_em.orEmpty() },
+            { it.atendimento_id ?: 0 },
+        )
         val maisRecente = lista.maxWithOrNull(porChamada)
         if (
             maisRecente != null &&
@@ -213,6 +218,7 @@ class TvViewModel : ViewModel() {
                 incoming = maisRecente,
                 atualFoto = ultimaChamadaOperadorFoto,
                 atualOperador = ultimaChamadaOperador,
+                atualAtendimentoId = null,
             )
         ) {
             ultimaChamadaSenha = maisRecente.senha
@@ -241,6 +247,7 @@ class TvViewModel : ViewModel() {
                 incoming = incoming,
                 atualId = atualId,
                 atualFoto = atualFoto,
+                atualAtendimentoId = null,
             )
         ) {
             return
@@ -265,6 +272,7 @@ class TvViewModel : ViewModel() {
         atualId: Int? = null,
         atualFoto: String? = null,
         atualOperador: String? = null,
+        atualAtendimentoId: Int? = null,
     ): Boolean {
         if (atualSenha.isNullOrBlank()) return true
         if (atualSenha == incoming.senha) {
@@ -275,7 +283,13 @@ class TvViewModel : ViewModel() {
         }
         val atual = atualEm.orEmpty()
         val nova = incoming.chamada_em.orEmpty()
-        if (atual.isNotEmpty() && nova.isNotEmpty() && nova < atual) return false
+        if (atual.isNotEmpty() && nova.isNotEmpty()) {
+            if (nova < atual) return false
+            if (nova > atual) return true
+            val atualAtt = atualAtendimentoId ?: 0
+            val novoAtt = incoming.atendimento_id ?: 0
+            if (atualAtt > 0 && novoAtt > 0 && novoAtt < atualAtt) return false
+        }
         if (nova.isEmpty() && atualId != null && incoming.senha_id != null && incoming.senha_id < atualId) {
             return false
         }
@@ -286,14 +300,24 @@ class TvViewModel : ViewModel() {
         locais: List<TvChamadaRecenteDto>,
         remotas: List<TvChamadaRecenteDto>,
     ): List<TvChamadaRecenteDto> {
+        fun ehMaisNova(a: TvChamadaRecenteDto, b: TvChamadaRecenteDto): Boolean {
+            val emA = a.chamada_em.orEmpty()
+            val emB = b.chamada_em.orEmpty()
+            if (emA != emB) return emA > emB
+            return (a.atendimento_id ?: 0) >= (b.atendimento_id ?: 0)
+        }
+
         val porId = linkedMapOf<Int, TvChamadaRecenteDto>()
         for (item in remotas + locais) {
             val existente = porId[item.senha_id]
-            if (existente == null || (item.chamada_em.orEmpty()) >= existente.chamada_em.orEmpty()) {
+            if (existente == null || ehMaisNova(item, existente)) {
                 porId[item.senha_id] = item
             }
         }
-        return porId.values.sortedByDescending { it.chamada_em.orEmpty() }.take(8)
+        return porId.values.sortedWith(
+            compareByDescending<TvChamadaRecenteDto> { it.chamada_em.orEmpty() }
+                .thenByDescending { it.atendimento_id ?: 0 },
+        ).take(8)
     }
 
     private fun prependChamada(event: SocketEvent.SenhaChamada) {
@@ -305,8 +329,10 @@ class TvViewModel : ViewModel() {
             operador_nome = event.operadorNome,
             operador_foto = event.operadorFoto,
             chamada_em = event.chamadaEm,
+            atendimento_id = null,
             status = "atual",
         )
+        // Sempre a última solicitação do setor fica no topo ("Chamando agora").
         chamadas = listOf(next) + chamadas.filter { item ->
             if (event.senhaId != null) item.senha_id != event.senhaId else item.senha != event.senha
         }.take(7)

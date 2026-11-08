@@ -24,6 +24,7 @@ export type TvAtendimento = {
   senha: string;
   tipo: string;
   senha_id?: number | null;
+  atendimento_id?: number | null;
   chamada_em?: string | null;
 };
 
@@ -63,6 +64,7 @@ export type TvRecentCall = {
   operador_nome?: string | null;
   operador_foto?: string | null;
   chamada_em?: string | null;
+  atendimento_id?: number | null;
   status: "atual" | "finalizada";
 };
 
