@@ -1,5 +1,14 @@
 package com.example.compuflow.ui.operador
 
+/** "pin" ou "foto". Preferência do aparelho ("pin"/"nome") vence o padrão do setor. */
+internal fun modoIdentificacaoEfetivo(preferenciaAparelho: String?, modoSetor: String): String {
+    return when (preferenciaAparelho) {
+        "pin" -> "pin"
+        "nome" -> "foto"
+        else -> if (modoSetor == "pin") "pin" else "foto"
+    }
+}
+
 internal fun pedidoBadgeLabel(temPedido: Boolean, confirmado: Boolean): String? = when {
     !temPedido -> null
     confirmado -> "PEDIDO CONFIRMADO"

@@ -12,6 +12,7 @@ import {
   clearTvToken,
   getStoredTvToken,
   loginTv,
+  reportarPresencaTv,
   tvApiFetch,
   uploadsUrl,
   type TvAtendimento,
@@ -168,6 +169,18 @@ export function TvPanel({ initialCodigo }: Props) {
     }
     void enterTvFullscreen(panel);
   }, []);
+
+  useEffect(() => {
+    if (!token) return;
+    const ping = () => {
+      void reportarPresencaTv(token).catch(() => {
+        /* o painel continua mesmo sem conseguir informar o IP */
+      });
+    };
+    ping();
+    const timer = window.setInterval(ping, 15_000);
+    return () => window.clearInterval(timer);
+  }, [token]);
 
   useEffect(() => {
     let cancelled = false;

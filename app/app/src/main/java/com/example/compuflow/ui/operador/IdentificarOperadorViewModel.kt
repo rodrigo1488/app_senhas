@@ -34,7 +34,10 @@ class IdentificarOperadorViewModel : ViewModel() {
             try {
                 val response = NetworkModule.apiService().listarOperadores()
                 operadores = response.operadores
-                modoIdentificacao = response.modo_identificacao_operador
+                modoIdentificacao = modoIdentificacaoEfetivo(
+                    sessionRepository.getModoIdentificacaoAparelho(),
+                    response.modo_identificacao_operador,
+                )
             } catch (e: Exception) {
                 errorMessage = e.toUserMessage("Não foi possível carregar os operadores.")
             } finally {

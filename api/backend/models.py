@@ -397,3 +397,19 @@ class TvDispositivo(db.Model):
             "tipo_setor": (self.setor.tipo_setor or TIPO_SETOR_ATENDIMENTO) if self.setor else None,
             "propaganda_ids": propaganda_ids if propaganda_ids is not None else [],
         }
+
+
+class PresencaEquipamento(db.Model):
+    """Aparelho (TV ou tablet) que informa o IP ao painel do administrador."""
+
+    __tablename__ = "presenca_equipamentos"
+
+    id = db.Column(db.Integer, primary_key=True)
+    device_id = db.Column(db.Text, nullable=False, unique=True)
+    papel = db.Column(db.String(20), nullable=False)
+    ip = db.Column(db.Text)
+    nome = db.Column(db.Text)
+    setor_id = db.Column(db.Integer, db.ForeignKey("setores.id", ondelete="SET NULL"))
+    last_seen = db.Column(db.DateTime, default=agora_sp)
+
+    setor = db.relationship("Setor", lazy="joined")

@@ -524,6 +524,51 @@ class PropagandasTvTest(unittest.TestCase):
         self.assertEqual("fila", painel["modo"])
         self.assertEqual("superior", painel["posicao_senhas_tv"])
         self.assertIn("midias", painel)
+        self.assertEqual([], painel["ips"])
+        self.assertEqual([], painel["tablets"])
+
+    def test_simulacao_mostra_ip_de_tv_tablet_e_streaming(self):
+        client = self._admin_client()
+        publico = self.app.test_client()
+        tv = publico.post(
+            "/api/v1/equipamento/presenca",
+            json={"device_id": "tv-sala", "papel": "tv", "ip": "192.168.0.21", "nome": "TV Sala"},
+            headers={"Authorization": f"Bearer {self._token('tv')}"},
+        )
+        self.assertEqual(200, tv.status_code, tv.get_json())
+        self.assertEqual("192.168.0.21", tv.get_json()["ip"])
+
+        tablet = publico.post(
+            "/api/v1/equipamento/presenca",
+            json={
+                "device_id": "tablet-op",
+                "papel": "cliente",
+                "ip": "10.0.0.9",
+                "nome": "Tablet Caixa",
+            },
+            headers={"Authorization": f"Bearer {self._token('operador')}"},
+        )
+        self.assertEqual(200, tablet.status_code, tablet.get_json())
+        self.assertEqual("operador", tablet.get_json()["papel"])
+
+        publico.post(
+            "/api/register_poll",
+            json={"ip_address": "192.168.0.40", "nome": "TV Recepção"},
+        )
+
+        telas = client.get("/api/v1/admin/tvs/simulacao").get_json()
+        painel = next(item for item in telas if item["tipo"] == "setor" and item["id"] == self.setor_id)
+        self.assertEqual(["192.168.0.21"], painel["ips"])
+        self.assertEqual("10.0.0.9", painel["tablets"][0]["ip"])
+        self.assertEqual("operador", painel["tablets"][0]["papel"])
+
+        streaming = next(item for item in telas if item["tipo"] == "streaming")
+        self.assertEqual(["192.168.0.40"], streaming["ips"])
+
+        aparelho = next(item for item in telas if item["tipo"] == "tablet")
+        self.assertEqual(["10.0.0.9"], aparelho["ips"])
+        self.assertIn("Operador", aparelho["subtitulo"])
+        self.assertEqual("Tablet Caixa", aparelho["nome"])
 
     def test_admin_salva_posicao_senhas_tv(self):
         client = self._admin_client()

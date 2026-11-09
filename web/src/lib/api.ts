@@ -159,7 +159,7 @@ export type SimulacaoMidia = {
 export type SimulacaoTela = {
   chave: string;
   id: number;
-  tipo: "setor" | "streaming";
+  tipo: "setor" | "streaming" | "tablet";
   nome: string;
   subtitulo: string;
   is_online: boolean;
@@ -175,6 +175,8 @@ export type SimulacaoTela = {
   chamada_atual: string | null;
   chamada_atual_tipo: string | null;
   proximas: string[];
+  ips?: string[];
+  tablets?: { ip: string; papel: string; nome: string }[];
 };
 
 export type Operador = {

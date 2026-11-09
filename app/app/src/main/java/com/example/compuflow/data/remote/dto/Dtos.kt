@@ -248,6 +248,21 @@ data class StreamingFilaResponse(
 )
 
 @Serializable
+data class PresencaEquipamentoRequest(
+    val device_id: String,
+    val papel: String,
+    val ip: String? = null,
+    val nome: String? = null,
+)
+
+@Serializable
+data class PresencaEquipamentoResponse(
+    val ok: Boolean = true,
+    val ip: String? = null,
+    val papel: String? = null,
+)
+
+@Serializable
 data class CriarSenhaRequest(val tipo: String)
 
 @Serializable

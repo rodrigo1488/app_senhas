@@ -128,7 +128,7 @@ private fun PinIdentification(
         modifier = modifier.padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("Digite seu PIN", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text("Digite sua senha", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         Text(
             text = if (pin.isEmpty()) "○ ○ ○ ○" else "● ".repeat(pin.length).trim(),
             style = MaterialTheme.typography.headlineMedium,

@@ -28,6 +28,7 @@ class SessionRepository(private val context: Context) {
         val OPERADOR_NOME = stringPreferencesKey("operador_nome")
         val DEVICE_ID = stringPreferencesKey("device_id")
         val AVALIACAO_IDLE_MODO = stringPreferencesKey("avaliacao_idle_modo")
+        val MODO_IDENTIFICACAO = stringPreferencesKey("modo_identificacao_operador")
     }
 
     val serverUrlFlow: Flow<String?> = context.sessionDataStore.data.map { it[Keys.SERVER_URL] }
@@ -59,6 +60,15 @@ class SessionRepository(private val context: Context) {
 
     suspend fun saveAvaliacaoIdleModo(modo: String) {
         context.sessionDataStore.edit { it[Keys.AVALIACAO_IDLE_MODO] = modo }
+    }
+
+    /** "pin" (senha), "nome" (escolhe ao chamar) ou null para usar o padrão do setor. */
+    suspend fun getModoIdentificacaoAparelho(): String? =
+        context.sessionDataStore.data.map { it[Keys.MODO_IDENTIFICACAO] }.first()
+            ?.takeIf { it == "pin" || it == "nome" }
+
+    suspend fun saveModoIdentificacaoAparelho(modo: String) {
+        context.sessionDataStore.edit { it[Keys.MODO_IDENTIFICACAO] = modo }
     }
 
     suspend fun saveServerUrl(url: String) {

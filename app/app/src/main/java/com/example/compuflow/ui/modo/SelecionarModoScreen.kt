@@ -5,21 +5,26 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SupportAgent
 import androidx.compose.material.icons.filled.Tv
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.clickable
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.compuflow.data.remote.dto.Papel
+import com.example.compuflow.ui.operador.ConfiguracaoOperadorDialog
 import com.example.compuflow.ui.theme.FundoModoClaroFim
 import com.example.compuflow.ui.theme.FundoModoClaroInicio
 import com.example.compuflow.ui.theme.GradienteAvaliacao
@@ -59,6 +65,14 @@ fun SelecionarModoScreen(
     onTrocarSetor: () -> Unit = {},
     viewModel: SelecionarModoViewModel = viewModel(),
 ) {
+    if (viewModel.configuracaoVisible) {
+        ConfiguracaoOperadorDialog(
+            modo = viewModel.modoIdentificacao,
+            onSelecionar = viewModel::salvarModoIdentificacao,
+            onDismiss = viewModel::fecharConfiguracaoOperador,
+        )
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -105,6 +119,7 @@ fun SelecionarModoScreen(
                     gradiente = GradienteOperador,
                     enabled = !viewModel.isLoading,
                     onClick = { viewModel.selecionarPapelSimples(Papel.OPERADOR, onSelecionarOperador) },
+                    onConfigurar = viewModel::abrirConfiguracaoOperador,
                 )
                 ModoGradienteButton(
                     label = "PAINEL (TV)",
@@ -164,19 +179,29 @@ private fun ModoGradienteButton(
     enabled: Boolean,
     onClick: () -> Unit,
     textoEscuro: Boolean = false,
+    onConfigurar: (() -> Unit)? = null,
 ) {
     val corTexto = if (textoEscuro) Color(0xFF333333) else Color.White
-    Box(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(vertical = 8.dp)
             .height(64.dp)
             .clip(RoundedCornerShape(18.dp))
-            .background(gradiente)
-            .clickable(enabled = enabled) { onClick() },
-        contentAlignment = Alignment.Center,
+            .background(gradiente),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        if (onConfigurar != null) {
+            Spacer(modifier = Modifier.width(48.dp))
+        }
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .clickable(enabled = enabled) { onClick() },
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Icon(imageVector = icon, contentDescription = null, tint = corTexto, modifier = Modifier.padding(end = 10.dp))
             Text(
                 text = label,
@@ -184,6 +209,11 @@ private fun ModoGradienteButton(
                 fontWeight = FontWeight.Bold,
                 style = MaterialTheme.typography.titleMedium,
             )
+        }
+        if (onConfigurar != null) {
+            IconButton(onClick = onConfigurar, enabled = enabled) {
+                Icon(Icons.Filled.Settings, contentDescription = "Configurar operador", tint = corTexto)
+            }
         }
     }
 }

@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.PhoneCallback
 import androidx.compose.material.icons.filled.ConfirmationNumber
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -36,6 +37,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
@@ -83,6 +85,13 @@ private val VerdePedido = Color(0xFF15803D)
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OperadorScreen(viewModel: OperadorViewModel = viewModel()) {
+    if (viewModel.configuracaoVisible) {
+        ConfiguracaoOperadorDialog(
+            modo = if (viewModel.modoIdentificacao == "pin") "pin" else "nome",
+            onSelecionar = viewModel::salvarModoIdentificacao,
+            onDismiss = viewModel::fecharConfiguracao,
+        )
+    }
     if (viewModel.identificacaoVisible) {
         IdentificacaoDialog(viewModel)
     }
@@ -103,6 +112,11 @@ fun OperadorScreen(viewModel: OperadorViewModel = viewModel()) {
                     containerColor = AppCard,
                     titleContentColor = TextoPrincipal,
                 ),
+                actions = {
+                    IconButton(onClick = viewModel::abrirConfiguracao) {
+                        Icon(Icons.Filled.Settings, contentDescription = "Configuração do operador", tint = TextoPrincipal)
+                    }
+                },
             )
         },
         containerColor = FundoOperadorClaro,
@@ -415,8 +429,8 @@ private fun IdentificacaoDialog(viewModel: OperadorViewModel) {
             Column(modifier = Modifier.padding(22.dp)) {
                 Text("Identifique-se para chamar", color = TextoPrincipal, fontWeight = FontWeight.Bold, fontSize = 21.sp)
                 Text(
-                    if (viewModel.modoIdentificacao == "pin") "Digite seu PIN. A próxima senha será chamada imediatamente."
-                    else "Toque na sua foto. A próxima senha será chamada imediatamente.",
+                    if (viewModel.modoIdentificacao == "pin") "Digite sua senha. A próxima senha será chamada imediatamente."
+                    else "Escolha seu nome. A próxima senha será chamada imediatamente.",
                     color = TextoSecundario,
                     fontSize = 13.sp,
                     modifier = Modifier.padding(top = 5.dp, bottom = 16.dp),

@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.example.compuflow.AppGraph
 import com.example.compuflow.data.remote.NetworkModule
 import com.example.compuflow.data.remote.dto.Papel
+import com.example.compuflow.ui.operador.modoIdentificacaoEfetivo
 import com.example.compuflow.data.remote.dto.SelecionarPapelRequest
 import com.example.compuflow.data.remote.dto.StreamingEntrarRequest
 import com.example.compuflow.data.remote.toUserMessage
@@ -18,6 +19,37 @@ class SelecionarModoViewModel : ViewModel() {
 
     var isLoading by mutableStateOf(false)
     var errorMessage by mutableStateOf<String?>(null)
+    var configuracaoVisible by mutableStateOf(false)
+        private set
+    var modoIdentificacao by mutableStateOf("nome")
+        private set
+
+    fun abrirConfiguracaoOperador() {
+        errorMessage = null
+        viewModelScope.launch {
+            val preferencia = sessionRepository.getModoIdentificacaoAparelho()
+            val modoSetor = try {
+                NetworkModule.apiService().listarOperadores().modo_identificacao_operador
+            } catch (_: Exception) {
+                "foto"
+            }
+            modoIdentificacao = if (modoIdentificacaoEfetivo(preferencia, modoSetor) == "pin") "pin" else "nome"
+            configuracaoVisible = true
+        }
+    }
+
+    fun fecharConfiguracaoOperador() {
+        configuracaoVisible = false
+    }
+
+    fun salvarModoIdentificacao(modo: String) {
+        if (modo != "pin" && modo != "nome") return
+        viewModelScope.launch {
+            sessionRepository.saveModoIdentificacaoAparelho(modo)
+            modoIdentificacao = modo
+            configuracaoVisible = false
+        }
+    }
 
     /** Usado por Cliente, TV e Avaliação (tablet do setor, sem escolher operador). */
     fun selecionarPapelSimples(papel: Papel, onSuccess: () -> Unit) {

@@ -527,6 +527,7 @@ def listar_tvs_admin() -> list[dict]:
 def listar_simulacao_telas(setor_ids: list[int] | None = None) -> list[dict]:
     """Estado atual de cada TV para o painel de simulação."""
     from backend.services.fila_service import listar_chamadas_recentes, mais_recente_do_tipo, serializar_fila
+    from backend.services.presenca_service import ips_da_tv, listar_tablets_simulacao, tablets_do_setor
 
     telas: list[dict] = []
     for tv in listar_tvs_admin():
@@ -569,6 +570,8 @@ def listar_simulacao_telas(setor_ids: list[int] | None = None) -> list[dict]:
                     "chamada_atual": chamada_atual["senha"] if chamada_atual else None,
                     "chamada_atual_tipo": chamada_atual.get("tipo") if chamada_atual else None,
                     "proximas": [item.get("senha") for item in (fila.get("pendentes") or [])[:5]],
+                    "ips": ips_da_tv(tv["chave"], tv["id"], "setor"),
+                    "tablets": tablets_do_setor(tv["id"]),
                 }
             )
             continue
@@ -608,8 +611,15 @@ def listar_simulacao_telas(setor_ids: list[int] | None = None) -> list[dict]:
                 "chamada_atual": None,
                 "chamada_atual_tipo": None,
                 "proximas": [],
+                "ips": ips_da_tv(tv["chave"], setor_id, "streaming"),
+                "tablets": [],
             }
         )
+    for tablet in listar_tablets_simulacao():
+        setor_do_tablet = tablet.get("setor_id")
+        if setor_ids is not None and setor_do_tablet not in setor_ids:
+            continue
+        telas.append(tablet)
     return telas
 
 

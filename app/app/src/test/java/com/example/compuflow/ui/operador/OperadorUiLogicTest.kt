@@ -8,6 +8,15 @@ import org.junit.Test
 
 class OperadorUiLogicTest {
     @Test
+    fun `aparelho escolhe senha ou nome e o setor so vale como padrao`() {
+        assertEquals("pin", modoIdentificacaoEfetivo("pin", "foto"))
+        assertEquals("foto", modoIdentificacaoEfetivo("nome", "pin"))
+        assertEquals("pin", modoIdentificacaoEfetivo(null, "pin"))
+        assertEquals("foto", modoIdentificacaoEfetivo(null, "foto"))
+        assertEquals("foto", modoIdentificacaoEfetivo("outro", "foto"))
+    }
+
+    @Test
     fun `badge reflete o estado real do pedido`() {
         assertNull(pedidoBadgeLabel(temPedido = false, confirmado = false))
         assertEquals("COM PEDIDO", pedidoBadgeLabel(temPedido = true, confirmado = false))

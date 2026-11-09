@@ -10,6 +10,28 @@ function rotuloModo(tela: SimulacaoTela): string {
   return "Propagandas + chamadas";
 }
 
+function rotuloPapelTablet(papel: string): string {
+  if (papel === "operador") return "operador";
+  if (papel === "avaliacao") return "avaliação";
+  if (papel === "cliente") return "cliente";
+  return papel;
+}
+
+function descricaoTela(tela: SimulacaoTela, midias: number): string {
+  const partes = [rotuloFormato(tela), rotuloModo(tela)];
+  if (midias) partes.push(`${midias} mídia(s)`);
+  const ips = (tela.ips || []).filter(Boolean);
+  if (ips.length === 1) partes.push(`IP ${ips[0]}`);
+  else if (ips.length > 1) partes.push(`IPs ${ips.join(", ")}`);
+  const tablets = tela.tablets || [];
+  if (tablets.length) {
+    partes.push(
+      `Tablets ${tablets.map((item) => `${item.ip} (${rotuloPapelTablet(item.papel)})`).join(", ")}`,
+    );
+  }
+  return partes.join(" · ");
+}
+
 function rotuloFormato(tela: SimulacaoTela): string {
   const base = tela.formato === "vertical" ? "Vertical" : "Horizontal";
   if (tela.tipo === "streaming" && tela.rotacao_tv) {
@@ -133,10 +155,7 @@ function TelaCard({ tela }: { tela: SimulacaoTela }) {
           </div>
         )}
       </div>
-      <p className="text-xs text-muted-foreground">
-        {rotuloFormato(tela)} · {rotuloModo(tela)}
-        {midias.length ? ` · ${midias.length} mídia(s)` : ""}
-      </p>
+      <p className="text-xs text-muted-foreground">{descricaoTela(tela, midias.length)}</p>
     </article>
   );
 }
@@ -167,9 +186,11 @@ export default function SimulacaoTelasPage() {
     };
   }, []);
 
+  const aparelhos = useMemo(() => telas.filter((tela) => tela.tipo === "tablet"), [telas]);
   const visiveis = useMemo(() => {
-    if (filtro === "todas") return telas;
-    return telas.filter((tela) => tela.tipo === filtro);
+    const paineis = telas.filter((tela) => tela.tipo !== "tablet");
+    if (filtro === "todas") return paineis;
+    return paineis.filter((tela) => tela.tipo === filtro);
   }, [filtro, telas]);
 
   return (
@@ -178,7 +199,7 @@ export default function SimulacaoTelasPage() {
         <h1 className="text-2xl font-bold">Simulação de telas</h1>
         <p className="text-muted-foreground">
           Prévia do que cada TV está exibindo agora, no formato horizontal ou vertical e no layout
-          configurado.
+          configurado. O IP de cada TV e tablet aparece na descrição.
         </p>
       </div>
 
@@ -214,6 +235,42 @@ export default function SimulacaoTelasPage() {
       {!visiveis.length && !error ? (
         <p className="text-sm text-muted-foreground">Nenhuma tela para simular neste filtro.</p>
       ) : null}
+
+      <section className="space-y-3">
+        <div>
+          <h2 className="text-lg font-semibold">Tablets</h2>
+          <p className="text-sm text-muted-foreground">
+            Cliente, operador e avaliação conectados, com o IP de cada aparelho.
+          </p>
+        </div>
+        {aparelhos.length ? (
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {aparelhos.map((tablet) => (
+              <article key={tablet.chave} className="rounded-xl border bg-card p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold">{tablet.nome}</p>
+                    <p className="truncate text-xs text-muted-foreground">{tablet.subtitulo}</p>
+                  </div>
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium",
+                      tablet.is_online ? "bg-emerald-100 text-emerald-800" : "bg-muted text-muted-foreground",
+                    )}
+                  >
+                    {tablet.is_online ? "Ao vivo" : "Offline"}
+                  </span>
+                </div>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  {tablet.ips?.length ? `IP ${tablet.ips.join(", ")}` : "IP não informado"}
+                </p>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">Nenhum tablet informou o IP ainda.</p>
+        )}
+      </section>
     </div>
   );
 }

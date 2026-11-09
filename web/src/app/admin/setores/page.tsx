@@ -204,8 +204,8 @@ export default function SetoresPage() {
                 value={modoIdentificacao}
                 onChange={(e) => setModoIdentificacao(e.target.value as "foto" | "pin")}
               >
-                <option value="foto">Clique na foto</option>
-                <option value="pin">PIN numérico</option>
+                <option value="foto">Escolher o nome ao chamar</option>
+                <option value="pin">Usar senha (PIN)</option>
               </select>
             </div>
               </>
@@ -392,7 +392,7 @@ export default function SetoresPage() {
                     </>
                   ) : (
                     <>
-                      Operadores: {s.modo_identificacao_operador === "pin" ? "PIN numérico" : "Clique na foto"}
+                      Operadores: {s.modo_identificacao_operador === "pin" ? "Usar senha" : "Escolher o nome ao chamar"}
                       {" · "}
                       TV web: {s.layout_tv_web === "fila" ? "Fluxo de chamadas" : "Propagandas"}
                       {" · "}

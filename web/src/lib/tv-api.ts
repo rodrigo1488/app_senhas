@@ -131,6 +131,76 @@ export async function tvApiFetch<T>(
   return (await res.json()) as T;
 }
 
+const TV_DEVICE_KEY = "compuflow_tv_device_id";
+
+export function getOrCreateTvDeviceId(): string {
+  const existing = localStorage.getItem(TV_DEVICE_KEY);
+  if (existing) return existing;
+  const created = crypto.randomUUID();
+  localStorage.setItem(TV_DEVICE_KEY, created);
+  return created;
+}
+
+function ipv4NoCandidato(valor: string): string | null {
+  const match = valor.match(/\b(\d{1,3}(?:\.\d{1,3}){3})\b/);
+  const ip = match?.[1];
+  if (!ip || ip === "0.0.0.0" || ip.startsWith("127.")) return null;
+  const partes = ip.split(".").map((parte) => Number(parte));
+  if (partes.some((parte) => parte > 255)) return null;
+  return ip;
+}
+
+/** Melhor esforço: alguns navegadores escondem o IP local. O servidor usa o IP da conexão. */
+export function descobrirIpv4Local(): Promise<string | null> {
+  if (typeof window === "undefined" || typeof RTCPeerConnection === "undefined") {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    let encerrado = false;
+    let timer = 0;
+    const pc = new RTCPeerConnection({ iceServers: [] });
+    const concluir = (ip: string | null) => {
+      if (encerrado) return;
+      encerrado = true;
+      window.clearTimeout(timer);
+      try {
+        pc.close();
+      } catch {
+        /* ignore */
+      }
+      resolve(ip);
+    };
+    timer = window.setTimeout(() => concluir(null), 800);
+    try {
+      pc.createDataChannel("ip");
+      pc.onicecandidate = (event) => {
+        const ip = ipv4NoCandidato(event.candidate?.candidate || "");
+        if (ip) concluir(ip);
+      };
+      void pc
+        .createOffer()
+        .then((offer) => pc.setLocalDescription(offer))
+        .catch(() => concluir(null));
+    } catch {
+      concluir(null);
+    }
+  });
+}
+
+export async function reportarPresencaTv(token: string) {
+  const ip = await descobrirIpv4Local();
+  await tvApiFetch("/api/v1/equipamento/presenca", {
+    method: "POST",
+    token,
+    body: JSON.stringify({
+      device_id: getOrCreateTvDeviceId(),
+      papel: "tv",
+      ip,
+      nome: "Navegador",
+    }),
+  });
+}
+
 export async function loginTv(codigoSetor: string): Promise<{ token: string; setor: TvSetor }> {
   const login = await tvApiFetch<{ session_token: string; setor: TvSetor }>("/api/v1/setor/login", {
     method: "POST",

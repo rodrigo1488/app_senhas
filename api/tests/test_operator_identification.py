@@ -109,6 +109,28 @@ class OperatorIdentificationTest(unittest.TestCase):
         )
         self.assertEqual(403, response.status_code)
 
+    def test_aparelho_escolhe_nome_mesmo_com_setor_em_pin(self):
+        response = self.app.test_client().post(
+            "/api/v1/sessao/papel",
+            json={"role": "operador", "operador_id": self.operador_id},
+            headers={"Authorization": f"Bearer {self._generic_token()}"},
+        )
+        self.assertEqual(200, response.status_code, response.get_json())
+        self.assertEqual(self.operador_id, response.get_json()["operador"]["id"])
+
+    def test_aparelho_escolhe_pin_mesmo_com_setor_em_foto(self):
+        with self.app.app_context():
+            setor = db.session.get(Setor, self.setor_id)
+            setor.modo_identificacao_operador = "foto"
+            db.session.commit()
+        response = self.app.test_client().post(
+            "/api/v1/sessao/papel",
+            json={"role": "operador", "pin": "1234"},
+            headers={"Authorization": f"Bearer {self._generic_token()}"},
+        )
+        self.assertEqual(200, response.status_code, response.get_json())
+        self.assertEqual(self.operador_id, response.get_json()["operador"]["id"])
+
     def test_photo_mode_accepts_only_operator_from_same_sector(self):
         with self.app.app_context():
             setor = db.session.get(Setor, self.setor_id)

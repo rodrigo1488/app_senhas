@@ -130,24 +130,28 @@ def selecionar_papel(session_payload):
     if role == "operador":
         if session_payload.get("role") == "operador" and session_payload.get("operador_id"):
             return jsonify({"error": "Identificação anterior não pode trocar de operador"}), 403
-        setor = Setor.query.get(setor_id)
-        modo = (setor.modo_identificacao_operador if setor else "foto") or "foto"
-        identificacao_informada = bool(data.get("pin")) or operador_id is not None
-        if not identificacao_informada:
-            operador_id = None
-        elif modo == "pin":
+        pin = str(data.get("pin") or "").strip()
+        # O aparelho escolhe o método (senha ou nome). O modo do setor só
+        # define o padrão até essa configuração local existir.
+        if pin:
             attempt_key = _pin_attempt_key(setor_id)
             if _pin_is_blocked(attempt_key):
                 return jsonify({"error": "Muitas tentativas. Aguarde 5 minutos"}), 429
-            operador = identificar_operador_por_pin(setor_id, data.get("pin") or "")
+            operador = identificar_operador_por_pin(setor_id, pin)
             if not operador:
                 _register_pin_failure(attempt_key)
                 return jsonify({"error": "PIN inválido"}), 401
             _clear_pin_failures(attempt_key)
-        else:
+        elif operador_id is not None:
+            try:
+                operador_id = int(operador_id)
+            except (TypeError, ValueError):
+                return jsonify({"error": "Operador inválido para este setor"}), 400
             operador = Operador.query.filter_by(id=operador_id, setor_id=setor_id).first()
             if not operador:
                 return jsonify({"error": "Operador inválido para este setor"}), 400
+        else:
+            operador_id = None
         if operador:
             operador_id = operador.id
     elif role == "avaliacao" and operador_id:
@@ -176,6 +180,40 @@ def liberar_operador(session_payload):
 
 
 # --- Setor / operadores -------------------------------------------------------
+
+@api_bp.route("/equipamento/presenca", methods=["POST"])
+@api_token_required
+def equipamento_presenca(session_payload):
+    """TV ou tablet informa o IP do aparelho para o administrador."""
+    from backend.services.presenca_service import PAPEIS_EQUIPAMENTO, registrar_presenca
+
+    data = request.get_json(silent=True) or {}
+    device_id = str(data.get("device_id") or "").strip()
+    if not device_id or len(device_id) > 80:
+        return jsonify({"error": "device_id é obrigatório"}), 400
+
+    token_role = session_payload.get("role")
+    papel = str(data.get("papel") or "").strip()
+    if token_role in PAPEIS_EQUIPAMENTO:
+        papel = token_role
+    elif token_role == "generic" and papel in PAPEIS_EQUIPAMENTO:
+        pass
+    else:
+        return jsonify({"error": "Papel do equipamento inválido"}), 400
+
+    try:
+        row = registrar_presenca(
+            device_id=device_id,
+            papel=papel,
+            ip_informado=data.get("ip"),
+            ip_remoto=request.remote_addr,
+            nome=data.get("nome") or data.get("device_name"),
+            setor_id=session_payload["setor_id"],
+        )
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify({"ok": True, "ip": row.ip, "papel": row.papel})
+
 
 @api_bp.route("/setor/operadores", methods=["GET"])
 @api_token_required

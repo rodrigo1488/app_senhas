@@ -12,6 +12,8 @@ import com.example.compuflow.data.remote.dto.FilaDto
 import com.example.compuflow.data.remote.dto.HealthDto
 import com.example.compuflow.data.remote.dto.OperadoresResponse
 import com.example.compuflow.data.remote.dto.PosicaoDto
+import com.example.compuflow.data.remote.dto.PresencaEquipamentoRequest
+import com.example.compuflow.data.remote.dto.PresencaEquipamentoResponse
 import com.example.compuflow.data.remote.dto.SalvarPedidoRequest
 import com.example.compuflow.data.remote.dto.SelecionarPapelRequest
 import com.example.compuflow.data.remote.dto.SelecionarPapelResponse
@@ -50,6 +52,9 @@ interface ApiService {
 
     @POST("api/v1/sessao/liberar_operador")
     suspend fun liberarOperador(): SelecionarPapelResponse
+
+    @POST("api/v1/equipamento/presenca")
+    suspend fun registrarPresenca(@Body body: PresencaEquipamentoRequest): PresencaEquipamentoResponse
 
     @GET("api/v1/setor/operadores")
     suspend fun listarOperadores(): OperadoresResponse

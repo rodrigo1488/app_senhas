@@ -29,6 +29,9 @@ class OperadorViewModel : ViewModel() {
         private set
     var modoIdentificacao by mutableStateOf("foto")
         private set
+    var configuracaoVisible by mutableStateOf(false)
+        private set
+    private var modoSetor = "foto"
 
     var pendentes by mutableStateOf<List<SenhaDto>>(emptyList())
     var atendimentos by mutableStateOf<List<AtendimentoDto>>(emptyList())
@@ -66,7 +69,11 @@ class OperadorViewModel : ViewModel() {
                 }
                 val operadoresResponse = NetworkModule.apiService().listarOperadores()
                 operadores = operadoresResponse.operadores
-                modoIdentificacao = operadoresResponse.modo_identificacao_operador
+                modoSetor = operadoresResponse.modo_identificacao_operador
+                modoIdentificacao = modoIdentificacaoEfetivo(
+                    sessionRepository.getModoIdentificacaoAparelho(),
+                    modoSetor,
+                )
                 val fila = NetworkModule.apiService().estadoFila()
                 pendentes = fila.pendentes
                 atendimentos = fila.atendimentos
@@ -131,6 +138,23 @@ class OperadorViewModel : ViewModel() {
         chamadasRecentes = listOf(next) + chamadasRecentes.filter { item ->
             if (event.senhaId != null) item.senha_id != event.senhaId else item.senha != event.senha
         }.take(7)
+    }
+
+    fun abrirConfiguracao() {
+        configuracaoVisible = true
+    }
+
+    fun fecharConfiguracao() {
+        configuracaoVisible = false
+    }
+
+    fun salvarModoIdentificacao(modo: String) {
+        if (modo != "pin" && modo != "nome") return
+        viewModelScope.launch {
+            sessionRepository.saveModoIdentificacaoAparelho(modo)
+            modoIdentificacao = modoIdentificacaoEfetivo(modo, modoSetor)
+            configuracaoVisible = false
+        }
     }
 
     fun abrirIdentificacao() {

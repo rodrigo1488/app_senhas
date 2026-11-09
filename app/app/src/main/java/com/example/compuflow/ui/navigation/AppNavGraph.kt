@@ -22,6 +22,7 @@ import com.example.compuflow.data.remote.NetworkModule
 import com.example.compuflow.data.remote.dto.Papel
 import com.example.compuflow.ui.avaliacao.AvaliacaoScreen
 import com.example.compuflow.ui.cliente.ClienteScreen
+import com.example.compuflow.ui.common.EquipamentoPresence
 import com.example.compuflow.ui.kiosk.SoftKioskHost
 import com.example.compuflow.ui.login.LoginScreen
 import com.example.compuflow.ui.modo.SelecionarModoScreen
@@ -71,6 +72,7 @@ fun AppNavGraph() {
         }
     }
 
+    EquipamentoPresence()
     NavHost(navController = navController, startDestination = Routes.BOOT) {
         composable(Routes.BOOT) {
             BootRoute(
