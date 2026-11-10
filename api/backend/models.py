@@ -64,6 +64,8 @@ class Setor(db.Model):
     impressao_via_cliente = db.Column(db.Boolean, nullable=False, default=False)
     # Liga/desliga alertas de horário e notificação deste setor.
     alertas_ativos = db.Column(db.Boolean, nullable=False, default=True)
+    # Minutos sem chamar senha para disparar alerta de ociosidade.
+    alerta_ociosidade_minutos = db.Column(db.Integer, nullable=False, default=60)
     layout_tv_web = db.Column(db.String(20), nullable=False, default="propaganda")
     orientacao_tv = db.Column(db.String(20), nullable=False, default="horizontal")
     som_chamada = db.Column(db.Text)
@@ -97,6 +99,7 @@ class Setor(db.Model):
             "propagandas_cliente_ativas": bool(self.propagandas_cliente_ativas),
             "impressao_via_cliente": bool(self.impressao_via_cliente),
             "alertas_ativos": bool(self.alertas_ativos) if self.alertas_ativos is not None else True,
+            "alerta_ociosidade_minutos": int(self.alerta_ociosidade_minutos or 60),
             "layout_tv_web": self.layout_tv_web or "propaganda",
             "orientacao_tv": self.orientacao_tv or "horizontal",
             "som_chamada": self.som_chamada,
@@ -399,6 +402,29 @@ class TvDispositivo(db.Model):
             "setor_nome": self.setor.nome if self.setor else None,
             "tipo_setor": (self.setor.tipo_setor or TIPO_SETOR_ATENDIMENTO) if self.setor else None,
             "propaganda_ids": propaganda_ids if propaganda_ids is not None else [],
+        }
+
+
+class AlertaWhatsappContato(db.Model):
+    """Contato que recebe alertas pelo WhatsApp (Baileys)."""
+
+    __tablename__ = "alerta_whatsapp_contatos"
+
+    id = db.Column(db.Integer, primary_key=True)
+    nome = db.Column(db.Text, nullable=False, default="")
+    telefone = db.Column(db.Text, nullable=False)
+    ativo = db.Column(db.Boolean, nullable=False, default=True)
+    criado_em = db.Column(db.DateTime, default=agora_sp, nullable=False)
+    atualizado_em = db.Column(db.DateTime, default=agora_sp, nullable=False)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "nome": self.nome or "",
+            "telefone": self.telefone or "",
+            "ativo": bool(self.ativo),
+            "criado_em": self.criado_em.isoformat() if self.criado_em else None,
+            "atualizado_em": self.atualizado_em.isoformat() if self.atualizado_em else None,
         }
 
 

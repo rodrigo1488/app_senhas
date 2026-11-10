@@ -15,12 +15,20 @@ type WhatsappStatus = {
   error?: string;
 };
 
+type WhatsappContato = {
+  id: number;
+  nome: string;
+  telefone: string;
+  ativo: boolean;
+};
+
 type AlertasConfig = {
   telegram_ativo: boolean;
   telegram_bot_token: string;
   telegram_chat_id: string;
   whatsapp_ativo: boolean;
-  whatsapp_destino: string;
+  whatsapp_destino?: string;
+  whatsapp_contatos?: WhatsappContato[];
   tipos: string[];
   whatsapp?: WhatsappStatus;
 };
@@ -38,7 +46,7 @@ type Config = {
 const TIPOS_ALERTA = [
   { id: "sem_retirada", label: "Hora sem retirada de senha" },
   { id: "sem_chamada", label: "Hora sem chamada (por setor)" },
-  { id: "sem_chamada_recente", label: "Mais de 1h sem chamar" },
+  { id: "sem_chamada_recente", label: "Ociosidade sem chamada (por setor)" },
 ];
 
 function alertasPadrao(): AlertasConfig {
@@ -47,7 +55,7 @@ function alertasPadrao(): AlertasConfig {
     telegram_bot_token: "",
     telegram_chat_id: "",
     whatsapp_ativo: false,
-    whatsapp_destino: "",
+    whatsapp_contatos: [],
     tipos: TIPOS_ALERTA.map((t) => t.id),
     whatsapp: { status: "unknown", connected: false },
   };
@@ -59,6 +67,11 @@ export default function ConfiguracoesPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [testando, setTestando] = useState<"telegram" | "whatsapp" | null>(null);
+  const [contatoEditando, setContatoEditando] = useState<WhatsappContato | null>(null);
+  const [contatoNome, setContatoNome] = useState("");
+  const [contatoTelefone, setContatoTelefone] = useState("");
+  const [contatoAtivo, setContatoAtivo] = useState(true);
+  const [salvandoContato, setSalvandoContato] = useState(false);
 
   const carregarWhatsapp = useCallback(() => {
     apiFetch<WhatsappStatus>("/api/v1/admin/alertas/whatsapp/status")
@@ -174,7 +187,6 @@ export default function ConfiguracoesPage() {
           telegram_bot_token: alertas.telegram_bot_token,
           telegram_chat_id: alertas.telegram_chat_id,
           whatsapp_ativo: alertas.whatsapp_ativo,
-          whatsapp_destino: alertas.whatsapp_destino,
           tipos: alertas.tipos,
         }),
       });
@@ -182,10 +194,78 @@ export default function ConfiguracoesPage() {
         ...alertasPadrao(),
         ...salvo,
         tipos: salvo.tipos?.length ? salvo.tipos : alertasPadrao().tipos,
+        whatsapp_contatos: salvo.whatsapp_contatos || [],
       });
       setMessage("Notificações de alerta salvas.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro");
+    }
+  }
+
+  function resetContatoForm() {
+    setContatoEditando(null);
+    setContatoNome("");
+    setContatoTelefone("");
+    setContatoAtivo(true);
+  }
+
+  function editarContato(contato: WhatsappContato) {
+    setContatoEditando(contato);
+    setContatoNome(contato.nome || "");
+    setContatoTelefone(contato.telefone || "");
+    setContatoAtivo(contato.ativo !== false);
+  }
+
+  async function salvarContato(e: FormEvent) {
+    e.preventDefault();
+    setSalvandoContato(true);
+    setMessage(null);
+    setError(null);
+    try {
+      const body = JSON.stringify({
+        nome: contatoNome,
+        telefone: contatoTelefone,
+        ativo: contatoAtivo,
+      });
+      if (contatoEditando) {
+        await apiFetch(`/api/v1/admin/alertas/whatsapp/contatos/${contatoEditando.id}`, {
+          method: "PUT",
+          body,
+        });
+        setMessage("Contato WhatsApp atualizado.");
+      } else {
+        await apiFetch("/api/v1/admin/alertas/whatsapp/contatos", {
+          method: "POST",
+          body,
+        });
+        setMessage("Contato WhatsApp incluído.");
+      }
+      const contatos = await apiFetch<WhatsappContato[]>(
+        "/api/v1/admin/alertas/whatsapp/contatos"
+      );
+      setAlertas((atual) => ({ ...atual, whatsapp_contatos: contatos }));
+      resetContatoForm();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao salvar contato");
+    } finally {
+      setSalvandoContato(false);
+    }
+  }
+
+  async function excluirContato(id: number) {
+    if (!confirm("Excluir este contato WhatsApp?")) return;
+    setMessage(null);
+    setError(null);
+    try {
+      await apiFetch(`/api/v1/admin/alertas/whatsapp/contatos/${id}`, { method: "DELETE" });
+      const contatos = await apiFetch<WhatsappContato[]>(
+        "/api/v1/admin/alertas/whatsapp/contatos"
+      );
+      setAlertas((atual) => ({ ...atual, whatsapp_contatos: contatos }));
+      if (contatoEditando?.id === id) resetContatoForm();
+      setMessage("Contato WhatsApp excluído.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao excluir contato");
     }
   }
 
@@ -250,6 +330,7 @@ export default function ConfiguracoesPage() {
   if (!config) return <p className="text-destructive">{error}</p>;
 
   const wa = alertas.whatsapp || {};
+  const contatos = alertas.whatsapp_contatos || [];
   const waLabel = wa.connected
     ? `Conectado${wa.jid ? ` · ${wa.jid}` : ""}`
     : wa.status === "qr"
@@ -366,16 +447,6 @@ export default function ConfiguracoesPage() {
                   />
                   WhatsApp ativo (Baileys)
                 </label>
-                <div className="space-y-2">
-                  <Label>Destino (DDI + número)</Label>
-                  <Input
-                    value={alertas.whatsapp_destino}
-                    onChange={(e) =>
-                      setAlertas({ ...alertas, whatsapp_destino: e.target.value })
-                    }
-                    placeholder="5511999999999"
-                  />
-                </div>
                 <p className="text-xs text-muted-foreground">Status: {waLabel}</p>
                 {wa.qr_data_url ? (
                   <div className="space-y-2">
@@ -408,6 +479,100 @@ export default function ConfiguracoesPage() {
                     Desconectar WhatsApp
                   </Button>
                 </div>
+              </div>
+            </div>
+
+            <div className="space-y-4 rounded-lg border p-4">
+              <div>
+                <p className="text-sm font-medium">Contatos que recebem o WhatsApp</p>
+                <p className="text-sm text-muted-foreground">
+                  Inclua, edite ou exclua os números (DDI + DDD) que recebem cada alerta.
+                </p>
+              </div>
+              <div className="space-y-2">
+                {contatos.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Nenhum contato cadastrado.</p>
+                ) : (
+                  contatos.map((contato) => (
+                    <div
+                      key={contato.id}
+                      className="flex flex-col gap-2 rounded-md border p-3 sm:flex-row sm:items-center sm:justify-between"
+                    >
+                      <div>
+                        <p className="font-medium">{contato.nome || contato.telefone}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {contato.telefone}
+                          {contato.ativo === false ? " · inativo" : " · ativo"}
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => editarContato(contato)}
+                        >
+                          Editar
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void excluirContato(contato.id)}
+                        >
+                          Excluir
+                        </Button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="space-y-2">
+                  <Label>Nome</Label>
+                  <Input
+                    value={contatoNome}
+                    onChange={(e) => setContatoNome(e.target.value)}
+                    placeholder="Gerência"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Telefone (DDI + número)</Label>
+                  <Input
+                    value={contatoTelefone}
+                    onChange={(e) => setContatoTelefone(e.target.value)}
+                    placeholder="5511999999999"
+                  />
+                </div>
+                <div className="flex items-end gap-3">
+                  <label className="flex items-center gap-2 pb-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={contatoAtivo}
+                      onChange={(e) => setContatoAtivo(e.target.checked)}
+                    />
+                    Ativo
+                  </label>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={salvandoContato || !contatoTelefone.trim()}
+                  onClick={(e) => void salvarContato(e)}
+                >
+                  {salvandoContato
+                    ? "Salvando..."
+                    : contatoEditando
+                      ? "Atualizar contato"
+                      : "Incluir contato"}
+                </Button>
+                {contatoEditando ? (
+                  <Button type="button" variant="ghost" onClick={resetContatoForm}>
+                    Cancelar edição
+                  </Button>
+                ) : null}
               </div>
             </div>
 

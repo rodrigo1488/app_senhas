@@ -19,6 +19,7 @@ export default function SetoresPage() {
   const [propagandasClienteAtivas, setPropagandasClienteAtivas] = useState(false);
   const [impressaoViaCliente, setImpressaoViaCliente] = useState(false);
   const [alertasAtivos, setAlertasAtivos] = useState(true);
+  const [ociosidadeMinutos, setOciosidadeMinutos] = useState("60");
   const [layoutTvWeb, setLayoutTvWeb] = useState<"propaganda" | "fila">("propaganda");
   const [orientacaoTv, setOrientacaoTv] = useState<"horizontal" | "vertical">("horizontal");
   const [tipoSetor, setTipoSetor] = useState<"atendimento" | "streaming">("atendimento");
@@ -44,6 +45,7 @@ export default function SetoresPage() {
     setPropagandasClienteAtivas(Boolean(setor.propagandas_cliente_ativas));
     setImpressaoViaCliente(Boolean(setor.impressao_via_cliente));
     setAlertasAtivos(setor.alertas_ativos !== false);
+    setOciosidadeMinutos(String(setor.alerta_ociosidade_minutos || 60));
     setLayoutTvWeb(setor.layout_tv_web || "propaganda");
     setOrientacaoTv(setor.orientacao_tv || "horizontal");
     setTipoSetor(setor.tipo_setor === "streaming" ? "streaming" : "atendimento");
@@ -59,6 +61,7 @@ export default function SetoresPage() {
     setPropagandasClienteAtivas(false);
     setImpressaoViaCliente(false);
     setAlertasAtivos(true);
+    setOciosidadeMinutos("60");
     setLayoutTvWeb("propaganda");
     setOrientacaoTv("horizontal");
     setTipoSetor("atendimento");
@@ -79,6 +82,8 @@ export default function SetoresPage() {
         propagandas_cliente_ativas: tipoSetor === "streaming" ? false : propagandasClienteAtivas,
         impressao_via_cliente: tipoSetor === "streaming" ? false : impressaoViaCliente,
         alertas_ativos: tipoSetor === "streaming" ? true : alertasAtivos,
+        alerta_ociosidade_minutos:
+          tipoSetor === "streaming" ? 60 : Math.max(1, Number(ociosidadeMinutos) || 60),
         layout_tv_web: tipoSetor === "streaming" ? "propaganda" : layoutTvWeb,
         orientacao_tv: tipoSetor === "streaming" ? "horizontal" : orientacaoTv,
       });
@@ -268,6 +273,22 @@ export default function SetoresPage() {
                 </p>
               </div>
             </div>
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="alerta_ociosidade_minutos">Ociosidade sem chamada (minutos)</Label>
+              <Input
+                id="alerta_ociosidade_minutos"
+                type="number"
+                min={1}
+                step={1}
+                value={ociosidadeMinutos}
+                onChange={(e) => setOciosidadeMinutos(e.target.value)}
+                disabled={!alertasAtivos}
+              />
+              <p className="text-sm text-muted-foreground">
+                Tempo sem chamar senha neste setor para disparar o alerta de ociosidade (ex.: 30,
+                45, 60).
+              </p>
+            </div>
             </>
             ) : null}
             {tipoSetor === "atendimento" ? (
@@ -419,7 +440,9 @@ export default function SetoresPage() {
                       Tela: {s.orientacao_tv === "vertical" ? "Vertical" : "Horizontal"}
                       {s.layout_tv_web !== "fila" && !s.propagandas_ativas ? " (sem imagens ativas)" : ""}
                       {s.propagandas_cliente_ativas ? " · Espera do cliente: ligada" : " · Espera do cliente: desligada"}
-                      {s.alertas_ativos === false ? " · Alertas: desligados" : " · Alertas: ligados"}
+                      {s.alertas_ativos === false
+                        ? " · Alertas: desligados"
+                        : ` · Alertas: ligados · Ociosidade: ${s.alerta_ociosidade_minutos || 60} min`}
                       {s.som_chamada ? " · Som próprio" : " · Som padrão"}
                     </>
                   )}

@@ -273,6 +273,8 @@ def _init_database(app: Flask) -> None:
     _migrate_midia_categorias_e_vigencia()
     _migrate_alerta_log_envio_columns()
     _migrate_setor_alertas_ativos_column()
+    _migrate_setor_alerta_ociosidade_column()
+    _migrate_alerta_whatsapp_contatos()
 
     is_sqlite = db.engine.dialect.name == "sqlite"
 
@@ -665,6 +667,55 @@ def _migrate_setor_alertas_ativos_column() -> None:
             f"BOOLEAN NOT NULL DEFAULT {bool_default}",
             is_sqlite,
         )
+
+
+def _migrate_setor_alerta_ociosidade_column() -> None:
+    """Minutos de ociosidade sem chamada, configurável por setor."""
+    from sqlalchemy import inspect
+
+    inspector = inspect(db.engine)
+    if "setores" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("setores")}
+    if "alerta_ociosidade_minutos" in columns:
+        return
+    is_sqlite = db.engine.dialect.name == "sqlite"
+    with db.engine.begin() as conn:
+        _ensure_column(
+            conn,
+            "setores",
+            "alerta_ociosidade_minutos",
+            "INTEGER NOT NULL DEFAULT 60",
+            is_sqlite,
+        )
+
+
+def _migrate_alerta_whatsapp_contatos() -> None:
+    """Migra destino único legado para a lista de contatos WhatsApp."""
+    from sqlalchemy import inspect, text
+
+    from backend.models import AlertaWhatsappContato
+    from backend.utils import get_configuracao
+
+    inspector = inspect(db.engine)
+    if "alerta_whatsapp_contatos" not in inspector.get_table_names():
+        return
+    if AlertaWhatsappContato.query.count() > 0:
+        return
+    legado = (get_configuracao("alerta_whatsapp_destino") or "").strip()
+    if not legado:
+        return
+    digits = "".join(ch for ch in legado if ch.isdigit())
+    if not digits:
+        return
+    db.session.add(
+        AlertaWhatsappContato(
+            nome="Principal",
+            telefone=digits,
+            ativo=True,
+        )
+    )
+    db.session.commit()
 
 
 def _migrate_alerta_log_envio_columns() -> None:

@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 from backend import create_app
 from backend.extensions import db
-from backend.models import AlertaLog, Setor
+from backend.models import AlertaLog, AlertaWhatsappContato, Setor
 from backend.services.alerta_notify_service import (
     despachar_alertas_pendentes,
     salvar_config_alerta,
@@ -138,4 +138,46 @@ class AlertaNotifyTest(unittest.TestCase):
             self.assertEqual(1, wa.call_count)
             row = db.session.get(AlertaLog, alerta_id)
             self.assertTrue(row.enviado_telegram)
+            self.assertTrue(row.enviado_whatsapp)
+
+    def test_despacha_whatsapp_para_todos_contatos_ativos(self):
+        with self.app.app_context():
+            salvar_config_alerta(
+                {
+                    "telegram_ativo": False,
+                    "whatsapp_ativo": True,
+                    "tipos": ["sem_chamada"],
+                }
+            )
+            db.session.add_all(
+                [
+                    AlertaWhatsappContato(nome="A", telefone="5511111111111", ativo=True),
+                    AlertaWhatsappContato(nome="B", telefone="5511222222222", ativo=True),
+                    AlertaWhatsappContato(nome="C", telefone="5511333333333", ativo=False),
+                ]
+            )
+            log = AlertaLog(
+                chave="sem_chamada:1:2026-11-10:09",
+                tipo="sem_chamada",
+                severidade="warning",
+                mensagem="Caixa: horário 09h sem chamada de senha.",
+                setor_id=self.caixa_id,
+                ocorrido_em=agora_sp(),
+                enviado_telegram=False,
+                enviado_whatsapp=False,
+            )
+            db.session.add(log)
+            db.session.commit()
+            alerta_id = log.id
+
+            with patch(
+                "backend.services.alerta_notify_service.enviar_whatsapp"
+            ) as wa:
+                resultado = despachar_alertas_pendentes([alerta_id])
+
+            self.assertEqual(1, resultado["whatsapp"])
+            self.assertEqual(2, wa.call_count)
+            destinos = sorted(call.kwargs["destino"] for call in wa.call_args_list)
+            self.assertEqual(["5511111111111", "5511222222222"], destinos)
+            row = db.session.get(AlertaLog, alerta_id)
             self.assertTrue(row.enviado_whatsapp)

@@ -132,6 +132,9 @@ def _setor_admin_dict(setor: Setor, *, ocultar_senha: bool = False) -> dict:
         "propagandas_cliente_ativas": bool(setor.propagandas_cliente_ativas),
         "impressao_via_cliente": bool(setor.impressao_via_cliente),
         "alertas_ativos": bool(setor.alertas_ativos) if setor.alertas_ativos is not None else True,
+        "alerta_ociosidade_minutos": max(
+            1, int(getattr(setor, "alerta_ociosidade_minutos", None) or 60)
+        ),
         "propaganda_ids_cliente": propaganda_ids_cliente(setor.id),
         "layout_tv_web": setor.layout_tv_web or "propaganda",
         "orientacao_tv": setor.orientacao_tv or "horizontal",
@@ -388,13 +391,63 @@ def post_whatsapp_reconnect():
     return jsonify(status_whatsapp())
 
 
+@admin_api_bp.route("/alertas/whatsapp/contatos", methods=["GET"])
+@api_login_required
+@require_admin
+def listar_whatsapp_contatos():
+    from backend.services.alerta_notify_service import listar_contatos_whatsapp
+
+    return jsonify(listar_contatos_whatsapp())
+
+
+@admin_api_bp.route("/alertas/whatsapp/contatos", methods=["POST"])
+@api_login_required
+@require_admin
+def criar_whatsapp_contato():
+    from backend.services.alerta_notify_service import salvar_contato_whatsapp
+
+    data = request.get_json(silent=True) or {}
+    try:
+        contato = salvar_contato_whatsapp(data)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(contato), 201
+
+
+@admin_api_bp.route("/alertas/whatsapp/contatos/<int:contato_id>", methods=["PUT"])
+@api_login_required
+@require_admin
+def atualizar_whatsapp_contato(contato_id: int):
+    from backend.services.alerta_notify_service import salvar_contato_whatsapp
+
+    data = request.get_json(silent=True) or {}
+    try:
+        contato = salvar_contato_whatsapp(data, contato_id=contato_id)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    return jsonify(contato)
+
+
+@admin_api_bp.route("/alertas/whatsapp/contatos/<int:contato_id>", methods=["DELETE"])
+@api_login_required
+@require_admin
+def excluir_whatsapp_contato(contato_id: int):
+    from backend.services.alerta_notify_service import excluir_contato_whatsapp
+
+    try:
+        excluir_contato_whatsapp(contato_id)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 404
+    return jsonify({"ok": True})
+
+
 @admin_api_bp.route("/alertas/notificacoes/teste", methods=["POST"])
 @api_login_required
 @require_admin
 def post_alerta_teste():
     from backend.services.alerta_notify_service import (
         enviar_telegram,
-        enviar_whatsapp,
+        enviar_whatsapp_para_contatos,
         ler_config_alerta,
     )
 
@@ -412,10 +465,9 @@ def post_alerta_teste():
                 chat_id=cfg["telegram_chat_id"],
             )
         elif canal == "whatsapp":
-            destino = cfg["whatsapp_destino"]
-            if not destino:
-                return jsonify({"error": "Configure o destino WhatsApp"}), 400
-            enviar_whatsapp(texto, destino=destino)
+            enviados = enviar_whatsapp_para_contatos(texto)
+            if enviados <= 0:
+                return jsonify({"error": "Cadastre ao menos um contato WhatsApp ativo"}), 400
         else:
             return jsonify({"error": "canal deve ser telegram ou whatsapp"}), 400
     except Exception as exc:
@@ -696,9 +748,14 @@ def create_setor():
         layout_tv_web = "propaganda"
         senha_setor = ""
         cliente_ativas = False
+        ociosidade_minutos = 60
     else:
         senha_setor = (data.get("senha_setor") or "").strip()
         cliente_ativas = bool(data.get("propagandas_cliente_ativas", False))
+        try:
+            ociosidade_minutos = max(1, int(data.get("alerta_ociosidade_minutos") or 60))
+        except (TypeError, ValueError):
+            return jsonify({"error": "alerta_ociosidade_minutos inválido"}), 400
     setor = Setor(
         nome=nome,
         descricao=(data.get("descricao") or "").strip(),
@@ -713,6 +770,7 @@ def create_setor():
         alertas_ativos=True
         if tipo_setor == TIPO_SETOR_STREAMING
         else bool(data.get("alertas_ativos", True)),
+        alerta_ociosidade_minutos=ociosidade_minutos,
         layout_tv_web=layout_tv_web,
         orientacao_tv=orientacao_tv,
     )
@@ -738,6 +796,7 @@ def update_setor(setor_id: int):
             "propagandas_cliente_ativas",
             "impressao_via_cliente",
             "alertas_ativos",
+            "alerta_ociosidade_minutos",
             "layout_tv_web",
             "orientacao_tv",
             "modo_identificacao_operador",
@@ -784,6 +843,14 @@ def update_setor(setor_id: int):
         setor.impressao_via_cliente = bool(data.get("impressao_via_cliente"))
     if "alertas_ativos" in data and not setor_eh_streaming(setor):
         setor.alertas_ativos = bool(data.get("alertas_ativos"))
+    if "alerta_ociosidade_minutos" in data and not setor_eh_streaming(setor):
+        try:
+            minutos = int(data.get("alerta_ociosidade_minutos"))
+        except (TypeError, ValueError):
+            return jsonify({"error": "alerta_ociosidade_minutos inválido"}), 400
+        if minutos < 1:
+            return jsonify({"error": "alerta_ociosidade_minutos deve ser >= 1"}), 400
+        setor.alerta_ociosidade_minutos = minutos
     if "layout_tv_web" in data and not setor_eh_streaming(setor):
         try:
             setor.layout_tv_web = _layout_tv_web(data.get("layout_tv_web"))

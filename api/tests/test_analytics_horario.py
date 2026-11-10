@@ -121,6 +121,45 @@ class AnalyticsHorarioTest(unittest.TestCase):
         self.assertIn("6h10", recente["mensagem"])
         self.assertIn("Farmácia:", alertas[("sem_chamada_recente", 2)]["mensagem"])
 
+    def test_ociosidade_por_setor_respeita_minutos(self):
+        agora = datetime(2026, 11, 9, 10, 0)
+        inicio = datetime(2026, 11, 9)
+        fim = datetime(2026, 11, 10)
+        senhas = [
+            Senha(
+                senha="N001",
+                tipo="normal",
+                setor_id=1,
+                status="C",
+                data_hora=datetime(2026, 11, 9, 9, 0),
+                chamada_em=datetime(2026, 11, 9, 9, 30),
+            ),
+        ]
+        caixa = Setor(id=1, nome="Caixa", senha_setor="CAIXA", alerta_ociosidade_minutos=45)
+        rapido = Setor(id=2, nome="Farmácia", senha_setor="FARMA", alerta_ociosidade_minutos=20)
+
+        alertas_45 = {
+            (a["tipo"], a.get("setor_id")): a
+            for a in _alertas_horario(senhas, inicio, fim, agora, {1: caixa})[0]
+        }
+        self.assertNotIn(("sem_chamada_recente", 1), alertas_45)
+
+        alertas_20 = {
+            (a["tipo"], a.get("setor_id")): a
+            for a in _alertas_horario(senhas, inicio, fim, agora, {2: rapido})[0]
+        }
+        # Farmácia sem chamadas desde 07:00 → passa dos 20 min
+        self.assertIn(("sem_chamada_recente", 2), alertas_20)
+        self.assertIn("20 min", alertas_20[("sem_chamada_recente", 2)]["mensagem"])
+
+        caixa.alerta_ociosidade_minutos = 20
+        alertas_caixa = {
+            (a["tipo"], a.get("setor_id")): a
+            for a in _alertas_horario(senhas, inicio, fim, agora, {1: caixa})[0]
+        }
+        self.assertIn(("sem_chamada_recente", 1), alertas_caixa)
+        self.assertIn("30 min", alertas_caixa[("sem_chamada_recente", 1)]["mensagem"])
+
     def test_antes_de_uma_hora_nao_alerta_chamada_em_andamento(self):
         agora = datetime(2026, 11, 9, 7, 40)
         alertas, eventos = _alertas_horario([], datetime(2026, 11, 9), datetime(2026, 11, 10), agora)

@@ -307,38 +307,44 @@ def _alerta_sem_chamada_recente(
     *,
     nome_setor: str | None = None,
     setor_id: int | None = None,
+    ociosidade_minutos: int = 60,
 ) -> dict[str, Any] | None:
-    """Alerta se já passou uma hora seguida sem chamada dentro do expediente."""
+    """Alerta se passou o tempo de ociosidade do setor sem chamada no expediente."""
     if not (inicio <= agora < fim):
         return None
     if not (HORA_INICIO_EXPEDIENTE <= agora.hour < HORA_FIM_EXPEDIENTE):
         return None
 
+    limite = max(1, int(ociosidade_minutos or 60))
     abertura = datetime(agora.year, agora.month, agora.day, HORA_INICIO_EXPEDIENTE)
     anteriores = [ts for ts in chamadas_em if abertura <= ts <= agora]
     referencia = max(anteriores) if anteriores else abertura
     gap = agora - referencia
-    if gap < timedelta(hours=1):
+    if gap < timedelta(minutes=limite):
         return None
 
     total_min = int(gap.total_seconds() // 60)
     horas_gap, mins = divmod(total_min, 60)
-    duracao = f"{horas_gap}h{mins:02d}"
+    duracao = f"{horas_gap}h{mins:02d}" if horas_gap else f"{mins} min"
     if anteriores:
-        mensagem = f"Há {duracao} sem chamar senha (última às {referencia:%H:%M})."
+        mensagem = (
+            f"Há {duracao} sem chamar senha "
+            f"(limite {limite} min; última às {referencia:%H:%M})."
+        )
     else:
-        mensagem = f"Há {duracao} sem chamar senha desde as 07:00."
+        mensagem = f"Há {duracao} sem chamar senha desde as 07:00 (limite {limite} min)."
     if nome_setor:
         mensagem = f"{nome_setor}: {mensagem[:1].lower()}{mensagem[1:]}"
     alerta: dict[str, Any] = {
         "tipo": "sem_chamada_recente",
-        "severidade": "critical" if gap >= timedelta(hours=2) else "warning",
+        "severidade": "critical" if gap >= timedelta(minutes=limite * 2) else "warning",
         "mensagem": mensagem,
         "valor": total_min,
     }
     if setor_id is not None:
         alerta["setor_id"] = setor_id
     alerta["referencia"] = referencia.isoformat(timespec="minutes")
+    alerta["ociosidade_minutos"] = limite
     return alerta
 
 
@@ -369,13 +375,14 @@ def _evento_chamada_recente(alerta: dict[str, Any] | None) -> dict[str, Any] | N
     if not alerta or not alerta.get("referencia"):
         return None
     setor_id = alerta.get("setor_id")
+    limite = max(1, int(alerta.get("ociosidade_minutos") or 60))
     return {
-        "chave": f"sem_chamada_recente:{setor_id or 0}:{alerta['referencia']}",
+        "chave": f"sem_chamada_recente:{setor_id or 0}:{alerta['referencia']}:{limite}",
         "tipo": "sem_chamada_recente",
         "severidade": alerta["severidade"],
         "mensagem": alerta["mensagem"],
         "setor_id": setor_id,
-        "ocorrido_em": datetime.fromisoformat(alerta["referencia"]) + timedelta(hours=1),
+        "ocorrido_em": datetime.fromisoformat(alerta["referencia"]) + timedelta(minutes=limite),
     }
 
 
@@ -527,10 +534,12 @@ def _alertas_horario(
             agora,
             nome_setor=nome,
             setor_id=sid,
+            ociosidade_minutos=int(getattr(setor, "alerta_ociosidade_minutos", None) or 60),
         )
         if recente:
             evento = _evento_chamada_recente(recente)
             recente.pop("referencia", None)
+            recente.pop("ociosidade_minutos", None)
             alertas.append(recente)
             if evento:
                 eventos.append(evento)
