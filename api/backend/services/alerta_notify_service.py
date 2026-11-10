@@ -350,19 +350,21 @@ def despachar_alertas_pendentes(alerta_ids: Optional[list[int]] = None) -> dict[
 
             if wa_ativo and not alerta.enviado_whatsapp:
                 if destinos_wa:
-                    ok_todos = True
+                    # Marca enviado se ao menos um destino receber. Evita reenvio
+                    # duplicado aos contatos que já receberam quando outro falha.
+                    ok_algum = False
                     for destino in destinos_wa:
                         try:
                             enviar_whatsapp(texto, destino=destino)
+                            ok_algum = True
                         except Exception:
-                            ok_todos = False
                             falhas += 1
                             logger.exception(
                                 "Falha ao enviar alerta %s no WhatsApp para %s",
                                 alerta.id,
                                 destino,
                             )
-                    if ok_todos:
+                    if ok_algum:
                         alerta.enviado_whatsapp = True
                         enviados_wa += 1
                         mudou = True

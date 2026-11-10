@@ -752,10 +752,13 @@ def create_setor():
     else:
         senha_setor = (data.get("senha_setor") or "").strip()
         cliente_ativas = bool(data.get("propagandas_cliente_ativas", False))
+        raw_ociosidade = data.get("alerta_ociosidade_minutos", 60)
         try:
-            ociosidade_minutos = max(1, int(data.get("alerta_ociosidade_minutos") or 60))
+            ociosidade_minutos = int(60 if raw_ociosidade is None else raw_ociosidade)
         except (TypeError, ValueError):
             return jsonify({"error": "alerta_ociosidade_minutos inválido"}), 400
+        if ociosidade_minutos < 1:
+            return jsonify({"error": "alerta_ociosidade_minutos deve ser >= 1"}), 400
     setor = Setor(
         nome=nome,
         descricao=(data.get("descricao") or "").strip(),
