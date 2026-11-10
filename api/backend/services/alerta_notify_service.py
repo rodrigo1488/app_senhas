@@ -94,16 +94,15 @@ def destinos_whatsapp_ativos() -> list[str]:
 def salvar_contato_whatsapp(data: dict[str, Any], *, contato_id: int | None = None) -> dict[str, Any]:
     from backend.models import AlertaWhatsappContato
 
-    nome = str(data.get("nome") or "").strip()
-    telefone = normalizar_telefone_whatsapp(str(data.get("telefone") or ""))
-    ativo = bool(data.get("ativo", True))
     agora = agora_sp()
 
     if contato_id is None:
+        nome = str(data.get("nome") or "").strip()
+        telefone = normalizar_telefone_whatsapp(str(data.get("telefone") or ""))
         contato = AlertaWhatsappContato(
             nome=nome or telefone,
             telefone=telefone,
-            ativo=ativo,
+            ativo=bool(data.get("ativo", True)),
             criado_em=agora,
             atualizado_em=agora,
         )
@@ -112,12 +111,13 @@ def salvar_contato_whatsapp(data: dict[str, Any], *, contato_id: int | None = No
         contato = AlertaWhatsappContato.query.get(contato_id)
         if contato is None:
             raise ValueError("Contato não encontrado")
-        if "nome" in data:
-            contato.nome = nome or telefone
         if "telefone" in data:
-            contato.telefone = telefone
+            contato.telefone = normalizar_telefone_whatsapp(str(data.get("telefone") or ""))
+        if "nome" in data:
+            nome = str(data.get("nome") or "").strip()
+            contato.nome = nome or contato.telefone
         if "ativo" in data:
-            contato.ativo = ativo
+            contato.ativo = bool(data.get("ativo"))
         contato.atualizado_em = agora
 
     db.session.commit()

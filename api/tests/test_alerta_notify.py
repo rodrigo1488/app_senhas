@@ -7,6 +7,7 @@ from backend.models import AlertaLog, AlertaWhatsappContato, Setor
 from backend.services.alerta_notify_service import (
     despachar_alertas_pendentes,
     salvar_config_alerta,
+    salvar_contato_whatsapp,
 )
 from backend.services.usuario_service import criar_ou_atualizar_admin
 from backend.timezone import agora_sp
@@ -230,3 +231,16 @@ class AlertaNotifyTest(unittest.TestCase):
             self.assertEqual(2, wa.call_count)
             row = db.session.get(AlertaLog, alerta_id)
             self.assertTrue(row.enviado_whatsapp)
+
+    def test_atualiza_contato_sem_telefone_nao_exige_numero(self):
+        with self.app.app_context():
+            criado = salvar_contato_whatsapp(
+                {"nome": "Principal", "telefone": "5511999999999", "ativo": True}
+            )
+            atualizado = salvar_contato_whatsapp(
+                {"nome": "Gerência", "ativo": False},
+                contato_id=criado["id"],
+            )
+            self.assertEqual("Gerência", atualizado["nome"])
+            self.assertEqual("5511999999999", atualizado["telefone"])
+            self.assertFalse(atualizado["ativo"])
