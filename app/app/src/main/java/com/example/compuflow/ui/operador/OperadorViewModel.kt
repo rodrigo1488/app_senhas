@@ -15,7 +15,6 @@ import com.example.compuflow.data.remote.dto.OperadorDto
 import com.example.compuflow.data.remote.dto.Papel
 import com.example.compuflow.data.remote.dto.SelecionarPapelRequest
 import com.example.compuflow.data.remote.dto.SenhaDto
-import com.example.compuflow.data.remote.dto.TvChamadaRecenteDto
 import com.example.compuflow.data.session.AuthState
 import com.example.compuflow.data.remote.toUserMessage
 import com.example.compuflow.realtime.SocketEvent
@@ -35,8 +34,6 @@ class OperadorViewModel : ViewModel() {
 
     var pendentes by mutableStateOf<List<SenhaDto>>(emptyList())
     var atendimentos by mutableStateOf<List<AtendimentoDto>>(emptyList())
-    var chamadasRecentes by mutableStateOf<List<TvChamadaRecenteDto>>(emptyList())
-        private set
 
     var atendimentoAtual by mutableStateOf<AtendimentoDto?>(null)
         private set
@@ -77,21 +74,12 @@ class OperadorViewModel : ViewModel() {
                 val fila = NetworkModule.apiService().estadoFila()
                 pendentes = fila.pendentes
                 atendimentos = fila.atendimentos
-                carregarChamadasRecentes()
                 conectarSocketDaTela()
             } catch (e: Exception) {
                 errorMessage = e.toUserMessage("Não foi possível carregar a fila.")
             } finally {
                 isLoading = false
             }
-        }
-    }
-
-    private suspend fun carregarChamadasRecentes() {
-        try {
-            chamadasRecentes = NetworkModule.apiService().tvChamadasRecentes().chamadas
-        } catch (_: Exception) {
-            /* histórico é complementar; a fila já carregou */
         }
     }
 
@@ -108,9 +96,6 @@ class OperadorViewModel : ViewModel() {
                 atendimentos = event.atendimentos
                 sincronizarAtendimentoAtual(event.atendimentos)
             }
-            is SocketEvent.SenhaChamada -> {
-                prependChamada(event)
-            }
             else -> Unit
         }
     }
@@ -122,22 +107,6 @@ class OperadorViewModel : ViewModel() {
         if (doOperador == null) {
             tokenDoAtendimento = null
         }
-    }
-
-    private fun prependChamada(event: SocketEvent.SenhaChamada) {
-        val next = TvChamadaRecenteDto(
-            senha_id = event.senhaId ?: (System.currentTimeMillis() and 0x7fffffff).toInt(),
-            senha = event.senha,
-            tipo = event.tipo ?: "normal",
-            operador_id = event.operadorId,
-            operador_nome = event.operadorNome,
-            operador_foto = event.operadorFoto,
-            chamada_em = event.chamadaEm,
-            status = "atual",
-        )
-        chamadasRecentes = listOf(next) + chamadasRecentes.filter { item ->
-            if (event.senhaId != null) item.senha_id != event.senhaId else item.senha != event.senha
-        }.take(7)
     }
 
     fun abrirConfiguracao() {
@@ -219,22 +188,6 @@ class OperadorViewModel : ViewModel() {
                     atendimentos = listOf(novoAtendimento) +
                         atendimentos.filterNot { it.operador_id == operador.id }
                     pendentes = pendentes.filterNot { it.id == senhaChamada.id }
-                    prependChamada(
-                        SocketEvent.SenhaChamada(
-                            setorId = null,
-                            ticketToken = null,
-                            senhaId = senhaChamada.id,
-                            senha = senhaChamada.senha,
-                            tipo = senhaChamada.tipo,
-                            operadorId = operador.id,
-                            operadorNome = operador.nome,
-                            operadorFoto = operador.foto_perfil,
-                            chamadaEm = null,
-                            temPedido = senhaChamada.tem_pedido,
-                            pedido = senhaChamada.pedido,
-                            pedidoConfirmado = senhaChamada.pedido_confirmado,
-                        ),
-                    )
                 } else {
                     check(senhaChamada == null) {
                         "Resposta inválida: senha retornada sem chamada realizada"

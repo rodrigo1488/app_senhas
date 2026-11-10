@@ -6,6 +6,7 @@ import {
   DashboardFilters,
   type DashboardFiltersState,
 } from "@/components/dashboard/filters";
+import { DashboardAlerts } from "@/components/dashboard/alerts";
 import { HeatmapSetorHora } from "@/components/dashboard/heatmap";
 import { DemandaPorHoraChart, FluxoPorSetorChart } from "@/components/dashboard/charts";
 import { KpiCard } from "@/components/dashboard/kpi-card";
@@ -68,7 +69,7 @@ export default function HeatmapDashboardPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Mapa de calor</h1>
         <p className="text-muted-foreground">
-          Carga operacional por horário e setor — volume de senhas e espera
+          Carga operacional por horário e setor, das 07h às 22h
         </p>
       </div>
 
@@ -87,6 +88,8 @@ export default function HeatmapDashboardPage() {
 
       {data ? (
         <>
+          <DashboardAlerts alertas={data.alertas} />
+
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <KpiCard title="Senhas emitidas" value={String(data.kpis.emitidas)} />
             <KpiCard title="Espera média" value={fmtMin(data.kpis.espera.media)} />

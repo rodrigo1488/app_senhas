@@ -275,6 +275,9 @@ export type AnalyticsData = {
     series: Array<{ t: string; label: string } & Record<string, string | number>>;
   };
   heatmap: {
+    hora_inicio?: number;
+    hora_fim?: number;
+    hora_alerta_ate?: number;
     setores: { id: number; nome: string }[];
     celulas: {
       setor_id: number;

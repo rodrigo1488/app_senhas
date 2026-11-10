@@ -17,6 +17,15 @@ class OperadorUiLogicTest {
     }
 
     @Test
+    fun `grade cabe todos os operadores sem sobra de linha vazia`() {
+        assertEquals(GradeOperadores(1, 1), gradeParaCaberTodos(0, 800f, 600f, 10f))
+        assertEquals(GradeOperadores(1, 1), gradeParaCaberTodos(1, 800f, 600f, 10f))
+        val varios = gradeParaCaberTodos(6, 800f, 600f, 10f)
+        assertTrue(varios.colunas * varios.linhas >= 6)
+        assertTrue(varios.linhas * varios.colunas - 6 < varios.colunas)
+    }
+
+    @Test
     fun `badge reflete o estado real do pedido`() {
         assertNull(pedidoBadgeLabel(temPedido = false, confirmado = false))
         assertEquals("COM PEDIDO", pedidoBadgeLabel(temPedido = true, confirmado = false))

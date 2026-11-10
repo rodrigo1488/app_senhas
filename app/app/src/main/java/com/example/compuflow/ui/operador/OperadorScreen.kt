@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -17,9 +19,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -57,16 +56,17 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.example.compuflow.data.remote.NetworkModule
 import com.example.compuflow.data.remote.dto.AtendimentoDto
 import com.example.compuflow.data.remote.dto.OperadorDto
 import com.example.compuflow.data.remote.dto.SenhaDto
-import com.example.compuflow.data.remote.dto.TvChamadaRecenteDto
 import com.example.compuflow.ui.theme.AppBorder
 import com.example.compuflow.ui.theme.AppCard
 import com.example.compuflow.ui.theme.AppForeground
@@ -187,29 +187,15 @@ fun OperadorScreen(viewModel: OperadorViewModel = viewModel()) {
                         }
                     }
                 }
-                if (viewModel.chamadasRecentes.isNotEmpty()) {
-                    item {
-                        Column(Modifier.padding(top = 16.dp)) {
-                            Text("Últimas chamadas", color = TextoPrincipal, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                            Text("Histórico recente do setor", color = TextoSecundario, fontSize = 13.sp)
-                        }
-                    }
-                    items(
-                        viewModel.chamadasRecentes,
-                        key = { "${it.senha_id}-${it.chamada_em}-${it.status}" },
-                    ) { chamada ->
-                        ChamadaRecenteCard(chamada)
-                    }
-                }
                 item {
                     Row(
-                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                        modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Column {
-                            Text("Senhas pendentes", color = TextoPrincipal, fontWeight = FontWeight.Bold, fontSize = 20.sp)
-                            Text("Ordem atual de atendimento", color = TextoSecundario, fontSize = 13.sp)
+                            Text("Senhas em espera", color = TextoPrincipal, fontWeight = FontWeight.Bold, fontSize = 20.sp)
+                            Text("Aguardando chamada, na ordem da fila", color = TextoSecundario, fontSize = 13.sp)
                         }
                         Text(
                             "${viewModel.pendentes.size}",
@@ -299,57 +285,6 @@ private fun AtendimentoAgoraCard(
 }
 
 @Composable
-private fun ChamadaRecenteCard(chamada: TvChamadaRecenteDto) {
-    val emAtendimento = chamada.status == "atual"
-    Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = AppCard),
-        border = BorderStroke(1.dp, Borda),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                OperatorPhoto(chamada.operador_foto, chamada.operador_nome ?: "Operador", 36)
-                Column(modifier = Modifier.padding(start = 10.dp)) {
-                    Text(
-                        chamada.senha,
-                        color = TextoPrincipal,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 18.sp,
-                    )
-                    Text(
-                        buildString {
-                            append(if (chamada.tipo == "preferencial") "Preferencial" else "Normal")
-                            chamada.operador_nome?.takeIf { it.isNotBlank() }?.let {
-                                append(" · ")
-                                append(it)
-                            }
-                        },
-                        color = if (chamada.tipo == "preferencial") VermelhoPreferencial else TextoSecundario,
-                        fontSize = 12.sp,
-                    )
-                }
-            }
-            Text(
-                if (emAtendimento) "Agora" else "Anterior",
-                color = if (emAtendimento) AppPrimary else TextoSecundario,
-                fontWeight = FontWeight.Bold,
-                fontSize = 11.sp,
-                modifier = Modifier
-                    .clip(RoundedCornerShape(50))
-                    .background(if (emAtendimento) AppSecondary else Color(0xFFF3F4F6))
-                    .padding(horizontal = 10.dp, vertical = 6.dp),
-            )
-        }
-    }
-}
-
-@Composable
 private fun PendenteCard(senha: SenhaDto, onVerPedido: () -> Unit) {
     Card(
         shape = RoundedCornerShape(14.dp),
@@ -410,7 +345,7 @@ private fun EmptyQueue() {
         modifier = Modifier.fillMaxWidth(),
     ) {
         Text(
-            "Nenhuma senha pendente",
+            "Nenhuma senha em espera",
             color = TextoSecundario,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(28.dp),
@@ -420,40 +355,109 @@ private fun EmptyQueue() {
 
 @Composable
 private fun IdentificacaoDialog(viewModel: OperadorViewModel) {
-    Dialog(onDismissRequest = viewModel::fecharIdentificacao) {
-        Card(
-            shape = RoundedCornerShape(22.dp),
-            colors = CardDefaults.cardColors(containerColor = AppCard),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Column(modifier = Modifier.padding(22.dp)) {
-                Text("Identifique-se para chamar", color = TextoPrincipal, fontWeight = FontWeight.Bold, fontSize = 21.sp)
-                Text(
-                    if (viewModel.modoIdentificacao == "pin") "Digite sua senha. A próxima senha será chamada imediatamente."
-                    else "Escolha seu nome. A próxima senha será chamada imediatamente.",
-                    color = TextoSecundario,
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(top = 5.dp, bottom = 16.dp),
-                )
-                if (viewModel.modoIdentificacao == "pin") {
+    val lista = viewModel.modoIdentificacao != "pin"
+    Dialog(
+        onDismissRequest = viewModel::fecharIdentificacao,
+        properties = DialogProperties(usePlatformDefaultWidth = !lista),
+    ) {
+        if (lista) {
+            ListaOperadoresTelaCheia(viewModel)
+        } else {
+            Card(
+                shape = RoundedCornerShape(22.dp),
+                colors = CardDefaults.cardColors(containerColor = AppCard),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Column(modifier = Modifier.padding(22.dp)) {
+                    Text("Identifique-se para chamar", color = TextoPrincipal, fontWeight = FontWeight.Bold, fontSize = 21.sp)
+                    Text(
+                        "Digite sua senha. A próxima senha será chamada imediatamente.",
+                        color = TextoSecundario,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(top = 5.dp, bottom = 16.dp),
+                    )
                     PinPad(enabled = !viewModel.isLoading, onConfirm = viewModel::identificarPorPin)
-                } else {
-                    LazyVerticalGrid(
-                        columns = GridCells.Fixed(2),
-                        modifier = Modifier.height(330.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        items(viewModel.operadores, key = { it.id }) { operador ->
-                            OperatorChoice(operador, !viewModel.isLoading) { viewModel.identificarPorFoto(operador) }
-                        }
+                    viewModel.errorMessage?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
+                    }
+                    TextButton(onClick = viewModel::fecharIdentificacao, enabled = !viewModel.isLoading, modifier = Modifier.align(Alignment.End)) {
+                        Text("Cancelar")
                     }
                 }
-                viewModel.errorMessage?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
-                }
-                TextButton(onClick = viewModel::fecharIdentificacao, enabled = !viewModel.isLoading, modifier = Modifier.align(Alignment.End)) {
-                    Text("Cancelar")
+            }
+        }
+    }
+}
+
+@Composable
+private fun ListaOperadoresTelaCheia(viewModel: OperadorViewModel) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(FundoOperadorClaro)
+            .padding(16.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("Escolha seu nome", color = TextoPrincipal, fontWeight = FontWeight.Bold, fontSize = 22.sp)
+                Text(
+                    "A próxima senha será chamada imediatamente.",
+                    color = TextoSecundario,
+                    fontSize = 13.sp,
+                )
+            }
+            TextButton(onClick = viewModel::fecharIdentificacao, enabled = !viewModel.isLoading) {
+                Text("Cancelar")
+            }
+        }
+        viewModel.errorMessage?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+        }
+        if (viewModel.operadores.isEmpty()) {
+            Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Text("Nenhum operador cadastrado para este setor.", color = TextoSecundario, textAlign = TextAlign.Center)
+            }
+        } else {
+            BoxWithConstraints(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(top = 12.dp),
+            ) {
+                val espaco = 10.dp
+                val grade = gradeParaCaberTodos(
+                    quantidade = viewModel.operadores.size,
+                    largura = maxWidth.value,
+                    altura = maxHeight.value,
+                    espaco = espaco.value,
+                )
+                val linhas = viewModel.operadores.chunked(grade.colunas)
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.spacedBy(espaco),
+                ) {
+                    linhas.forEach { linha ->
+                        Row(
+                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(espaco),
+                        ) {
+                            linha.forEach { operador ->
+                                OperatorChoice(
+                                    operador = operador,
+                                    enabled = !viewModel.isLoading,
+                                    onClick = { viewModel.identificarPorFoto(operador) },
+                                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                                )
+                            }
+                            repeat(grade.colunas - linha.size) {
+                                Spacer(Modifier.weight(1f))
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -491,19 +495,38 @@ private fun PinPad(enabled: Boolean, onConfirm: (String) -> Unit) {
 }
 
 @Composable
-private fun OperatorChoice(operador: OperadorDto, enabled: Boolean, onClick: () -> Unit) {
+private fun OperatorChoice(
+    operador: OperadorDto,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Card(
         shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = Color(0xFFF8FAFC)),
         border = BorderStroke(1.dp, Borda),
-        modifier = Modifier.fillMaxWidth().clickable(enabled = enabled, onClick = onClick),
+        modifier = modifier.clickable(enabled = enabled, onClick = onClick),
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.fillMaxWidth().padding(14.dp),
-        ) {
-            OperatorPhoto(operador.foto_perfil, operador.nome, 60)
-            Text(operador.nome, color = TextoPrincipal, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center, modifier = Modifier.padding(top = 8.dp))
+        BoxWithConstraints(modifier = Modifier.fillMaxSize().padding(8.dp)) {
+            val foto = minOf(maxWidth * 0.42f, maxHeight * 0.48f).coerceIn(28.dp, 88.dp)
+            val nome = if (maxHeight < 96.dp) 12.sp else 15.sp
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                OperatorPhoto(operador.foto_perfil, operador.nome, foto.value.toInt().coerceAtLeast(28))
+                Text(
+                    operador.nome,
+                    color = TextoPrincipal,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = nome,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+            }
         }
     }
 }

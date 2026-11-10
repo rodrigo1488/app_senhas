@@ -28,6 +28,32 @@ internal fun operatorPhotoUrl(baseUrl: String, path: String?): String? {
     return "${baseUrl.trimEnd('/')}/uploads/$normalized"
 }
 
+internal data class GradeOperadores(val colunas: Int, val linhas: Int)
+
+/** Grade que cabe todos os operadores na área, priorizando o card mais quadrado. */
+internal fun gradeParaCaberTodos(
+    quantidade: Int,
+    largura: Float,
+    altura: Float,
+    espaco: Float,
+): GradeOperadores {
+    if (quantidade <= 1) return GradeOperadores(1, 1)
+    var melhor = GradeOperadores(1, quantidade)
+    var melhorLado = -1f
+    for (colunas in 1..quantidade) {
+        val linhas = (quantidade + colunas - 1) / colunas
+        val larguraCelula = (largura - espaco * (colunas - 1)) / colunas
+        val alturaCelula = (altura - espaco * (linhas - 1)) / linhas
+        if (larguraCelula <= 0f || alturaCelula <= 0f) continue
+        val lado = minOf(larguraCelula, alturaCelula)
+        if (lado > melhorLado) {
+            melhorLado = lado
+            melhor = GradeOperadores(colunas, linhas)
+        }
+    }
+    return melhor
+}
+
 internal data class PinKeyResult(val displayedPin: String, val submittedPin: String? = null)
 
 internal fun processPinKey(current: String, key: String, length: Int = 4): PinKeyResult {

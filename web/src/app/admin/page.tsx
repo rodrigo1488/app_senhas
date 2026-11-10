@@ -74,7 +74,7 @@ export default function AdminDashboardPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground">
-          Métricas de fila, espera e satisfação por período
+          Métricas de fila, espera e satisfação. Expediente das 07h às 22h.
         </p>
       </div>
 

@@ -25,14 +25,15 @@ const CHART = {
 };
 
 export function DemandaPorHoraChart({ data }: { data: AnalyticsData["por_hora"] }) {
-  const rows = data.filter((d) => d.retiradas > 0 || d.chamadas > 0);
-  const source = rows.length ? rows : data.slice(8, 19);
+  const source = data.filter(
+    (d) => (d.hora >= 7 && d.hora <= 22) || d.retiradas > 0 || d.chamadas > 0,
+  );
 
   return (
     <Card className="col-span-full lg:col-span-2">
       <CardHeader>
         <CardTitle>Demanda por horário</CardTitle>
-        <CardDescription>Retiradas e chamadas ao longo do dia</CardDescription>
+        <CardDescription>Retiradas e chamadas das 07h às 22h</CardDescription>
       </CardHeader>
       <CardContent className="h-[280px]">
         <ResponsiveContainer width="100%" height="100%">
@@ -175,7 +176,7 @@ export function FluxoPorSetorChart({
       <CardHeader>
         <CardTitle>Fluxo por setor</CardTitle>
         <CardDescription>
-          Volume de senhas {data?.granularidade === "dia" ? "por dia" : "por hora"} em cada
+          Volume de senhas {data?.granularidade === "dia" ? "por dia" : "por hora, das 07h às 22h"} em cada
           setor de atendimento
         </CardDescription>
       </CardHeader>

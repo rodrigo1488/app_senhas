@@ -1,0 +1,113 @@
+import unittest
+from datetime import datetime, timedelta
+
+from backend import create_app
+from backend.extensions import db
+from backend.models import Senha, Setor
+from backend.services.analytics_service import _alertas_horario, montar_analytics
+from backend.services.usuario_service import criar_ou_atualizar_admin
+from backend.timezone import agora_sp
+
+
+class AnalyticsHorarioTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = create_app(
+            {
+                "TESTING": True,
+                "SECRET_KEY": "test-secret",
+                "SQLALCHEMY_DATABASE_URI": "sqlite://",
+            }
+        )
+
+    def setUp(self):
+        with self.app.app_context():
+            db.drop_all()
+            db.create_all()
+            criar_ou_atualizar_admin("admin@test.local", "admin123")
+            caixa = Setor(nome="Caixa", senha_setor="CAIXA")
+            db.session.add(caixa)
+            db.session.commit()
+            self.caixa_id = caixa.id
+
+    def test_grade_vai_ate_22h_e_fluxo_omite_madrugada(self):
+        with self.app.app_context():
+            ontem = (agora_sp() - timedelta(days=1)).replace(
+                hour=9, minute=15, second=0, microsecond=0
+            )
+            db.session.add(
+                Senha(
+                    senha="N001",
+                    tipo="normal",
+                    setor_id=self.caixa_id,
+                    status="C",
+                    token_unico="horario-1",
+                    data_hora=ontem,
+                    chamada_em=ontem.replace(hour=11, minute=5),
+                )
+            )
+            db.session.commit()
+
+            dia = ontem.date().isoformat()
+            dados = montar_analytics(from_s=dia, to_s=dia)
+
+            self.assertEqual(7, dados["heatmap"]["hora_inicio"])
+            self.assertEqual(22, dados["heatmap"]["hora_fim"])
+            self.assertEqual(21, dados["heatmap"]["hora_alerta_ate"])
+            self.assertIn(22, {c["hora"] for c in dados["heatmap"]["celulas"]})
+
+            labels = [row["label"] for row in dados["fluxo_por_setor"]["series"]]
+            self.assertEqual([f"{hora:02d}h" for hora in range(7, 23)], labels)
+            self.assertEqual(1, dados["por_hora"][9]["retiradas"])
+            self.assertEqual(0, dados["por_hora"][9]["chamadas"])
+            self.assertEqual(1, dados["por_hora"][11]["chamadas"])
+
+            tipos = {a["tipo"] for a in dados["alertas"]}
+            self.assertIn("sem_retirada", tipos)
+            self.assertIn("sem_chamada", tipos)
+
+    def test_lacunas_07_a_21_e_hora_sem_chamada(self):
+        agora = datetime(2026, 11, 9, 15, 30)
+        inicio = datetime(2026, 11, 9)
+        fim = datetime(2026, 11, 10)
+        senhas = [
+            Senha(
+                senha="N001",
+                tipo="normal",
+                setor_id=1,
+                status="C",
+                data_hora=datetime(2026, 11, 9, 9, 5),
+                chamada_em=datetime(2026, 11, 9, 9, 20),
+            ),
+            Senha(
+                senha="N002",
+                tipo="normal",
+                setor_id=1,
+                status="A",
+                data_hora=datetime(2026, 11, 9, 10, 10),
+            ),
+        ]
+
+        alertas = {a["tipo"]: a for a in _alertas_horario(senhas, inicio, fim, agora)}
+
+        retirada = alertas["sem_retirada"]["mensagem"]
+        self.assertIn("07h–08h", retirada)
+        self.assertIn("11h–14h", retirada)
+        self.assertNotIn("09h", retirada)
+        self.assertNotIn("10h", retirada)
+        self.assertEqual("warning", alertas["sem_retirada"]["severidade"])
+
+        chamada = alertas["sem_chamada"]["mensagem"]
+        self.assertIn("07h–08h", chamada)
+        self.assertIn("10h–14h", chamada)
+        self.assertNotIn("09h", chamada)
+
+        recente = alertas["sem_chamada_recente"]
+        self.assertEqual("critical", recente["severidade"])
+        self.assertIn("09:20", recente["mensagem"])
+        self.assertIn("6h10", recente["mensagem"])
+
+    def test_antes_de_uma_hora_nao_alerta_chamada_em_andamento(self):
+        agora = datetime(2026, 11, 9, 7, 40)
+        alertas = _alertas_horario([], datetime(2026, 11, 9), datetime(2026, 11, 10), agora)
+        self.assertEqual([], alertas)

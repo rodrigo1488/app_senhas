@@ -16,6 +16,11 @@ from backend.utils import get_configuracao
 
 DEFAULT_ABANDONO_MINUTOS = 30
 DEFAULT_META_ESPERA_MIN = 10.0
+# Grade do painel: 07h até 22h (expediente até as 22:00).
+HORA_INICIO_EXPEDIENTE = 7
+HORA_FIM_EXPEDIENTE = 22
+# Horas cheias que devem ter movimento: 07h, 08h, …, 21h.
+HORA_FIM_ALERTA = 21
 
 
 def _parse_dt(value: Optional[str], *, end_of_day: bool = False) -> datetime:
@@ -166,23 +171,6 @@ def _montar_fluxo_por_setor(
     use_hour = span <= timedelta(days=2)
     granularidade = "hora" if use_hour else "dia"
 
-    buckets: list[tuple[datetime, str]] = []
-    if use_hour:
-        cursor = datetime(inicio.year, inicio.month, inicio.day, inicio.hour)
-        while cursor < fim:
-            label = (
-                cursor.strftime("%d/%m %Hh")
-                if span > timedelta(days=1)
-                else f"{cursor.hour:02d}h"
-            )
-            buckets.append((cursor, label))
-            cursor += timedelta(hours=1)
-    else:
-        cursor = datetime(inicio.year, inicio.month, inicio.day)
-        while cursor < fim:
-            buckets.append((cursor, cursor.strftime("%d/%m")))
-            cursor += timedelta(days=1)
-
     counts: dict[tuple[datetime, int], int] = defaultdict(int)
     for senha in senhas:
         if not senha.data_hora or senha.setor_id not in atendimento:
@@ -197,6 +185,27 @@ def _montar_fluxo_por_setor(
         else:
             chave_t = datetime(senha.data_hora.year, senha.data_hora.month, senha.data_hora.day)
         counts[(chave_t, senha.setor_id)] += 1
+
+    horas_com_volume = {t.hour for (t, _sid), total in counts.items() if total > 0}
+
+    buckets: list[tuple[datetime, str]] = []
+    if use_hour:
+        cursor = datetime(inicio.year, inicio.month, inicio.day, inicio.hour)
+        while cursor < fim:
+            dentro = HORA_INICIO_EXPEDIENTE <= cursor.hour <= HORA_FIM_EXPEDIENTE
+            if dentro or cursor.hour in horas_com_volume:
+                label = (
+                    cursor.strftime("%d/%m %Hh")
+                    if span > timedelta(days=1)
+                    else f"{cursor.hour:02d}h"
+                )
+                buckets.append((cursor, label))
+            cursor += timedelta(hours=1)
+    else:
+        cursor = datetime(inicio.year, inicio.month, inicio.day)
+        while cursor < fim:
+            buckets.append((cursor, cursor.strftime("%d/%m")))
+            cursor += timedelta(days=1)
 
     setores_serie = [
         {"id": setor.id, "nome": setor.nome, "chave": f"setor_{setor.id}"}
@@ -214,6 +223,173 @@ def _montar_fluxo_por_setor(
         "setores": setores_serie,
         "series": series,
     }
+
+
+def _formatar_faixas_hora(horas: list[int]) -> str:
+    if not horas:
+        return ""
+    ordered = sorted(set(horas))
+    faixas: list[tuple[int, int]] = []
+    inicio = fim = ordered[0]
+    for hora in ordered[1:]:
+        if hora == fim + 1:
+            fim = hora
+            continue
+        faixas.append((inicio, fim))
+        inicio = fim = hora
+    faixas.append((inicio, fim))
+
+    partes: list[str] = []
+    for a, b in faixas:
+        if a == b:
+            partes.append(f"{a:02d}h")
+        else:
+            partes.append(f"{a:02d}h–{b:02d}h")
+    if len(partes) == 1:
+        return partes[0]
+    if len(partes) == 2:
+        return f"{partes[0]} e {partes[1]}"
+    return ", ".join(partes[:-1]) + f" e {partes[-1]}"
+
+
+def _hora_cheia_no_periodo(
+    dia: date,
+    hora: int,
+    inicio: datetime,
+    fim: datetime,
+    agora: datetime,
+) -> bool:
+    """Hora já encerrada, inteira dentro do filtro e não no futuro."""
+    ini_hora = datetime(dia.year, dia.month, dia.day, hora)
+    fim_hora = ini_hora + timedelta(hours=1)
+    limite = agora if agora < fim else fim
+    return ini_hora >= inicio and fim_hora <= limite
+
+
+def _dias_periodo(inicio: datetime, fim: datetime) -> list[date]:
+    if fim <= inicio:
+        return []
+    dia = inicio.date()
+    ultimo = (fim - timedelta(microseconds=1)).date()
+    dias: list[date] = []
+    while dia <= ultimo:
+        dias.append(dia)
+        dia += timedelta(days=1)
+    return dias
+
+
+def _resumo_lacunas(
+    por_dia: list[tuple[date, list[int]]],
+    *,
+    vazio: str,
+    parcial: str,
+) -> str:
+    varios = len(por_dia) > 1
+    partes: list[str] = []
+    for dia, horas in por_dia[:6]:
+        prefixo = f"{dia:%d/%m}: " if varios else ""
+        if horas == list(range(HORA_INICIO_EXPEDIENTE, HORA_FIM_ALERTA + 1)):
+            partes.append(f"{prefixo}{vazio}")
+        else:
+            partes.append(f"{prefixo}{parcial} {_formatar_faixas_hora(horas)}")
+    texto = " · ".join(partes)
+    extra = len(por_dia) - 6
+    if extra > 0:
+        texto += f" · e mais {extra} dia(s)"
+    return texto
+
+
+def _alertas_horario(
+    senhas: list[Senha],
+    inicio: datetime,
+    fim: datetime,
+    agora: datetime,
+) -> list[dict[str, Any]]:
+    """Lacunas do expediente: hora sem retirada (07–21) e hora sem chamada."""
+    retiradas: set[tuple[date, int]] = set()
+    chamadas: set[tuple[date, int]] = set()
+    chamadas_em: list[datetime] = []
+    for senha in senhas:
+        if senha.data_hora and inicio <= senha.data_hora < fim:
+            retiradas.add((senha.data_hora.date(), senha.data_hora.hour))
+        if senha.chamada_em and inicio <= senha.chamada_em < fim:
+            chamadas.add((senha.chamada_em.date(), senha.chamada_em.hour))
+            chamadas_em.append(senha.chamada_em)
+
+    sem_retirada: list[tuple[date, list[int]]] = []
+    sem_chamada: list[tuple[date, list[int]]] = []
+
+    for dia in _dias_periodo(inicio, fim):
+        horas_retirada: list[int] = []
+        horas_chamada: list[int] = []
+        for hora in range(HORA_INICIO_EXPEDIENTE, HORA_FIM_ALERTA + 1):
+            if not _hora_cheia_no_periodo(dia, hora, inicio, fim, agora):
+                continue
+            if (dia, hora) not in retiradas:
+                horas_retirada.append(hora)
+            if (dia, hora) not in chamadas:
+                horas_chamada.append(hora)
+        if horas_retirada:
+            sem_retirada.append((dia, horas_retirada))
+        if horas_chamada:
+            sem_chamada.append((dia, horas_chamada))
+
+    alertas: list[dict[str, Any]] = []
+    if sem_retirada:
+        alertas.append(
+            {
+                "tipo": "sem_retirada",
+                "severidade": "warning",
+                "mensagem": _resumo_lacunas(
+                    sem_retirada,
+                    vazio="Nenhuma senha retirada entre 07h e 21h.",
+                    parcial="Horários sem retirada de senha (07h–21h):",
+                ),
+                "valor": sum(len(horas) for _, horas in sem_retirada),
+            }
+        )
+    if sem_chamada:
+        alertas.append(
+            {
+                "tipo": "sem_chamada",
+                "severidade": "warning",
+                "mensagem": _resumo_lacunas(
+                    sem_chamada,
+                    vazio="Nenhuma senha chamada entre 07h e 21h.",
+                    parcial="Horários sem chamada de senha:",
+                ),
+                "valor": sum(len(horas) for _, horas in sem_chamada),
+            }
+        )
+
+    if not (inicio <= agora < fim):
+        return alertas
+    if not (HORA_INICIO_EXPEDIENTE <= agora.hour < HORA_FIM_EXPEDIENTE):
+        return alertas
+
+    abertura = datetime(agora.year, agora.month, agora.day, HORA_INICIO_EXPEDIENTE)
+    anteriores = [ts for ts in chamadas_em if abertura <= ts <= agora]
+    referencia = max(anteriores) if anteriores else abertura
+    gap = agora - referencia
+    if gap < timedelta(hours=1):
+        return alertas
+
+    total_min = int(gap.total_seconds() // 60)
+    horas_gap, mins = divmod(total_min, 60)
+    duracao = f"{horas_gap}h{mins:02d}"
+    if anteriores:
+        mensagem = f"Há {duracao} sem chamar senha (última às {referencia:%H:%M})."
+    else:
+        mensagem = f"Há {duracao} sem chamar senha desde as 07:00."
+    alertas.append(
+        {
+            "tipo": "sem_chamada_recente",
+            "severidade": "critical" if gap >= timedelta(hours=2) else "warning",
+            "mensagem": mensagem,
+            "valor": total_min,
+        }
+    )
+    return alertas
 
 
 def montar_analytics(
@@ -422,15 +598,14 @@ def montar_analytics(
         for h in range(24)
     }
     for s in senhas:
-        if not s.data_hora:
-            continue
-        h = s.data_hora.hour
-        por_hora_map[h]["retiradas"] += 1
-        if s.chamada_em is not None:
-            por_hora_map[h]["chamadas"] += 1
+        if s.data_hora and inicio <= s.data_hora < fim:
+            por_hora_map[s.data_hora.hour]["retiradas"] += 1
+        if s.chamada_em and inicio <= s.chamada_em < fim:
+            hora_chamada = s.chamada_em.hour
+            por_hora_map[hora_chamada]["chamadas"] += 1
             em = _espera_minutos(s)
             if em is not None:
-                por_hora_map[h]["esperas"].append(em)
+                por_hora_map[hora_chamada]["esperas"].append(em)
     for fin, senha in finalizados_rows:
         ref = senha.data_hora or fin.data_hora
         if not ref:
@@ -647,6 +822,9 @@ def montar_analytics(
             }
         )
 
+    if setores:
+        alertas = _alertas_horario(senhas, inicio, fim, agora) + alertas
+
     return {
         "periodo": {
             "from": inicio.isoformat(),
@@ -660,6 +838,9 @@ def montar_analytics(
         "por_hora": por_hora,
         "fluxo_por_setor": _montar_fluxo_por_setor(senhas, setores, inicio, fim),
         "heatmap": {
+            "hora_inicio": HORA_INICIO_EXPEDIENTE,
+            "hora_fim": HORA_FIM_EXPEDIENTE,
+            "hora_alerta_ate": HORA_FIM_ALERTA,
             "setores": [
                 {"id": sid, "nome": setores[sid].nome if sid in setores else "—"}
                 for sid in setor_ids_hm

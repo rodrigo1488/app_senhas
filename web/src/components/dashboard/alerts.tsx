@@ -6,6 +6,7 @@ export function DashboardAlerts({ alertas }: { alertas: AnalyticsData["alertas"]
 
   return (
     <div className="space-y-2">
+      <p className="text-sm font-medium">Alertas</p>
       {alertas.map((a, i) => (
         <div
           key={`${a.tipo}-${i}`}
