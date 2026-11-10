@@ -365,9 +365,26 @@ def post_whatsapp_logout():
     from backend.services.alerta_notify_service import logout_whatsapp, status_whatsapp
 
     try:
-        logout_whatsapp()
+        data = logout_whatsapp()
     except Exception as exc:
         return jsonify({"error": str(exc)}), 500
+    if isinstance(data, dict) and data.get("status"):
+        return jsonify(data)
+    return jsonify(status_whatsapp())
+
+
+@admin_api_bp.route("/alertas/whatsapp/reconnect", methods=["POST"])
+@api_login_required
+@require_admin
+def post_whatsapp_reconnect():
+    from backend.services.alerta_notify_service import reconnect_whatsapp, status_whatsapp
+
+    try:
+        data = reconnect_whatsapp()
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+    if isinstance(data, dict) and data.get("status"):
+        return jsonify(data)
     return jsonify(status_whatsapp())
 
 

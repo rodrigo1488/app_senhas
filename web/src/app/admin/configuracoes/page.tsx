@@ -215,8 +215,24 @@ export default function ConfiguracoesPage() {
       });
       setAlertas((atual) => ({ ...atual, whatsapp: status }));
       setMessage("Sessão WhatsApp encerrada. Escaneie o novo QR.");
+      window.setTimeout(carregarWhatsapp, 1500);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro ao desconectar");
+    }
+  }
+
+  async function gerarQrWhatsapp() {
+    setMessage(null);
+    setError(null);
+    try {
+      const status = await apiFetch<WhatsappStatus>("/api/v1/admin/alertas/whatsapp/reconnect", {
+        method: "POST",
+      });
+      setAlertas((atual) => ({ ...atual, whatsapp: status }));
+      setMessage("Gerando novo QR do WhatsApp...");
+      window.setTimeout(carregarWhatsapp, 1500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao gerar QR");
     }
   }
 
@@ -371,6 +387,10 @@ export default function ConfiguracoesPage() {
                       className="h-56 w-56 rounded-md border bg-white p-2"
                     />
                   </div>
+                ) : wa.status === "logged_out" || wa.status === "starting" || wa.status === "reconnecting" ? (
+                  <p className="text-sm text-muted-foreground">
+                    Aguardando novo QR... se não aparecer, clique em Gerar novo QR.
+                  </p>
                 ) : null}
                 <div className="flex flex-wrap gap-2">
                   <Button
@@ -380,6 +400,9 @@ export default function ConfiguracoesPage() {
                     onClick={() => testarCanal("whatsapp")}
                   >
                     {testando === "whatsapp" ? "Enviando..." : "Testar WhatsApp"}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={gerarQrWhatsapp}>
+                    Gerar novo QR
                   </Button>
                   <Button type="button" variant="outline" onClick={logoutWhatsapp}>
                     Desconectar WhatsApp

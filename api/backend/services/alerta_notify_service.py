@@ -98,7 +98,7 @@ def status_whatsapp() -> dict[str, Any]:
 
 def logout_whatsapp() -> dict[str, Any]:
     base = (os.getenv("WHATSAPP_SERVICE_URL") or "http://whatsapp:3001").rstrip("/")
-    resp = requests.post(f"{base}/logout", headers=_whatsapp_headers(), timeout=15)
+    resp = requests.post(f"{base}/logout", headers=_whatsapp_headers(), timeout=30)
     if resp.status_code >= 400:
         detalhe = "Falha no logout"
         try:
@@ -110,6 +110,22 @@ def logout_whatsapp() -> dict[str, Any]:
         return resp.json()
     except Exception:
         return {"ok": True}
+
+
+def reconnect_whatsapp() -> dict[str, Any]:
+    base = (os.getenv("WHATSAPP_SERVICE_URL") or "http://whatsapp:3001").rstrip("/")
+    resp = requests.post(f"{base}/reconnect", headers=_whatsapp_headers(), timeout=30)
+    if resp.status_code >= 400:
+        detalhe = "Falha ao gerar QR"
+        try:
+            detalhe = resp.json().get("error") or detalhe
+        except Exception:
+            detalhe = resp.text or detalhe
+        raise RuntimeError(detalhe)
+    try:
+        return resp.json()
+    except Exception:
+        return status_whatsapp()
 
 
 def enviar_telegram(mensagem: str, *, token: str, chat_id: str) -> None:
@@ -155,30 +171,44 @@ def _mensagem_envio(alerta) -> str:
 
 
 def despachar_alertas_pendentes(alerta_ids: Optional[list[int]] = None) -> dict[str, int]:
-    """Envia alertas ainda não notificados. Seguro para chamar em paralelo."""
+    """Envia alertas ainda não notificados. Seguro para chamar em paralelo.
+
+    `enviado_*` só vira True após envio bem-sucedido. Canal desligado ou sem
+    credencial não marca o flag — assim o alerta ainda pode sair quando o
+    canal for reativado ou configurado.
+    """
     from backend.models import AlertaLog
 
     with _envio_lock:
         cfg = ler_config_alerta()
         tipos = set(cfg["tipos"])
+        tg_ativo = bool(cfg["telegram_ativo"])
+        wa_ativo = bool(cfg["whatsapp_ativo"])
+        if not tg_ativo and not wa_ativo and not alerta_ids:
+            return {"telegram": 0, "whatsapp": 0, "falhas": 0, "avaliados": 0}
+
         q = AlertaLog.query.filter(AlertaLog.tipo.in_(tipos or TIPOS_ALERTA_PADRAO))
         if alerta_ids:
             q = q.filter(AlertaLog.id.in_(alerta_ids))
         else:
-            q = q.filter(
-                db.or_(
-                    AlertaLog.enviado_telegram.is_(False),
-                    AlertaLog.enviado_whatsapp.is_(False),
-                )
-            )
+            pendencias = []
+            if tg_ativo:
+                pendencias.append(AlertaLog.enviado_telegram.is_(False))
+            if wa_ativo:
+                pendencias.append(AlertaLog.enviado_whatsapp.is_(False))
+            if not pendencias:
+                return {"telegram": 0, "whatsapp": 0, "falhas": 0, "avaliados": 0}
+            q = q.filter(db.or_(*pendencias))
         rows = q.order_by(AlertaLog.id.asc()).limit(100).all()
         enviados_tg = 0
         enviados_wa = 0
         falhas = 0
+        alterou = False
 
         for alerta in rows:
             texto = _mensagem_envio(alerta)
-            if cfg["telegram_ativo"] and not alerta.enviado_telegram:
+            mudou = False
+            if tg_ativo and not alerta.enviado_telegram:
                 token = cfg["telegram_bot_token"]
                 chat = cfg["telegram_chat_id"]
                 if token and chat:
@@ -186,32 +216,38 @@ def despachar_alertas_pendentes(alerta_ids: Optional[list[int]] = None) -> dict[
                         enviar_telegram(texto, token=token, chat_id=chat)
                         alerta.enviado_telegram = True
                         enviados_tg += 1
+                        mudou = True
                     except Exception:
                         falhas += 1
                         logger.exception("Falha ao enviar alerta %s no Telegram", alerta.id)
                 else:
-                    alerta.enviado_telegram = True
-            elif not cfg["telegram_ativo"] and not alerta.enviado_telegram:
-                alerta.enviado_telegram = True
+                    logger.warning(
+                        "Telegram ativo sem token/chat_id; alerta %s permanece pendente",
+                        alerta.id,
+                    )
 
-            if cfg["whatsapp_ativo"] and not alerta.enviado_whatsapp:
+            if wa_ativo and not alerta.enviado_whatsapp:
                 destino = cfg["whatsapp_destino"]
                 if destino:
                     try:
                         enviar_whatsapp(texto, destino=destino)
                         alerta.enviado_whatsapp = True
                         enviados_wa += 1
+                        mudou = True
                     except Exception:
                         falhas += 1
                         logger.exception("Falha ao enviar alerta %s no WhatsApp", alerta.id)
                 else:
-                    alerta.enviado_whatsapp = True
-            elif not cfg["whatsapp_ativo"] and not alerta.enviado_whatsapp:
-                alerta.enviado_whatsapp = True
+                    logger.warning(
+                        "WhatsApp ativo sem destino; alerta %s permanece pendente",
+                        alerta.id,
+                    )
 
-            alerta.atualizado_em = agora_sp()
+            if mudou:
+                alerta.atualizado_em = agora_sp()
+                alterou = True
 
-        if rows:
+        if alterou:
             db.session.commit()
         return {"telegram": enviados_tg, "whatsapp": enviados_wa, "falhas": falhas, "avaliados": len(rows)}
 

@@ -1,5 +1,7 @@
 "use strict";
 
+const fs = require("fs");
+const path = require("path");
 const express = require("express");
 const QRCode = require("qrcode");
 const pino = require("pino");
@@ -44,10 +46,73 @@ function toJid(destino) {
   return `${digits}@s.whatsapp.net`;
 }
 
+function statusPayload() {
+  return {
+    status: connectionStatus,
+    connected: connectionStatus === "connected",
+    jid: connectedJid,
+    qr: lastQr,
+    qr_data_url: lastQrDataUrl,
+  };
+}
+
+function clearAuth() {
+  try {
+    fs.mkdirSync(AUTH_DIR, { recursive: true });
+    for (const name of fs.readdirSync(AUTH_DIR)) {
+      fs.rmSync(path.join(AUTH_DIR, name), { recursive: true, force: true });
+    }
+  } catch (err) {
+    logger.error(err, "Falha ao limpar auth WhatsApp");
+  }
+}
+
+function endSocket() {
+  if (!sock) return;
+  try {
+    sock.ev.removeAllListeners();
+  } catch (_) {
+    /* ignore */
+  }
+  try {
+    sock.end(undefined);
+  } catch (_) {
+    /* ignore */
+  }
+  sock = null;
+}
+
+function scheduleRestart(reason, delayMs = 1000) {
+  if (reconnectTimer) clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => {
+    reconnectTimer = null;
+    restartForPairing(reason).catch((err) =>
+      logger.error({ err, reason }, "Falha ao reiniciar pareamento"),
+    );
+  }, delayMs);
+}
+
+async function restartForPairing(reason) {
+  if (starting) return;
+  logger.info({ reason }, "Reiniciando WhatsApp para novo QR");
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  endSocket();
+  clearAuth();
+  lastQr = null;
+  lastQrDataUrl = null;
+  connectedJid = null;
+  connectionStatus = "starting";
+  await startSocket();
+}
+
 async function startSocket() {
   if (starting) return;
   starting = true;
   try {
+    fs.mkdirSync(AUTH_DIR, { recursive: true });
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
     const { version } = await fetchLatestBaileysVersion();
     sock = makeWASocket({
@@ -78,19 +143,21 @@ async function startSocket() {
       }
       if (connection === "close") {
         const code = lastDisconnect?.error?.output?.statusCode;
-        const shouldReconnect = code !== DisconnectReason.loggedOut;
-        connectionStatus = shouldReconnect ? "reconnecting" : "logged_out";
+        const loggedOut = code === DisconnectReason.loggedOut;
+        const shouldReconnect = !loggedOut;
         connectedJid = null;
         sock = null;
         logger.warn({ code, shouldReconnect }, "Conexão WhatsApp fechou");
         if (shouldReconnect) {
-          if (reconnectTimer) clearTimeout(reconnectTimer);
-          reconnectTimer = setTimeout(() => {
-            starting = false;
-            startSocket().catch((err) => logger.error(err, "Falha ao reconectar"));
-          }, 3000);
+          connectionStatus = "reconnecting";
+          scheduleRestart("disconnect_retry", 3000);
           return;
         }
+        // Logout remoto/local: limpa credenciais e gera QR de novo.
+        connectionStatus = "logged_out";
+        lastQr = null;
+        lastQrDataUrl = null;
+        scheduleRestart("logged_out", 800);
       }
     });
   } finally {
@@ -103,13 +170,17 @@ app.get("/health", (_req, res) => {
 });
 
 app.get("/status", authorize, (_req, res) => {
-  res.json({
-    status: connectionStatus,
-    connected: connectionStatus === "connected",
-    jid: connectedJid,
-    qr: lastQr,
-    qr_data_url: lastQrDataUrl,
-  });
+  // Se ficou logged_out sem QR (ex.: falha ao reiniciar), tenta parear de novo.
+  if (
+    connectionStatus === "logged_out" &&
+    !lastQrDataUrl &&
+    !starting &&
+    !sock &&
+    !reconnectTimer
+  ) {
+    scheduleRestart("status_without_qr", 200);
+  }
+  res.json(statusPayload());
 });
 
 app.post("/send", authorize, async (req, res) => {
@@ -132,20 +203,25 @@ app.post("/send", authorize, async (req, res) => {
 app.post("/logout", authorize, async (_req, res) => {
   try {
     if (sock) {
-      await sock.logout();
+      try {
+        await sock.logout();
+      } catch (err) {
+        logger.warn({ err }, "logout do Baileys falhou; limpando sessão mesmo assim");
+      }
     }
-    connectionStatus = "logged_out";
-    connectedJid = null;
-    lastQr = null;
-    lastQrDataUrl = null;
-    sock = null;
-    starting = false;
-    setTimeout(() => {
-      startSocket().catch((err) => logger.error(err, "Falha ao reiniciar após logout"));
-    }, 1000);
-    return res.json({ ok: true });
+    await restartForPairing("manual_logout");
+    return res.json({ ok: true, ...statusPayload() });
   } catch (err) {
     return res.status(500).json({ error: err?.message || "Falha no logout" });
+  }
+});
+
+app.post("/reconnect", authorize, async (_req, res) => {
+  try {
+    await restartForPairing("manual_reconnect");
+    return res.json({ ok: true, ...statusPayload() });
+  } catch (err) {
+    return res.status(500).json({ error: err?.message || "Falha ao gerar QR" });
   }
 });
 

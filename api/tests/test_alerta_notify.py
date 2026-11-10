@@ -78,3 +78,64 @@ class AlertaNotifyTest(unittest.TestCase):
             row = db.session.get(AlertaLog, alerta_id)
             self.assertTrue(row.enviado_telegram)
             self.assertTrue(row.enviado_whatsapp)
+
+    def test_canal_desligado_nao_marca_enviado_e_reativa_envia(self):
+        with self.app.app_context():
+            salvar_config_alerta(
+                {
+                    "telegram_ativo": False,
+                    "telegram_bot_token": "token",
+                    "telegram_chat_id": "123",
+                    "whatsapp_ativo": False,
+                    "whatsapp_destino": "5511999999999",
+                    "tipos": ["sem_chamada"],
+                }
+            )
+            log = AlertaLog(
+                chave="sem_chamada:1:2026-11-10:08",
+                tipo="sem_chamada",
+                severidade="warning",
+                mensagem="Caixa: horário 08h sem chamada de senha.",
+                setor_id=self.caixa_id,
+                ocorrido_em=agora_sp(),
+                enviado_telegram=False,
+                enviado_whatsapp=False,
+            )
+            db.session.add(log)
+            db.session.commit()
+            alerta_id = log.id
+
+            with patch(
+                "backend.services.alerta_notify_service.enviar_telegram"
+            ) as tg, patch(
+                "backend.services.alerta_notify_service.enviar_whatsapp"
+            ) as wa:
+                parado = despachar_alertas_pendentes([alerta_id])
+                self.assertEqual(0, parado["telegram"])
+                self.assertEqual(0, parado["whatsapp"])
+                self.assertEqual(0, tg.call_count)
+                self.assertEqual(0, wa.call_count)
+
+                row = db.session.get(AlertaLog, alerta_id)
+                self.assertFalse(row.enviado_telegram)
+                self.assertFalse(row.enviado_whatsapp)
+
+                salvar_config_alerta(
+                    {
+                        "telegram_ativo": True,
+                        "telegram_bot_token": "token",
+                        "telegram_chat_id": "123",
+                        "whatsapp_ativo": True,
+                        "whatsapp_destino": "5511999999999",
+                        "tipos": ["sem_chamada"],
+                    }
+                )
+                reativado = despachar_alertas_pendentes([alerta_id])
+
+            self.assertEqual(1, reativado["telegram"])
+            self.assertEqual(1, reativado["whatsapp"])
+            self.assertEqual(1, tg.call_count)
+            self.assertEqual(1, wa.call_count)
+            row = db.session.get(AlertaLog, alerta_id)
+            self.assertTrue(row.enviado_telegram)
+            self.assertTrue(row.enviado_whatsapp)
