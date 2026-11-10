@@ -140,3 +140,18 @@ class AnalyticsHorarioTest(unittest.TestCase):
             chaves = [row.chave for row in logs]
             self.assertEqual(len(chaves), len(set(chaves)))
             self.assertTrue(any("Caixa:" in row.mensagem and "07h" in row.mensagem for row in logs))
+
+    def test_setor_com_alerta_desligado_nao_gera_log(self):
+        with self.app.app_context():
+            agora = agora_sp().replace(minute=0, second=0, microsecond=0)
+            if agora.hour < 8:
+                self.skipTest("antes das 08h a hora das 07h ainda não encerrou")
+            caixa = db.session.get(Setor, self.caixa_id)
+            caixa.alertas_ativos = False
+            db.session.commit()
+            dia = agora.date().isoformat()
+            montar_analytics(from_s=dia, to_s=dia)
+            self.assertEqual(
+                0,
+                AlertaLog.query.filter_by(setor_id=self.caixa_id, tipo="sem_chamada").count(),
+            )

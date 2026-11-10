@@ -1,0 +1,80 @@
+import unittest
+from unittest.mock import patch
+
+from backend import create_app
+from backend.extensions import db
+from backend.models import AlertaLog, Setor
+from backend.services.alerta_notify_service import (
+    despachar_alertas_pendentes,
+    salvar_config_alerta,
+)
+from backend.services.usuario_service import criar_ou_atualizar_admin
+from backend.timezone import agora_sp
+
+
+class AlertaNotifyTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = create_app(
+            {
+                "TESTING": True,
+                "SECRET_KEY": "test-secret",
+                "SQLALCHEMY_DATABASE_URI": "sqlite://",
+            }
+        )
+
+    def setUp(self):
+        with self.app.app_context():
+            db.drop_all()
+            db.create_all()
+            criar_ou_atualizar_admin("admin@test.local", "admin123")
+            caixa = Setor(nome="Caixa", senha_setor="CAIXA")
+            db.session.add(caixa)
+            db.session.commit()
+            self.caixa_id = caixa.id
+
+    def test_despacha_telegram_e_whatsapp_uma_vez(self):
+        with self.app.app_context():
+            salvar_config_alerta(
+                {
+                    "telegram_ativo": True,
+                    "telegram_bot_token": "token",
+                    "telegram_chat_id": "123",
+                    "whatsapp_ativo": True,
+                    "whatsapp_destino": "5511999999999",
+                    "tipos": ["sem_chamada"],
+                }
+            )
+            agora = agora_sp()
+            log = AlertaLog(
+                chave="sem_chamada:1:2026-11-10:07",
+                tipo="sem_chamada",
+                severidade="warning",
+                mensagem="Caixa: horário 07h sem chamada de senha.",
+                setor_id=self.caixa_id,
+                ocorrido_em=agora,
+                enviado_telegram=False,
+                enviado_whatsapp=False,
+            )
+            db.session.add(log)
+            db.session.commit()
+            alerta_id = log.id
+
+            with patch(
+                "backend.services.alerta_notify_service.enviar_telegram"
+            ) as tg, patch(
+                "backend.services.alerta_notify_service.enviar_whatsapp"
+            ) as wa:
+                primeiro = despachar_alertas_pendentes([alerta_id])
+                segundo = despachar_alertas_pendentes([alerta_id])
+
+            self.assertEqual(1, primeiro["telegram"])
+            self.assertEqual(1, primeiro["whatsapp"])
+            self.assertEqual(0, segundo["telegram"])
+            self.assertEqual(0, segundo["whatsapp"])
+            self.assertEqual(1, tg.call_count)
+            self.assertEqual(1, wa.call_count)
+
+            row = db.session.get(AlertaLog, alerta_id)
+            self.assertTrue(row.enviado_telegram)
+            self.assertTrue(row.enviado_whatsapp)

@@ -218,8 +218,10 @@ def create_app(config_overrides: dict | None = None) -> Flask:
     register_socket_handlers(socketio)
 
     from backend.services.fila_service import iniciar_rotina_virada_dia
+    from backend.services.alerta_notify_service import iniciar_rotina_alertas
 
     iniciar_rotina_virada_dia(app)
+    iniciar_rotina_alertas(app)
 
     return app
 
@@ -269,6 +271,8 @@ def _init_database(app: Flask) -> None:
     _migrate_tv_dispositivo_rotacao_column()
     _migrate_usuario_papeis()
     _migrate_midia_categorias_e_vigencia()
+    _migrate_alerta_log_envio_columns()
+    _migrate_setor_alertas_ativos_column()
 
     is_sqlite = db.engine.dialect.name == "sqlite"
 
@@ -639,6 +643,69 @@ def _migrate_usuario_papeis() -> None:
                     )
                 )
         conn.execute(text("UPDATE usuarios SET papel = 'admin' WHERE papel IS NULL OR papel = ''"))
+
+
+def _migrate_setor_alertas_ativos_column() -> None:
+    """Toggle por setor para habilitar/desabilitar alertas de horário."""
+    from sqlalchemy import inspect
+
+    inspector = inspect(db.engine)
+    if "setores" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("setores")}
+    if "alertas_ativos" in columns:
+        return
+    is_sqlite = db.engine.dialect.name == "sqlite"
+    bool_default = "TRUE" if not is_sqlite else "1"
+    with db.engine.begin() as conn:
+        _ensure_column(
+            conn,
+            "setores",
+            "alertas_ativos",
+            f"BOOLEAN NOT NULL DEFAULT {bool_default}",
+            is_sqlite,
+        )
+
+
+def _migrate_alerta_log_envio_columns() -> None:
+    """Flags de envio Telegram/WhatsApp em alerta_logs."""
+    from sqlalchemy import inspect, text
+
+    inspector = inspect(db.engine)
+    if "alerta_logs" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("alerta_logs")}
+    is_sqlite = db.engine.dialect.name == "sqlite"
+    bool_default = "FALSE" if not is_sqlite else "0"
+    true_sql = "TRUE" if not is_sqlite else "1"
+    added_any = False
+    with db.engine.begin() as conn:
+        if "enviado_telegram" not in columns:
+            _ensure_column(
+                conn,
+                "alerta_logs",
+                "enviado_telegram",
+                f"BOOLEAN NOT NULL DEFAULT {bool_default}",
+                is_sqlite,
+            )
+            added_any = True
+        if "enviado_whatsapp" not in columns:
+            _ensure_column(
+                conn,
+                "alerta_logs",
+                "enviado_whatsapp",
+                f"BOOLEAN NOT NULL DEFAULT {bool_default}",
+                is_sqlite,
+            )
+            added_any = True
+        if added_any:
+            # Evita flood: alertas já existentes na migração não são reenviados.
+            conn.execute(
+                text(
+                    "UPDATE alerta_logs SET "
+                    f"enviado_telegram = {true_sql}, enviado_whatsapp = {true_sql}"
+                )
+            )
 
 
 def _ensure_column(conn, table: str, column: str, col_type: str, is_sqlite: bool) -> None:

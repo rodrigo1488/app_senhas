@@ -62,6 +62,8 @@ class Setor(db.Model):
     # Quando True, o tablet do cliente (APK) envia o cupom à impressora na LAN
     # local; o servidor (ex.: atrás de túnel) não tenta abrir TCP na impressora.
     impressao_via_cliente = db.Column(db.Boolean, nullable=False, default=False)
+    # Liga/desliga alertas de horário e notificação deste setor.
+    alertas_ativos = db.Column(db.Boolean, nullable=False, default=True)
     layout_tv_web = db.Column(db.String(20), nullable=False, default="propaganda")
     orientacao_tv = db.Column(db.String(20), nullable=False, default="horizontal")
     som_chamada = db.Column(db.Text)
@@ -94,6 +96,7 @@ class Setor(db.Model):
             "propagandas_ativas": bool(self.propagandas_ativas),
             "propagandas_cliente_ativas": bool(self.propagandas_cliente_ativas),
             "impressao_via_cliente": bool(self.impressao_via_cliente),
+            "alertas_ativos": bool(self.alertas_ativos) if self.alertas_ativos is not None else True,
             "layout_tv_web": self.layout_tv_web or "propaganda",
             "orientacao_tv": self.orientacao_tv or "horizontal",
             "som_chamada": self.som_chamada,
@@ -413,6 +416,8 @@ class AlertaLog(db.Model):
     ocorrido_em = db.Column(db.DateTime, nullable=False)
     criado_em = db.Column(db.DateTime, default=agora_sp, nullable=False)
     atualizado_em = db.Column(db.DateTime, default=agora_sp, nullable=False)
+    enviado_telegram = db.Column(db.Boolean, default=False, nullable=False)
+    enviado_whatsapp = db.Column(db.Boolean, default=False, nullable=False)
 
     setor = db.relationship("Setor", lazy="joined")
 
@@ -425,6 +430,8 @@ class AlertaLog(db.Model):
             "setor_id": self.setor_id,
             "setor": self.setor.nome if self.setor else None,
             "ocorrido_em": self.ocorrido_em.isoformat() if self.ocorrido_em else None,
+            "enviado_telegram": bool(self.enviado_telegram),
+            "enviado_whatsapp": bool(self.enviado_whatsapp),
         }
 
 

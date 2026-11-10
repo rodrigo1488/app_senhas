@@ -39,5 +39,8 @@ Pillow==11.0.0
 pywebpush==1.14.1
 cryptography>=42.0.5
 
+# Alertas Telegram / HTTP para o gateway WhatsApp (Baileys)
+requests>=2.32.0
+
 # Servidor WSGI para produção (opcional)
 gunicorn==23.0.0

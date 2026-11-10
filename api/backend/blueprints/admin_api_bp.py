@@ -131,6 +131,7 @@ def _setor_admin_dict(setor: Setor, *, ocultar_senha: bool = False) -> dict:
         "propagandas_ativas": bool(setor.propagandas_ativas),
         "propagandas_cliente_ativas": bool(setor.propagandas_cliente_ativas),
         "impressao_via_cliente": bool(setor.impressao_via_cliente),
+        "alertas_ativos": bool(setor.alertas_ativos) if setor.alertas_ativos is not None else True,
         "propaganda_ids_cliente": propaganda_ids_cliente(setor.id),
         "layout_tv_web": setor.layout_tv_web or "propaganda",
         "orientacao_tv": setor.orientacao_tv or "horizontal",
@@ -323,6 +324,86 @@ def listar_alertas():
         .all()
     )
     return jsonify({"itens": [row.to_dict() for row in rows]})
+
+
+@admin_api_bp.route("/alertas/notificacoes", methods=["GET"])
+@api_login_required
+@require_admin
+def get_alertas_notificacoes():
+    from backend.services.alerta_notify_service import ler_config_alerta, status_whatsapp
+
+    cfg = ler_config_alerta()
+    cfg["whatsapp"] = status_whatsapp()
+    return jsonify(cfg)
+
+
+@admin_api_bp.route("/alertas/notificacoes", methods=["PUT"])
+@api_login_required
+@require_admin
+def put_alertas_notificacoes():
+    from backend.services.alerta_notify_service import salvar_config_alerta, status_whatsapp
+
+    data = request.get_json(silent=True) or {}
+    cfg = salvar_config_alerta(data)
+    cfg["whatsapp"] = status_whatsapp()
+    return jsonify(cfg)
+
+
+@admin_api_bp.route("/alertas/whatsapp/status", methods=["GET"])
+@api_login_required
+@require_admin
+def get_whatsapp_status():
+    from backend.services.alerta_notify_service import status_whatsapp
+
+    return jsonify(status_whatsapp())
+
+
+@admin_api_bp.route("/alertas/whatsapp/logout", methods=["POST"])
+@api_login_required
+@require_admin
+def post_whatsapp_logout():
+    from backend.services.alerta_notify_service import logout_whatsapp, status_whatsapp
+
+    try:
+        logout_whatsapp()
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+    return jsonify(status_whatsapp())
+
+
+@admin_api_bp.route("/alertas/notificacoes/teste", methods=["POST"])
+@api_login_required
+@require_admin
+def post_alerta_teste():
+    from backend.services.alerta_notify_service import (
+        enviar_telegram,
+        enviar_whatsapp,
+        ler_config_alerta,
+    )
+
+    data = request.get_json(silent=True) or {}
+    canal = str(data.get("canal") or "").strip().lower()
+    cfg = ler_config_alerta()
+    texto = (data.get("mensagem") or "Teste de alerta do CompuFlow").strip()
+    try:
+        if canal == "telegram":
+            if not cfg["telegram_bot_token"] or not cfg["telegram_chat_id"]:
+                return jsonify({"error": "Configure token e chat_id do Telegram"}), 400
+            enviar_telegram(
+                texto,
+                token=cfg["telegram_bot_token"],
+                chat_id=cfg["telegram_chat_id"],
+            )
+        elif canal == "whatsapp":
+            destino = cfg["whatsapp_destino"]
+            if not destino:
+                return jsonify({"error": "Configure o destino WhatsApp"}), 400
+            enviar_whatsapp(texto, destino=destino)
+        else:
+            return jsonify({"error": "canal deve ser telegram ou whatsapp"}), 400
+    except Exception as exc:
+        return jsonify({"error": str(exc)}), 500
+    return jsonify({"ok": True, "canal": canal})
 
 
 @admin_api_bp.route("/analytics", methods=["GET"])
@@ -612,6 +693,9 @@ def create_setor():
         impressao_via_cliente=False if tipo_setor == TIPO_SETOR_STREAMING else bool(
             data.get("impressao_via_cliente", False)
         ),
+        alertas_ativos=True
+        if tipo_setor == TIPO_SETOR_STREAMING
+        else bool(data.get("alertas_ativos", True)),
         layout_tv_web=layout_tv_web,
         orientacao_tv=orientacao_tv,
     )
@@ -636,6 +720,7 @@ def update_setor(setor_id: int):
             "propagandas_ativas",
             "propagandas_cliente_ativas",
             "impressao_via_cliente",
+            "alertas_ativos",
             "layout_tv_web",
             "orientacao_tv",
             "modo_identificacao_operador",
@@ -680,6 +765,8 @@ def update_setor(setor_id: int):
         setor.propagandas_cliente_ativas = bool(data.get("propagandas_cliente_ativas"))
     if "impressao_via_cliente" in data and not setor_eh_streaming(setor):
         setor.impressao_via_cliente = bool(data.get("impressao_via_cliente"))
+    if "alertas_ativos" in data and not setor_eh_streaming(setor):
+        setor.alertas_ativos = bool(data.get("alertas_ativos"))
     if "layout_tv_web" in data and not setor_eh_streaming(setor):
         try:
             setor.layout_tv_web = _layout_tv_web(data.get("layout_tv_web"))
@@ -1551,6 +1638,10 @@ def delete_impressora(impressora_id: int):
 @api_login_required
 @require_admin
 def get_config():
+    from backend.services.alerta_notify_service import ler_config_alerta, status_whatsapp
+
+    alertas = ler_config_alerta()
+    alertas["whatsapp"] = status_whatsapp()
     return jsonify(
         {
             "nome_empresa": get_configuracao("nome_empresa", "") or "",
@@ -1559,6 +1650,7 @@ def get_config():
             "proporcao_normais": get_configuracao("proporcao_normais", "2"),
             "limite_preferenciais_alerta": get_configuracao("limite_preferenciais_alerta", "3"),
             "posicao_senhas_tv": posicao_senhas_tv_atual(),
+            "alertas": alertas,
         }
     )
 

@@ -12,6 +12,8 @@ type AlertaLog = {
   setor_id: number | null;
   setor: string | null;
   ocorrido_em: string | null;
+  enviado_telegram?: boolean;
+  enviado_whatsapp?: boolean;
 };
 
 const ROTULO: Record<string, string> = {
@@ -113,6 +115,8 @@ export default function AlertasPage() {
                       <time dateTime={item.ocorrido_em ?? undefined}>{horaDe(item.ocorrido_em)}</time>
                       <span>{ROTULO[item.tipo] ?? item.tipo}</span>
                       {item.setor ? <span>{item.setor}</span> : null}
+                      {item.enviado_telegram ? <span>Telegram</span> : null}
+                      {item.enviado_whatsapp ? <span>WhatsApp</span> : null}
                     </div>
                     <p className="text-sm">{item.mensagem}</p>
                   </div>

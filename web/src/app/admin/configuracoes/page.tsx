@@ -1,11 +1,29 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api";
+
+type WhatsappStatus = {
+  status?: string;
+  connected?: boolean;
+  jid?: string | null;
+  qr_data_url?: string | null;
+  error?: string;
+};
+
+type AlertasConfig = {
+  telegram_ativo: boolean;
+  telegram_bot_token: string;
+  telegram_chat_id: string;
+  whatsapp_ativo: boolean;
+  whatsapp_destino: string;
+  tipos: string[];
+  whatsapp?: WhatsappStatus;
+};
 
 type Config = {
   nome_empresa: string;
@@ -14,25 +32,67 @@ type Config = {
   proporcao_normais: string;
   limite_preferenciais_alerta: string;
   posicao_senhas_tv: string;
+  alertas?: AlertasConfig;
 };
+
+const TIPOS_ALERTA = [
+  { id: "sem_retirada", label: "Hora sem retirada de senha" },
+  { id: "sem_chamada", label: "Hora sem chamada (por setor)" },
+  { id: "sem_chamada_recente", label: "Mais de 1h sem chamar" },
+];
+
+function alertasPadrao(): AlertasConfig {
+  return {
+    telegram_ativo: false,
+    telegram_bot_token: "",
+    telegram_chat_id: "",
+    whatsapp_ativo: false,
+    whatsapp_destino: "",
+    tipos: TIPOS_ALERTA.map((t) => t.id),
+    whatsapp: { status: "unknown", connected: false },
+  };
+}
 
 export default function ConfiguracoesPage() {
   const [config, setConfig] = useState<Config | null>(null);
+  const [alertas, setAlertas] = useState<AlertasConfig>(alertasPadrao());
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [testando, setTestando] = useState<"telegram" | "whatsapp" | null>(null);
+
+  const carregarWhatsapp = useCallback(() => {
+    apiFetch<WhatsappStatus>("/api/v1/admin/alertas/whatsapp/status")
+      .then((status) => setAlertas((atual) => ({ ...atual, whatsapp: status })))
+      .catch(() => {
+        /* serviço pode estar subindo */
+      });
+  }, []);
 
   useEffect(() => {
     apiFetch<Config>("/api/v1/admin/configuracao")
-      .then((c) =>
+      .then((c) => {
         setConfig({
           ...c,
           modo_chamada:
             c.modo_chamada === "preferencial_primeiro" ? "preferencial_primeiro" : "proporcao",
           posicao_senhas_tv: c.posicao_senhas_tv === "inferior" ? "inferior" : "superior",
-        }),
-      )
+        });
+        if (c.alertas) {
+          setAlertas({
+            ...alertasPadrao(),
+            ...c.alertas,
+            tipos: c.alertas.tipos?.length ? c.alertas.tipos : alertasPadrao().tipos,
+          });
+        }
+      })
       .catch((e) => setError(e instanceof Error ? e.message : "Erro"));
   }, []);
+
+  useEffect(() => {
+    carregarWhatsapp();
+    const timer = window.setInterval(carregarWhatsapp, 4000);
+    return () => window.clearInterval(timer);
+  }, [carregarWhatsapp]);
 
   async function saveEmpresa(e: FormEvent) {
     e.preventDefault();
@@ -102,8 +162,85 @@ export default function ConfiguracoesPage() {
     }
   }
 
+  async function saveAlertas(e: FormEvent) {
+    e.preventDefault();
+    setMessage(null);
+    setError(null);
+    try {
+      const salvo = await apiFetch<AlertasConfig>("/api/v1/admin/alertas/notificacoes", {
+        method: "PUT",
+        body: JSON.stringify({
+          telegram_ativo: alertas.telegram_ativo,
+          telegram_bot_token: alertas.telegram_bot_token,
+          telegram_chat_id: alertas.telegram_chat_id,
+          whatsapp_ativo: alertas.whatsapp_ativo,
+          whatsapp_destino: alertas.whatsapp_destino,
+          tipos: alertas.tipos,
+        }),
+      });
+      setAlertas({
+        ...alertasPadrao(),
+        ...salvo,
+        tipos: salvo.tipos?.length ? salvo.tipos : alertasPadrao().tipos,
+      });
+      setMessage("Notificações de alerta salvas.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro");
+    }
+  }
+
+  async function testarCanal(canal: "telegram" | "whatsapp") {
+    setTestando(canal);
+    setMessage(null);
+    setError(null);
+    try {
+      await apiFetch("/api/v1/admin/alertas/notificacoes/teste", {
+        method: "POST",
+        body: JSON.stringify({ canal, mensagem: `Teste CompuFlow (${canal})` }),
+      });
+      setMessage(`Mensagem de teste enviada para ${canal}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro no teste");
+    } finally {
+      setTestando(null);
+    }
+  }
+
+  async function logoutWhatsapp() {
+    setMessage(null);
+    setError(null);
+    try {
+      const status = await apiFetch<WhatsappStatus>("/api/v1/admin/alertas/whatsapp/logout", {
+        method: "POST",
+      });
+      setAlertas((atual) => ({ ...atual, whatsapp: status }));
+      setMessage("Sessão WhatsApp encerrada. Escaneie o novo QR.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Erro ao desconectar");
+    }
+  }
+
+  function toggleTipo(id: string) {
+    setAlertas((atual) => {
+      const tem = atual.tipos.includes(id);
+      return {
+        ...atual,
+        tipos: tem ? atual.tipos.filter((t) => t !== id) : [...atual.tipos, id],
+      };
+    });
+  }
+
   if (!config && !error) return <p className="text-muted-foreground">Carregando...</p>;
   if (!config) return <p className="text-destructive">{error}</p>;
+
+  const wa = alertas.whatsapp || {};
+  const waLabel = wa.connected
+    ? `Conectado${wa.jid ? ` · ${wa.jid}` : ""}`
+    : wa.status === "qr"
+      ? "Aguardando leitura do QR"
+      : wa.status === "unreachable"
+        ? "Serviço WhatsApp indisponível"
+        : wa.status || "Desconectado";
 
   return (
     <div className="space-y-6">
@@ -130,6 +267,128 @@ export default function ConfiguracoesPage() {
               />
             </div>
             <Button type="submit">Salvar</Button>
+          </form>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Alertas · Telegram e WhatsApp</CardTitle>
+          <CardDescription>
+            O CompuFlow envia o texto do alerta direto. WhatsApp usa Baileys (escaneie o QR com o
+            celular).
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form className="space-y-6" onSubmit={saveAlertas}>
+            <div className="space-y-3">
+              <p className="text-sm font-medium">Tipos enviados</p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {TIPOS_ALERTA.map((tipo) => (
+                  <label key={tipo.id} className="flex items-center gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={alertas.tipos.includes(tipo.id)}
+                      onChange={() => toggleTipo(tipo.id)}
+                    />
+                    {tipo.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div className="space-y-3 rounded-lg border p-4">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={alertas.telegram_ativo}
+                    onChange={(e) =>
+                      setAlertas({ ...alertas, telegram_ativo: e.target.checked })
+                    }
+                  />
+                  Telegram ativo
+                </label>
+                <div className="space-y-2">
+                  <Label>Bot token</Label>
+                  <Input
+                    value={alertas.telegram_bot_token}
+                    onChange={(e) =>
+                      setAlertas({ ...alertas, telegram_bot_token: e.target.value })
+                    }
+                    placeholder="123456:ABC..."
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Chat ID</Label>
+                  <Input
+                    value={alertas.telegram_chat_id}
+                    onChange={(e) =>
+                      setAlertas({ ...alertas, telegram_chat_id: e.target.value })
+                    }
+                    placeholder="-100123... ou ID do usuário"
+                  />
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  disabled={testando !== null}
+                  onClick={() => testarCanal("telegram")}
+                >
+                  {testando === "telegram" ? "Enviando..." : "Testar Telegram"}
+                </Button>
+              </div>
+
+              <div className="space-y-3 rounded-lg border p-4">
+                <label className="flex items-center gap-2 text-sm font-medium">
+                  <input
+                    type="checkbox"
+                    checked={alertas.whatsapp_ativo}
+                    onChange={(e) =>
+                      setAlertas({ ...alertas, whatsapp_ativo: e.target.checked })
+                    }
+                  />
+                  WhatsApp ativo (Baileys)
+                </label>
+                <div className="space-y-2">
+                  <Label>Destino (DDI + número)</Label>
+                  <Input
+                    value={alertas.whatsapp_destino}
+                    onChange={(e) =>
+                      setAlertas({ ...alertas, whatsapp_destino: e.target.value })
+                    }
+                    placeholder="5511999999999"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">Status: {waLabel}</p>
+                {wa.qr_data_url ? (
+                  <div className="space-y-2">
+                    <p className="text-sm">Escaneie no WhatsApp → Aparelhos conectados</p>
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={wa.qr_data_url}
+                      alt="QR WhatsApp"
+                      className="h-56 w-56 rounded-md border bg-white p-2"
+                    />
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={testando !== null}
+                    onClick={() => testarCanal("whatsapp")}
+                  >
+                    {testando === "whatsapp" ? "Enviando..." : "Testar WhatsApp"}
+                  </Button>
+                  <Button type="button" variant="outline" onClick={logoutWhatsapp}>
+                    Desconectar WhatsApp
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <Button type="submit">Salvar notificações</Button>
           </form>
         </CardContent>
       </Card>

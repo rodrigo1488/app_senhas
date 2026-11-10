@@ -23,6 +23,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      whatsapp:
+        condition: service_started
     environment:
       TZ: America/Sao_Paulo
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-appsenhas}:${POSTGRES_PASSWORD:-appsenhas}@db:5432/${POSTGRES_DB:-appsenhas}
@@ -34,11 +36,25 @@ services:
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
       VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
       VAPID_EMAIL: ${VAPID_EMAIL:-}
+      WHATSAPP_SERVICE_URL: ${WHATSAPP_SERVICE_URL:-http://whatsapp:3001}
+      WHATSAPP_INTERNAL_TOKEN: ${WHATSAPP_INTERNAL_TOKEN:-compuflow-whatsapp}
     ports:
       - "5000:5000"
     volumes:
       - uploads_data:/app/static/uploads
       - api_instance:/app/instance
+
+  whatsapp:
+    build: ./whatsapp
+    restart: unless-stopped
+    environment:
+      TZ: America/Sao_Paulo
+      PORT: 3001
+      AUTH_DIR: /data/auth
+      WHATSAPP_INTERNAL_TOKEN: ${WHATSAPP_INTERNAL_TOKEN:-compuflow-whatsapp}
+      LOG_LEVEL: ${WHATSAPP_LOG_LEVEL:-info}
+    volumes:
+      - whatsapp_auth:/data/auth
 
   web:
     build:
@@ -59,3 +75,4 @@ volumes:
   postgres_data:
   uploads_data:
   api_instance:
+  whatsapp_auth:

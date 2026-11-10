@@ -18,6 +18,7 @@ export default function SetoresPage() {
   const [propagandasAtivas, setPropagandasAtivas] = useState(false);
   const [propagandasClienteAtivas, setPropagandasClienteAtivas] = useState(false);
   const [impressaoViaCliente, setImpressaoViaCliente] = useState(false);
+  const [alertasAtivos, setAlertasAtivos] = useState(true);
   const [layoutTvWeb, setLayoutTvWeb] = useState<"propaganda" | "fila">("propaganda");
   const [orientacaoTv, setOrientacaoTv] = useState<"horizontal" | "vertical">("horizontal");
   const [tipoSetor, setTipoSetor] = useState<"atendimento" | "streaming">("atendimento");
@@ -42,6 +43,7 @@ export default function SetoresPage() {
     setPropagandasAtivas(Boolean(setor.propagandas_ativas));
     setPropagandasClienteAtivas(Boolean(setor.propagandas_cliente_ativas));
     setImpressaoViaCliente(Boolean(setor.impressao_via_cliente));
+    setAlertasAtivos(setor.alertas_ativos !== false);
     setLayoutTvWeb(setor.layout_tv_web || "propaganda");
     setOrientacaoTv(setor.orientacao_tv || "horizontal");
     setTipoSetor(setor.tipo_setor === "streaming" ? "streaming" : "atendimento");
@@ -56,6 +58,7 @@ export default function SetoresPage() {
     setPropagandasAtivas(false);
     setPropagandasClienteAtivas(false);
     setImpressaoViaCliente(false);
+    setAlertasAtivos(true);
     setLayoutTvWeb("propaganda");
     setOrientacaoTv("horizontal");
     setTipoSetor("atendimento");
@@ -75,6 +78,7 @@ export default function SetoresPage() {
         propagandas_ativas: propagandasAtivas,
         propagandas_cliente_ativas: tipoSetor === "streaming" ? false : propagandasClienteAtivas,
         impressao_via_cliente: tipoSetor === "streaming" ? false : impressaoViaCliente,
+        alertas_ativos: tipoSetor === "streaming" ? true : alertasAtivos,
         layout_tv_web: tipoSetor === "streaming" ? "propaganda" : layoutTvWeb,
         orientacao_tv: tipoSetor === "streaming" ? "horizontal" : orientacaoTv,
       });
@@ -248,6 +252,22 @@ export default function SetoresPage() {
                 </p>
               </div>
             </div>
+            <div className="flex items-center gap-3 space-y-0 pt-8 md:col-span-2">
+              <input
+                id="alertas_ativos"
+                type="checkbox"
+                className="h-4 w-4 rounded border"
+                checked={alertasAtivos}
+                onChange={(e) => setAlertasAtivos(e.target.checked)}
+              />
+              <div>
+                <Label htmlFor="alertas_ativos">Alertas deste setor</Label>
+                <p className="text-sm text-muted-foreground">
+                  Quando desligado, o setor não gera avisos de hora sem chamada, espera alta nem
+                  envio para Telegram/WhatsApp.
+                </p>
+              </div>
+            </div>
             </>
             ) : null}
             {tipoSetor === "atendimento" ? (
@@ -399,6 +419,7 @@ export default function SetoresPage() {
                       Tela: {s.orientacao_tv === "vertical" ? "Vertical" : "Horizontal"}
                       {s.layout_tv_web !== "fila" && !s.propagandas_ativas ? " (sem imagens ativas)" : ""}
                       {s.propagandas_cliente_ativas ? " · Espera do cliente: ligada" : " · Espera do cliente: desligada"}
+                      {s.alertas_ativos === false ? " · Alertas: desligados" : " · Alertas: ligados"}
                       {s.som_chamada ? " · Som próprio" : " · Som padrão"}
                     </>
                   )}

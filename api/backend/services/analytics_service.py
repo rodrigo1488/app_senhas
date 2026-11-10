@@ -537,18 +537,22 @@ def _alertas_horario(
     return alertas, eventos
 
 
-def registrar_logs_alerta(eventos: list[dict[str, Any]]) -> None:
-    """Grava cada alerta uma vez. A mesma chave só atualiza a mensagem."""
+def registrar_logs_alerta(eventos: list[dict[str, Any]]) -> list[int]:
+    """Grava cada alerta uma vez. A mesma chave só atualiza a mensagem.
+
+    Retorna os IDs dos alertas recém-criados (para despacho Telegram/WhatsApp).
+    """
     from backend.models import AlertaLog
 
     if not eventos:
-        return
+        return []
     agora = agora_sp()
     chaves = [evento["chave"] for evento in eventos]
     existentes = {
         row.chave: row
         for row in AlertaLog.query.filter(AlertaLog.chave.in_(chaves)).all()
     }
+    novos: list[AlertaLog] = []
     for evento in eventos:
         row = existentes.get(evento["chave"])
         if row is not None:
@@ -565,10 +569,14 @@ def registrar_logs_alerta(eventos: list[dict[str, Any]]) -> None:
             ocorrido_em=evento["ocorrido_em"],
             criado_em=agora,
             atualizado_em=agora,
+            enviado_telegram=False,
+            enviado_whatsapp=False,
         )
         db.session.add(row)
         existentes[evento["chave"]] = row
+        novos.append(row)
     db.session.commit()
+    return [row.id for row in novos if row.id is not None]
 
 
 def montar_analytics(
@@ -925,6 +933,9 @@ def montar_analytics(
     # Alertas
     alertas: list[dict[str, Any]] = []
     for row in por_setor:
+        setor_alerta = setores.get(row["setor_id"])
+        if setor_alerta is not None and setor_alerta.alertas_ativos is False:
+            continue
         media = (row.get("espera") or {}).get("media")
         if media is not None and media > meta_espera:
             alertas.append(
@@ -1001,12 +1012,25 @@ def montar_analytics(
             }
         )
 
-    lacunas, eventos_lacuna = _alertas_horario(senhas, inicio, fim, agora, setores)
+    setores_alerta = {
+        sid: setor
+        for sid, setor in setores.items()
+        if setor.alertas_ativos is not False
+    }
+    lacunas, eventos_lacuna = _alertas_horario(senhas, inicio, fim, agora, setores_alerta)
     alertas = lacunas + alertas
+    novos_ids: list[int] = []
     try:
-        registrar_logs_alerta(eventos_lacuna)
+        novos_ids = registrar_logs_alerta(eventos_lacuna)
     except Exception:
         db.session.rollback()
+    if novos_ids:
+        try:
+            from backend.services.alerta_notify_service import despachar_alertas_pendentes
+
+            despachar_alertas_pendentes(novos_ids)
+        except Exception:
+            db.session.rollback()
 
     return {
         "periodo": {
