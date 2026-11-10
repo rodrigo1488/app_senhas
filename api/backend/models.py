@@ -399,6 +399,35 @@ class TvDispositivo(db.Model):
         }
 
 
+class AlertaLog(db.Model):
+    """Registro estável de um alerta do expediente, para a linha do tempo."""
+
+    __tablename__ = "alerta_logs"
+
+    id = db.Column(db.Integer, primary_key=True)
+    chave = db.Column(db.Text, nullable=False, unique=True)
+    tipo = db.Column(db.String(40), nullable=False)
+    severidade = db.Column(db.String(20), nullable=False, default="warning")
+    mensagem = db.Column(db.Text, nullable=False)
+    setor_id = db.Column(db.Integer, db.ForeignKey("setores.id", ondelete="SET NULL"))
+    ocorrido_em = db.Column(db.DateTime, nullable=False)
+    criado_em = db.Column(db.DateTime, default=agora_sp, nullable=False)
+    atualizado_em = db.Column(db.DateTime, default=agora_sp, nullable=False)
+
+    setor = db.relationship("Setor", lazy="joined")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "tipo": self.tipo,
+            "severidade": self.severidade,
+            "mensagem": self.mensagem,
+            "setor_id": self.setor_id,
+            "setor": self.setor.nome if self.setor else None,
+            "ocorrido_em": self.ocorrido_em.isoformat() if self.ocorrido_em else None,
+        }
+
+
 class PresencaEquipamento(db.Model):
     """Aparelho (TV ou tablet) que informa o IP ao painel do administrador."""
 

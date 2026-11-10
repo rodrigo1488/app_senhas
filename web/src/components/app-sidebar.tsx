@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Activity,
+  Bell,
   Building2,
   FileText,
   Grid3x3,
@@ -41,6 +42,7 @@ const NAV_BASE: {
   papeis: PapelPainel[];
 }[] = [
   { href: "/admin", label: "Dashboard", icon: LayoutDashboard, papeis: ["admin", "gerente"] },
+  { href: "/admin/alertas", label: "Alertas", icon: Bell, papeis: ["admin", "gerente"] },
   { href: "/admin/relatorios", label: "Relatórios", icon: FileText, papeis: ["admin", "gerente"] },
   { href: "/admin/heatmap", label: "Mapa de calor", icon: Grid3x3, papeis: ["admin", "gerente"] },
   { href: "/admin/fila-ao-vivo", label: "Fila ao Vivo", icon: Activity, papeis: ["admin", "gerente"] },

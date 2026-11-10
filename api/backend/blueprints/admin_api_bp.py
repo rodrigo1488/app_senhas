@@ -13,6 +13,7 @@ from flask import Blueprint, current_app, jsonify, make_response, request, sessi
 from sqlalchemy import func
 
 from backend.auth import api_login_required
+from backend.timezone import agora_sp
 from backend.extensions import db
 from backend.models import (
     AtendimentoAtual,
@@ -289,6 +290,39 @@ def delete_usuario(usuario_id: int):
 
 
 # --- Dashboard / Analytics --------------------------------------------------
+
+
+@admin_api_bp.route("/alertas", methods=["GET"])
+@api_login_required
+def listar_alertas():
+    """Linha do tempo dos alertas do expediente. Atualiza o dia de hoje antes de listar."""
+    from sqlalchemy import or_
+
+    from backend.models import AlertaLog
+    from backend.services.analytics_service import montar_analytics
+
+    try:
+        permitidos = setor_ids_permitidos()
+    except AdminAccessError as exc:
+        return _access_error_response(exc)
+
+    hoje = agora_sp().date().isoformat()
+    montar_analytics(from_s=hoje, to_s=hoje, setor_ids=permitidos)
+
+    consulta = AlertaLog.query
+    if permitidos is not None:
+        if not permitidos:
+            consulta = consulta.filter(False)
+        else:
+            consulta = consulta.filter(
+                or_(AlertaLog.setor_id.is_(None), AlertaLog.setor_id.in_(permitidos))
+            )
+    rows = (
+        consulta.order_by(AlertaLog.ocorrido_em.desc(), AlertaLog.id.desc())
+        .limit(300)
+        .all()
+    )
+    return jsonify({"itens": [row.to_dict() for row in rows]})
 
 
 @admin_api_bp.route("/analytics", methods=["GET"])

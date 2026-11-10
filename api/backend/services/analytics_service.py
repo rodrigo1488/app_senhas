@@ -299,29 +299,118 @@ def _resumo_lacunas(
     return texto
 
 
+def _alerta_sem_chamada_recente(
+    chamadas_em: list[datetime],
+    inicio: datetime,
+    fim: datetime,
+    agora: datetime,
+    *,
+    nome_setor: str | None = None,
+    setor_id: int | None = None,
+) -> dict[str, Any] | None:
+    """Alerta se já passou uma hora seguida sem chamada dentro do expediente."""
+    if not (inicio <= agora < fim):
+        return None
+    if not (HORA_INICIO_EXPEDIENTE <= agora.hour < HORA_FIM_EXPEDIENTE):
+        return None
+
+    abertura = datetime(agora.year, agora.month, agora.day, HORA_INICIO_EXPEDIENTE)
+    anteriores = [ts for ts in chamadas_em if abertura <= ts <= agora]
+    referencia = max(anteriores) if anteriores else abertura
+    gap = agora - referencia
+    if gap < timedelta(hours=1):
+        return None
+
+    total_min = int(gap.total_seconds() // 60)
+    horas_gap, mins = divmod(total_min, 60)
+    duracao = f"{horas_gap}h{mins:02d}"
+    if anteriores:
+        mensagem = f"Há {duracao} sem chamar senha (última às {referencia:%H:%M})."
+    else:
+        mensagem = f"Há {duracao} sem chamar senha desde as 07:00."
+    if nome_setor:
+        mensagem = f"{nome_setor}: {mensagem[:1].lower()}{mensagem[1:]}"
+    alerta: dict[str, Any] = {
+        "tipo": "sem_chamada_recente",
+        "severidade": "critical" if gap >= timedelta(hours=2) else "warning",
+        "mensagem": mensagem,
+        "valor": total_min,
+    }
+    if setor_id is not None:
+        alerta["setor_id"] = setor_id
+    alerta["referencia"] = referencia.isoformat(timespec="minutes")
+    return alerta
+
+
+def _eventos_horas(
+    tipo: str,
+    dia: date,
+    horas: list[int],
+    mensagem_de: Any,
+    setor_id: int | None = None,
+) -> list[dict[str, Any]]:
+    eventos = []
+    for hora in horas:
+        inicio_hora = datetime(dia.year, dia.month, dia.day, hora)
+        eventos.append(
+            {
+                "chave": f"{tipo}:{setor_id or 0}:{dia.isoformat()}:{hora:02d}",
+                "tipo": tipo,
+                "severidade": "warning",
+                "mensagem": mensagem_de(hora),
+                "setor_id": setor_id,
+                "ocorrido_em": inicio_hora + timedelta(hours=1),
+            }
+        )
+    return eventos
+
+
+def _evento_chamada_recente(alerta: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not alerta or not alerta.get("referencia"):
+        return None
+    setor_id = alerta.get("setor_id")
+    return {
+        "chave": f"sem_chamada_recente:{setor_id or 0}:{alerta['referencia']}",
+        "tipo": "sem_chamada_recente",
+        "severidade": alerta["severidade"],
+        "mensagem": alerta["mensagem"],
+        "setor_id": setor_id,
+        "ocorrido_em": datetime.fromisoformat(alerta["referencia"]) + timedelta(hours=1),
+    }
+
+
 def _alertas_horario(
     senhas: list[Senha],
     inicio: datetime,
     fim: datetime,
     agora: datetime,
-) -> list[dict[str, Any]]:
+    setores: dict[int, Setor] | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Lacunas do expediente: hora sem retirada (07–21) e hora sem chamada."""
+    setores = setores or {}
     retiradas: set[tuple[date, int]] = set()
     chamadas: set[tuple[date, int]] = set()
+    chamadas_por_setor: set[tuple[date, int, int]] = set()
     chamadas_em: list[datetime] = []
+    chamadas_em_por_setor: dict[int, list[datetime]] = defaultdict(list)
     for senha in senhas:
         if senha.data_hora and inicio <= senha.data_hora < fim:
             retiradas.add((senha.data_hora.date(), senha.data_hora.hour))
         if senha.chamada_em and inicio <= senha.chamada_em < fim:
             chamadas.add((senha.chamada_em.date(), senha.chamada_em.hour))
             chamadas_em.append(senha.chamada_em)
+            if senha.setor_id:
+                chamadas_por_setor.add((senha.chamada_em.date(), senha.chamada_em.hour, senha.setor_id))
+                chamadas_em_por_setor[senha.setor_id].append(senha.chamada_em)
 
     sem_retirada: list[tuple[date, list[int]]] = []
     sem_chamada: list[tuple[date, list[int]]] = []
+    sem_chamada_por_setor: dict[int, list[tuple[date, list[int]]]] = defaultdict(list)
 
     for dia in _dias_periodo(inicio, fim):
         horas_retirada: list[int] = []
         horas_chamada: list[int] = []
+        horas_por_setor: dict[int, list[int]] = {sid: [] for sid in setores}
         for hora in range(HORA_INICIO_EXPEDIENTE, HORA_FIM_ALERTA + 1):
             if not _hora_cheia_no_periodo(dia, hora, inicio, fim, agora):
                 continue
@@ -329,10 +418,16 @@ def _alertas_horario(
                 horas_retirada.append(hora)
             if (dia, hora) not in chamadas:
                 horas_chamada.append(hora)
+            for sid in setores:
+                if (dia, hora, sid) not in chamadas_por_setor:
+                    horas_por_setor[sid].append(hora)
         if horas_retirada:
             sem_retirada.append((dia, horas_retirada))
         if horas_chamada:
             sem_chamada.append((dia, horas_chamada))
+        for sid, horas in horas_por_setor.items():
+            if horas:
+                sem_chamada_por_setor[sid].append((dia, horas))
 
     alertas: list[dict[str, Any]] = []
     if sem_retirada:
@@ -348,48 +443,132 @@ def _alertas_horario(
                 "valor": sum(len(horas) for _, horas in sem_retirada),
             }
         )
-    if sem_chamada:
-        alertas.append(
-            {
-                "tipo": "sem_chamada",
-                "severidade": "warning",
-                "mensagem": _resumo_lacunas(
-                    sem_chamada,
-                    vazio="Nenhuma senha chamada entre 07h e 21h.",
-                    parcial="Horários sem chamada de senha:",
-                ),
-                "valor": sum(len(horas) for _, horas in sem_chamada),
-            }
+
+    if not setores:
+        if sem_chamada:
+            alertas.append(
+                {
+                    "tipo": "sem_chamada",
+                    "severidade": "warning",
+                    "mensagem": _resumo_lacunas(
+                        sem_chamada,
+                        vazio="Nenhuma senha chamada entre 07h e 21h.",
+                        parcial="Horários sem chamada de senha:",
+                    ),
+                    "valor": sum(len(horas) for _, horas in sem_chamada),
+                }
+            )
+        recente = _alerta_sem_chamada_recente(chamadas_em, inicio, fim, agora)
+        if recente:
+            alertas.append(recente)
+        eventos: list[dict[str, Any]] = []
+        for dia, horas in sem_retirada:
+            eventos.extend(
+                _eventos_horas(
+                    "sem_retirada",
+                    dia,
+                    horas,
+                    lambda hora: f"Horário {hora:02d}h sem retirada de senha.",
+                )
+            )
+        for dia, horas in sem_chamada:
+            eventos.extend(
+                _eventos_horas(
+                    "sem_chamada",
+                    dia,
+                    horas,
+                    lambda hora: f"Horário {hora:02d}h sem chamada de senha.",
+                )
+            )
+        recente_log = _evento_chamada_recente(recente)
+        if recente_log:
+            eventos.append(recente_log)
+        if recente:
+            recente.pop("referencia", None)
+        return alertas, eventos
+
+    eventos = []
+    for dia, horas in sem_retirada:
+        eventos.extend(
+            _eventos_horas(
+                "sem_retirada",
+                dia,
+                horas,
+                lambda hora: f"Horário {hora:02d}h sem retirada de senha.",
+            )
         )
+    for sid, setor in sorted(setores.items(), key=lambda item: ((item[1].nome or "").lower(), item[0])):
+        nome = setor.nome or "—"
+        lacunas = sem_chamada_por_setor.get(sid) or []
+        if lacunas:
+            alertas.append(
+                {
+                    "tipo": "sem_chamada",
+                    "severidade": "warning",
+                    "setor_id": sid,
+                    "mensagem": f"{nome}: {_resumo_lacunas(lacunas, vazio='nenhuma senha chamada entre 07h e 21h.', parcial='horários sem chamada de senha:')}",
+                    "valor": sum(len(horas) for _, horas in lacunas),
+                }
+            )
+            for dia, horas in lacunas:
+                eventos.extend(
+                    _eventos_horas(
+                        "sem_chamada",
+                        dia,
+                        horas,
+                        lambda hora, nome=nome: f"{nome}: horário {hora:02d}h sem chamada de senha.",
+                        setor_id=sid,
+                    )
+                )
+        recente = _alerta_sem_chamada_recente(
+            chamadas_em_por_setor.get(sid, []),
+            inicio,
+            fim,
+            agora,
+            nome_setor=nome,
+            setor_id=sid,
+        )
+        if recente:
+            evento = _evento_chamada_recente(recente)
+            recente.pop("referencia", None)
+            alertas.append(recente)
+            if evento:
+                eventos.append(evento)
+    return alertas, eventos
 
-    if not (inicio <= agora < fim):
-        return alertas
-    if not (HORA_INICIO_EXPEDIENTE <= agora.hour < HORA_FIM_EXPEDIENTE):
-        return alertas
 
-    abertura = datetime(agora.year, agora.month, agora.day, HORA_INICIO_EXPEDIENTE)
-    anteriores = [ts for ts in chamadas_em if abertura <= ts <= agora]
-    referencia = max(anteriores) if anteriores else abertura
-    gap = agora - referencia
-    if gap < timedelta(hours=1):
-        return alertas
+def registrar_logs_alerta(eventos: list[dict[str, Any]]) -> None:
+    """Grava cada alerta uma vez. A mesma chave só atualiza a mensagem."""
+    from backend.models import AlertaLog
 
-    total_min = int(gap.total_seconds() // 60)
-    horas_gap, mins = divmod(total_min, 60)
-    duracao = f"{horas_gap}h{mins:02d}"
-    if anteriores:
-        mensagem = f"Há {duracao} sem chamar senha (última às {referencia:%H:%M})."
-    else:
-        mensagem = f"Há {duracao} sem chamar senha desde as 07:00."
-    alertas.append(
-        {
-            "tipo": "sem_chamada_recente",
-            "severidade": "critical" if gap >= timedelta(hours=2) else "warning",
-            "mensagem": mensagem,
-            "valor": total_min,
-        }
-    )
-    return alertas
+    if not eventos:
+        return
+    agora = agora_sp()
+    chaves = [evento["chave"] for evento in eventos]
+    existentes = {
+        row.chave: row
+        for row in AlertaLog.query.filter(AlertaLog.chave.in_(chaves)).all()
+    }
+    for evento in eventos:
+        row = existentes.get(evento["chave"])
+        if row is not None:
+            row.mensagem = evento["mensagem"]
+            row.severidade = evento["severidade"]
+            row.atualizado_em = agora
+            continue
+        row = AlertaLog(
+            chave=evento["chave"],
+            tipo=evento["tipo"],
+            severidade=evento["severidade"],
+            mensagem=evento["mensagem"],
+            setor_id=evento.get("setor_id"),
+            ocorrido_em=evento["ocorrido_em"],
+            criado_em=agora,
+            atualizado_em=agora,
+        )
+        db.session.add(row)
+        existentes[evento["chave"]] = row
+    db.session.commit()
 
 
 def montar_analytics(
@@ -822,8 +1001,12 @@ def montar_analytics(
             }
         )
 
-    if setores:
-        alertas = _alertas_horario(senhas, inicio, fim, agora) + alertas
+    lacunas, eventos_lacuna = _alertas_horario(senhas, inicio, fim, agora, setores)
+    alertas = lacunas + alertas
+    try:
+        registrar_logs_alerta(eventos_lacuna)
+    except Exception:
+        db.session.rollback()
 
     return {
         "periodo": {

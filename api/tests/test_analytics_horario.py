@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 
 from backend import create_app
 from backend.extensions import db
-from backend.models import Senha, Setor
+from backend.models import AlertaLog, Senha, Setor
 from backend.services.analytics_service import _alertas_horario, montar_analytics
 from backend.services.usuario_service import criar_ou_atualizar_admin
 from backend.timezone import agora_sp
@@ -65,6 +65,8 @@ class AnalyticsHorarioTest(unittest.TestCase):
             tipos = {a["tipo"] for a in dados["alertas"]}
             self.assertIn("sem_retirada", tipos)
             self.assertIn("sem_chamada", tipos)
+            chamadas = [a for a in dados["alertas"] if a["tipo"] == "sem_chamada"]
+            self.assertTrue(any(a.get("setor_id") == self.caixa_id and "Caixa:" in a["mensagem"] for a in chamadas))
 
     def test_lacunas_07_a_21_e_hora_sem_chamada(self):
         agora = datetime(2026, 11, 9, 15, 30)
@@ -88,26 +90,53 @@ class AnalyticsHorarioTest(unittest.TestCase):
             ),
         ]
 
-        alertas = {a["tipo"]: a for a in _alertas_horario(senhas, inicio, fim, agora)}
+        caixa = Setor(id=1, nome="Caixa", senha_setor="CAIXA")
+        farm = Setor(id=2, nome="Farmácia", senha_setor="FARMA")
+        alertas = {
+            (a["tipo"], a.get("setor_id")): a
+            for a in _alertas_horario(senhas, inicio, fim, agora, {1: caixa, 2: farm})[0]
+        }
 
-        retirada = alertas["sem_retirada"]["mensagem"]
+        retirada = alertas[("sem_retirada", None)]["mensagem"]
         self.assertIn("07h–08h", retirada)
         self.assertIn("11h–14h", retirada)
         self.assertNotIn("09h", retirada)
         self.assertNotIn("10h", retirada)
-        self.assertEqual("warning", alertas["sem_retirada"]["severidade"])
+        self.assertEqual("warning", alertas[("sem_retirada", None)]["severidade"])
 
-        chamada = alertas["sem_chamada"]["mensagem"]
+        chamada = alertas[("sem_chamada", 1)]["mensagem"]
+        self.assertTrue(chamada.startswith("Caixa:"))
         self.assertIn("07h–08h", chamada)
         self.assertIn("10h–14h", chamada)
         self.assertNotIn("09h", chamada)
 
-        recente = alertas["sem_chamada_recente"]
+        farm_chamada = alertas[("sem_chamada", 2)]["mensagem"]
+        self.assertTrue(farm_chamada.startswith("Farmácia:"))
+        self.assertIn("07h–14h", farm_chamada)
+
+        recente = alertas[("sem_chamada_recente", 1)]
         self.assertEqual("critical", recente["severidade"])
+        self.assertIn("Caixa:", recente["mensagem"])
         self.assertIn("09:20", recente["mensagem"])
         self.assertIn("6h10", recente["mensagem"])
+        self.assertIn("Farmácia:", alertas[("sem_chamada_recente", 2)]["mensagem"])
 
     def test_antes_de_uma_hora_nao_alerta_chamada_em_andamento(self):
         agora = datetime(2026, 11, 9, 7, 40)
-        alertas = _alertas_horario([], datetime(2026, 11, 9), datetime(2026, 11, 10), agora)
+        alertas, eventos = _alertas_horario([], datetime(2026, 11, 9), datetime(2026, 11, 10), agora)
         self.assertEqual([], alertas)
+        self.assertEqual([], eventos)
+
+    def test_linha_do_tempo_grava_setor_uma_vez(self):
+        with self.app.app_context():
+            agora = agora_sp().replace(minute=0, second=0, microsecond=0)
+            if agora.hour < 8:
+                self.skipTest("antes das 08h a hora das 07h ainda não encerrou")
+            dia = agora.date().isoformat()
+            montar_analytics(from_s=dia, to_s=dia)
+            montar_analytics(from_s=dia, to_s=dia)
+
+            logs = AlertaLog.query.filter_by(setor_id=self.caixa_id, tipo="sem_chamada").all()
+            chaves = [row.chave for row in logs]
+            self.assertEqual(len(chaves), len(set(chaves)))
+            self.assertTrue(any("Caixa:" in row.mensagem and "07h" in row.mensagem for row in logs))
