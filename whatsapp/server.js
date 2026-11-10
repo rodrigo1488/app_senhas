@@ -82,16 +82,31 @@ function endSocket() {
   sock = null;
 }
 
-function scheduleRestart(reason, delayMs = 1000) {
+function scheduleTask(fn, delayMs = 1000) {
   if (reconnectTimer) clearTimeout(reconnectTimer);
   reconnectTimer = setTimeout(() => {
     reconnectTimer = null;
-    restartForPairing(reason).catch((err) =>
-      logger.error({ err, reason }, "Falha ao reiniciar pareamento"),
-    );
+    Promise.resolve()
+      .then(fn)
+      .catch((err) => logger.error(err, "Falha na tarefa de reconexão"));
   }, delayMs);
 }
 
+/** Reinicia mantendo as credenciais (necessário após QR: código 515). */
+async function restartKeepingAuth(reason) {
+  if (starting) return;
+  logger.info({ reason }, "Reiniciando WhatsApp mantendo sessão");
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+  endSocket();
+  connectedJid = null;
+  connectionStatus = "reconnecting";
+  await startSocket();
+}
+
+/** Limpa sessão e pede novo QR (logout / pareamento manual). */
 async function restartForPairing(reason) {
   if (starting) return;
   logger.info({ reason }, "Reiniciando WhatsApp para novo QR");
@@ -144,20 +159,23 @@ async function startSocket() {
       if (connection === "close") {
         const code = lastDisconnect?.error?.output?.statusCode;
         const loggedOut = code === DisconnectReason.loggedOut;
-        const shouldReconnect = !loggedOut;
         connectedJid = null;
         sock = null;
-        logger.warn({ code, shouldReconnect }, "Conexão WhatsApp fechou");
-        if (shouldReconnect) {
-          connectionStatus = "reconnecting";
-          scheduleRestart("disconnect_retry", 3000);
+        logger.warn({ code, loggedOut }, "Conexão WhatsApp fechou");
+
+        if (loggedOut) {
+          // Sessão invalidada: limpa credenciais e gera QR novo.
+          connectionStatus = "logged_out";
+          lastQr = null;
+          lastQrDataUrl = null;
+          scheduleTask(() => restartForPairing("logged_out"), 800);
           return;
         }
-        // Logout remoto/local: limpa credenciais e gera QR de novo.
-        connectionStatus = "logged_out";
-        lastQr = null;
-        lastQrDataUrl = null;
-        scheduleRestart("logged_out", 800);
+
+        // 515 (restartRequired) e demais quedas: reconecta SEM apagar auth.
+        // Se limpar aqui, o pareamento após escanear o QR nunca completa.
+        connectionStatus = "reconnecting";
+        scheduleTask(() => restartKeepingAuth("disconnect_retry"), 1500);
       }
     });
   } finally {
@@ -170,7 +188,6 @@ app.get("/health", (_req, res) => {
 });
 
 app.get("/status", authorize, (_req, res) => {
-  // Se ficou logged_out sem QR (ex.: falha ao reiniciar), tenta parear de novo.
   if (
     connectionStatus === "logged_out" &&
     !lastQrDataUrl &&
@@ -178,7 +195,7 @@ app.get("/status", authorize, (_req, res) => {
     !sock &&
     !reconnectTimer
   ) {
-    scheduleRestart("status_without_qr", 200);
+    scheduleTask(() => restartForPairing("status_without_qr"), 200);
   }
   res.json(statusPayload());
 });
