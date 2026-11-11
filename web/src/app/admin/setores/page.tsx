@@ -19,6 +19,7 @@ export default function SetoresPage() {
   const [propagandasClienteAtivas, setPropagandasClienteAtivas] = useState(false);
   const [impressaoViaCliente, setImpressaoViaCliente] = useState(false);
   const [alertasAtivos, setAlertasAtivos] = useState(true);
+  const [semEmitirMinutos, setSemEmitirMinutos] = useState("60");
   const [ociosidadeMinutos, setOciosidadeMinutos] = useState("60");
   const [layoutTvWeb, setLayoutTvWeb] = useState<"propaganda" | "fila">("propaganda");
   const [orientacaoTv, setOrientacaoTv] = useState<"horizontal" | "vertical">("horizontal");
@@ -45,6 +46,7 @@ export default function SetoresPage() {
     setPropagandasClienteAtivas(Boolean(setor.propagandas_cliente_ativas));
     setImpressaoViaCliente(Boolean(setor.impressao_via_cliente));
     setAlertasAtivos(setor.alertas_ativos !== false);
+    setSemEmitirMinutos(String(setor.alerta_sem_emitir_minutos || 60));
     setOciosidadeMinutos(String(setor.alerta_ociosidade_minutos || 60));
     setLayoutTvWeb(setor.layout_tv_web || "propaganda");
     setOrientacaoTv(setor.orientacao_tv || "horizontal");
@@ -61,6 +63,7 @@ export default function SetoresPage() {
     setPropagandasClienteAtivas(false);
     setImpressaoViaCliente(false);
     setAlertasAtivos(true);
+    setSemEmitirMinutos("60");
     setOciosidadeMinutos("60");
     setLayoutTvWeb("propaganda");
     setOrientacaoTv("horizontal");
@@ -82,6 +85,8 @@ export default function SetoresPage() {
         propagandas_cliente_ativas: tipoSetor === "streaming" ? false : propagandasClienteAtivas,
         impressao_via_cliente: tipoSetor === "streaming" ? false : impressaoViaCliente,
         alertas_ativos: tipoSetor === "streaming" ? true : alertasAtivos,
+        alerta_sem_emitir_minutos:
+          tipoSetor === "streaming" ? 60 : Math.max(1, Number(semEmitirMinutos) || 60),
         alerta_ociosidade_minutos:
           tipoSetor === "streaming" ? 60 : Math.max(1, Number(ociosidadeMinutos) || 60),
         layout_tv_web: tipoSetor === "streaming" ? "propaganda" : layoutTvWeb,
@@ -257,37 +262,59 @@ export default function SetoresPage() {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3 space-y-0 pt-8 md:col-span-2">
-              <input
-                id="alertas_ativos"
-                type="checkbox"
-                className="h-4 w-4 rounded border"
-                checked={alertasAtivos}
-                onChange={(e) => setAlertasAtivos(e.target.checked)}
-              />
-              <div>
-                <Label htmlFor="alertas_ativos">Alertas deste setor</Label>
-                <p className="text-sm text-muted-foreground">
-                  Quando desligado, o setor não gera avisos de hora sem chamada, espera alta nem
-                  envio para Telegram/WhatsApp.
-                </p>
+            <div className="space-y-4 rounded-lg border p-4 md:col-span-2">
+              <div className="flex items-start gap-3">
+                <input
+                  id="alertas_ativos"
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 rounded border"
+                  checked={alertasAtivos}
+                  onChange={(e) => setAlertasAtivos(e.target.checked)}
+                />
+                <div>
+                  <Label htmlFor="alertas_ativos">Alertas deste setor</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Quando desligado, o setor não gera avisos de monitoramento nem envio para
+                    Telegram/WhatsApp.
+                  </p>
+                </div>
               </div>
-            </div>
-            <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="alerta_ociosidade_minutos">Ociosidade sem chamada (minutos)</Label>
-              <Input
-                id="alerta_ociosidade_minutos"
-                type="number"
-                min={1}
-                step={1}
-                value={ociosidadeMinutos}
-                onChange={(e) => setOciosidadeMinutos(e.target.value)}
-                disabled={!alertasAtivos}
-              />
-              <p className="text-sm text-muted-foreground">
-                Tempo sem chamar senha neste setor para disparar o alerta de ociosidade (ex.: 30,
-                45, 60).
-              </p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="alerta_sem_emitir_minutos">
+                    Tempo sem emitir senha (minutos)
+                  </Label>
+                  <Input
+                    id="alerta_sem_emitir_minutos"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={semEmitirMinutos}
+                    onChange={(e) => setSemEmitirMinutos(e.target.value)}
+                    disabled={!alertasAtivos}
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Sem retirada de senha neste setor por quanto tempo dispara o alerta.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="alerta_ociosidade_minutos">
+                    Tempo sem chamar senhas (minutos)
+                  </Label>
+                  <Input
+                    id="alerta_ociosidade_minutos"
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={ociosidadeMinutos}
+                    onChange={(e) => setOciosidadeMinutos(e.target.value)}
+                    disabled={!alertasAtivos}
+                  />
+                  <p className="text-sm text-muted-foreground">
+                    Sem chamada de senha neste setor por quanto tempo dispara o alerta.
+                  </p>
+                </div>
+              </div>
             </div>
             </>
             ) : null}
@@ -442,7 +469,7 @@ export default function SetoresPage() {
                       {s.propagandas_cliente_ativas ? " · Espera do cliente: ligada" : " · Espera do cliente: desligada"}
                       {s.alertas_ativos === false
                         ? " · Alertas: desligados"
-                        : ` · Alertas: ligados · Ociosidade: ${s.alerta_ociosidade_minutos || 60} min`}
+                        : ` · Alertas: ligados · Sem emitir: ${s.alerta_sem_emitir_minutos || 60} min · Sem chamar: ${s.alerta_ociosidade_minutos || 60} min`}
                       {s.som_chamada ? " · Som próprio" : " · Som padrão"}
                     </>
                   )}

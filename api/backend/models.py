@@ -64,6 +64,8 @@ class Setor(db.Model):
     impressao_via_cliente = db.Column(db.Boolean, nullable=False, default=False)
     # Liga/desliga alertas de horário e notificação deste setor.
     alertas_ativos = db.Column(db.Boolean, nullable=False, default=True)
+    # Minutos sem emitir (retirar) senha para disparar alerta neste setor.
+    alerta_sem_emitir_minutos = db.Column(db.Integer, nullable=False, default=60)
     # Minutos sem chamar senha para disparar alerta de ociosidade.
     alerta_ociosidade_minutos = db.Column(db.Integer, nullable=False, default=60)
     layout_tv_web = db.Column(db.String(20), nullable=False, default="propaganda")
@@ -99,6 +101,7 @@ class Setor(db.Model):
             "propagandas_cliente_ativas": bool(self.propagandas_cliente_ativas),
             "impressao_via_cliente": bool(self.impressao_via_cliente),
             "alertas_ativos": bool(self.alertas_ativos) if self.alertas_ativos is not None else True,
+            "alerta_sem_emitir_minutos": int(self.alerta_sem_emitir_minutos or 60),
             "alerta_ociosidade_minutos": int(self.alerta_ociosidade_minutos or 60),
             "layout_tv_web": self.layout_tv_web or "propaganda",
             "orientacao_tv": self.orientacao_tv or "horizontal",

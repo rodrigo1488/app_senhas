@@ -274,6 +274,7 @@ def _init_database(app: Flask) -> None:
     _migrate_alerta_log_envio_columns()
     _migrate_setor_alertas_ativos_column()
     _migrate_setor_alerta_ociosidade_column()
+    _migrate_setor_alerta_sem_emitir_column()
     _migrate_alerta_whatsapp_contatos()
 
     is_sqlite = db.engine.dialect.name == "sqlite"
@@ -685,6 +686,27 @@ def _migrate_setor_alerta_ociosidade_column() -> None:
             conn,
             "setores",
             "alerta_ociosidade_minutos",
+            "INTEGER NOT NULL DEFAULT 60",
+            is_sqlite,
+        )
+
+
+def _migrate_setor_alerta_sem_emitir_column() -> None:
+    """Minutos sem emitir senha, configurável por setor."""
+    from sqlalchemy import inspect
+
+    inspector = inspect(db.engine)
+    if "setores" not in inspector.get_table_names():
+        return
+    columns = {column["name"] for column in inspector.get_columns("setores")}
+    if "alerta_sem_emitir_minutos" in columns:
+        return
+    is_sqlite = db.engine.dialect.name == "sqlite"
+    with db.engine.begin() as conn:
+        _ensure_column(
+            conn,
+            "setores",
+            "alerta_sem_emitir_minutos",
             "INTEGER NOT NULL DEFAULT 60",
             is_sqlite,
         )

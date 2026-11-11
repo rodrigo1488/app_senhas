@@ -232,6 +232,35 @@ class AlertaNotifyTest(unittest.TestCase):
             row = db.session.get(AlertaLog, alerta_id)
             self.assertTrue(row.enviado_whatsapp)
 
+    def test_dois_grupos_alerta_habilitam_tipos(self):
+        with self.app.app_context():
+            so_emitir = salvar_config_alerta(
+                {"alerta_sem_emitir": True, "alerta_sem_chamar": False}
+            )
+            self.assertTrue(so_emitir["alerta_sem_emitir"])
+            self.assertFalse(so_emitir["alerta_sem_chamar"])
+            self.assertEqual(
+                ["sem_retirada", "sem_retirada_recente"],
+                so_emitir["tipos"],
+            )
+
+            so_chamar = salvar_config_alerta(
+                {"alerta_sem_emitir": False, "alerta_sem_chamar": True}
+            )
+            self.assertFalse(so_chamar["alerta_sem_emitir"])
+            self.assertTrue(so_chamar["alerta_sem_chamar"])
+            self.assertEqual(
+                ["sem_chamada", "sem_chamada_recente"],
+                so_chamar["tipos"],
+            )
+
+            nenhum = salvar_config_alerta(
+                {"alerta_sem_emitir": False, "alerta_sem_chamar": False}
+            )
+            self.assertEqual([], nenhum["tipos"])
+            self.assertFalse(nenhum["alerta_sem_emitir"])
+            self.assertFalse(nenhum["alerta_sem_chamar"])
+
     def test_atualiza_contato_sem_telefone_nao_exige_numero(self):
         with self.app.app_context():
             criado = salvar_contato_whatsapp(

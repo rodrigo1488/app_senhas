@@ -87,6 +87,7 @@ export type Setor = {
   propagandas_cliente_ativas?: boolean;
   impressao_via_cliente?: boolean;
   alertas_ativos?: boolean;
+  alerta_sem_emitir_minutos?: number;
   alerta_ociosidade_minutos?: number;
   propaganda_ids_cliente?: number[];
   layout_tv_web: "propaganda" | "fila";

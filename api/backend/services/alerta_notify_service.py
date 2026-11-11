@@ -16,9 +16,14 @@ logger = logging.getLogger(__name__)
 
 TIPOS_ALERTA_PADRAO = (
     "sem_retirada",
+    "sem_retirada_recente",
     "sem_chamada",
     "sem_chamada_recente",
 )
+
+# Dois grupos na UI: emitir senha × chamar senha.
+TIPOS_SEM_EMITIR = frozenset({"sem_retirada", "sem_retirada_recente"})
+TIPOS_SEM_CHAMAR = frozenset({"sem_chamada", "sem_chamada_recente"})
 
 CFG_TELEGRAM_ATIVO = "alerta_telegram_ativo"
 CFG_TELEGRAM_TOKEN = "alerta_telegram_bot_token"
@@ -35,10 +40,22 @@ def _truthy(value: Optional[str]) -> bool:
 
 
 def _tipos_habilitados() -> set[str]:
-    raw = (get_configuracao(CFG_TIPOS) or ",".join(TIPOS_ALERTA_PADRAO)).strip()
-    if not raw:
+    """Tipos ativos. Ausência da chave = todos ligados; string vazia = todos desligados."""
+    raw = get_configuracao(CFG_TIPOS)
+    if raw is None:
         return set(TIPOS_ALERTA_PADRAO)
-    return {parte.strip() for parte in raw.split(",") if parte.strip()}
+    raw = raw.strip()
+    if not raw:
+        return set()
+    return {
+        parte.strip()
+        for parte in raw.split(",")
+        if parte.strip() in TIPOS_ALERTA_PADRAO
+    }
+
+
+def tipos_alerta_habilitados() -> set[str]:
+    return _tipos_habilitados()
 
 
 def _somente_digitos(valor: str) -> str:
@@ -134,9 +151,33 @@ def excluir_contato_whatsapp(contato_id: int) -> None:
     db.session.commit()
 
 
+def _expandir_tipos_grupos(data: dict[str, Any]) -> list[str] | None:
+    """Converte os dois toggles da UI (ou lista legada) na lista de tipos internos."""
+    if "alerta_sem_emitir" in data or "alerta_sem_chamar" in data:
+        tipos: list[str] = []
+        if data.get("alerta_sem_emitir"):
+            tipos.extend(sorted(TIPOS_SEM_EMITIR))
+        if data.get("alerta_sem_chamar"):
+            tipos.extend(sorted(TIPOS_SEM_CHAMAR))
+        return tipos
+    if "tipos" not in data:
+        return None
+    tipos = data.get("tipos") or []
+    if isinstance(tipos, str):
+        tipos = [p.strip() for p in tipos.split(",") if p.strip()]
+    selecionados = {t for t in tipos if t in TIPOS_ALERTA_PADRAO}
+    # Se a UI mandar só o grupo "sem_chamada", inclui também a ociosidade.
+    if selecionados & TIPOS_SEM_CHAMAR:
+        selecionados |= set(TIPOS_SEM_CHAMAR)
+    if selecionados & TIPOS_SEM_EMITIR:
+        selecionados |= set(TIPOS_SEM_EMITIR)
+    return sorted(selecionados)
+
+
 def ler_config_alerta() -> dict[str, Any]:
     contatos = listar_contatos_whatsapp()
     ativos = [c["telefone"] for c in contatos if c.get("ativo")]
+    tipos = _tipos_habilitados()
     return {
         "telegram_ativo": _truthy(get_configuracao(CFG_TELEGRAM_ATIVO)),
         "telegram_bot_token": get_configuracao(CFG_TELEGRAM_TOKEN, "") or "",
@@ -145,7 +186,9 @@ def ler_config_alerta() -> dict[str, Any]:
         # Mantido para compatibilidade; a UI usa a lista de contatos.
         "whatsapp_destino": ativos[0] if ativos else (get_configuracao(CFG_WHATSAPP_DESTINO, "") or ""),
         "whatsapp_contatos": contatos,
-        "tipos": sorted(_tipos_habilitados()),
+        "tipos": sorted(tipos),
+        "alerta_sem_emitir": bool(tipos & TIPOS_SEM_EMITIR),
+        "alerta_sem_chamar": bool(tipos & TIPOS_SEM_CHAMAR),
         "whatsapp_service_url": (
             os.getenv("WHATSAPP_SERVICE_URL") or "http://whatsapp:3001"
         ).rstrip("/"),
@@ -162,12 +205,10 @@ def salvar_config_alerta(data: dict[str, Any]) -> dict[str, Any]:
     if "whatsapp_destino" in data:
         # Compatibilidade com clientes antigos: grava no destino legado.
         set_configuracao(CFG_WHATSAPP_DESTINO, str(data.get("whatsapp_destino") or "").strip())
-    if "tipos" in data:
-        tipos = data.get("tipos") or []
-        if isinstance(tipos, str):
-            tipos = [p.strip() for p in tipos.split(",") if p.strip()]
-        limpos = [t for t in tipos if t in TIPOS_ALERTA_PADRAO]
-        set_configuracao(CFG_TIPOS, ",".join(limpos) if limpos else ",".join(TIPOS_ALERTA_PADRAO))
+    tipos = _expandir_tipos_grupos(data)
+    if tipos is not None:
+        # Lista vazia = ambos desligados (não volta ao padrão).
+        set_configuracao(CFG_TIPOS, ",".join(tipos))
     return ler_config_alerta()
 
 
@@ -305,10 +346,12 @@ def despachar_alertas_pendentes(alerta_ids: Optional[list[int]] = None) -> dict[
         tipos = set(cfg["tipos"])
         tg_ativo = bool(cfg["telegram_ativo"])
         wa_ativo = bool(cfg["whatsapp_ativo"])
+        if not tipos:
+            return {"telegram": 0, "whatsapp": 0, "falhas": 0, "avaliados": 0}
         if not tg_ativo and not wa_ativo and not alerta_ids:
             return {"telegram": 0, "whatsapp": 0, "falhas": 0, "avaliados": 0}
 
-        q = AlertaLog.query.filter(AlertaLog.tipo.in_(tipos or TIPOS_ALERTA_PADRAO))
+        q = AlertaLog.query.filter(AlertaLog.tipo.in_(tipos))
         if alerta_ids:
             q = q.filter(AlertaLog.id.in_(alerta_ids))
         else:

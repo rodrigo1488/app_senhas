@@ -29,7 +29,9 @@ type AlertasConfig = {
   whatsapp_ativo: boolean;
   whatsapp_destino?: string;
   whatsapp_contatos?: WhatsappContato[];
-  tipos: string[];
+  tipos?: string[];
+  alerta_sem_emitir: boolean;
+  alerta_sem_chamar: boolean;
   whatsapp?: WhatsappStatus;
 };
 
@@ -43,12 +45,6 @@ type Config = {
   alertas?: AlertasConfig;
 };
 
-const TIPOS_ALERTA = [
-  { id: "sem_retirada", label: "Hora sem retirada de senha" },
-  { id: "sem_chamada", label: "Hora sem chamada (por setor)" },
-  { id: "sem_chamada_recente", label: "Ociosidade sem chamada (por setor)" },
-];
-
 function alertasPadrao(): AlertasConfig {
   return {
     telegram_ativo: false,
@@ -56,8 +52,30 @@ function alertasPadrao(): AlertasConfig {
     telegram_chat_id: "",
     whatsapp_ativo: false,
     whatsapp_contatos: [],
-    tipos: TIPOS_ALERTA.map((t) => t.id),
+    alerta_sem_emitir: true,
+    alerta_sem_chamar: true,
     whatsapp: { status: "unknown", connected: false },
+  };
+}
+
+function normalizarAlertas(cfg: Partial<AlertasConfig> | undefined): AlertasConfig {
+  const base = alertasPadrao();
+  if (!cfg) return base;
+  const tipos = cfg.tipos || [];
+  const semEmitir =
+    typeof cfg.alerta_sem_emitir === "boolean"
+      ? cfg.alerta_sem_emitir
+      : tipos.includes("sem_retirada");
+  const semChamar =
+    typeof cfg.alerta_sem_chamar === "boolean"
+      ? cfg.alerta_sem_chamar
+      : tipos.includes("sem_chamada") || tipos.includes("sem_chamada_recente");
+  return {
+    ...base,
+    ...cfg,
+    alerta_sem_emitir: semEmitir,
+    alerta_sem_chamar: semChamar,
+    whatsapp_contatos: cfg.whatsapp_contatos || [],
   };
 }
 
@@ -91,11 +109,7 @@ export default function ConfiguracoesPage() {
           posicao_senhas_tv: c.posicao_senhas_tv === "inferior" ? "inferior" : "superior",
         });
         if (c.alertas) {
-          setAlertas({
-            ...alertasPadrao(),
-            ...c.alertas,
-            tipos: c.alertas.tipos?.length ? c.alertas.tipos : alertasPadrao().tipos,
-          });
+          setAlertas(normalizarAlertas(c.alertas));
         }
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Erro"));
@@ -187,15 +201,11 @@ export default function ConfiguracoesPage() {
           telegram_bot_token: alertas.telegram_bot_token,
           telegram_chat_id: alertas.telegram_chat_id,
           whatsapp_ativo: alertas.whatsapp_ativo,
-          tipos: alertas.tipos,
+          alerta_sem_emitir: alertas.alerta_sem_emitir,
+          alerta_sem_chamar: alertas.alerta_sem_chamar,
         }),
       });
-      setAlertas({
-        ...alertasPadrao(),
-        ...salvo,
-        tipos: salvo.tipos?.length ? salvo.tipos : alertasPadrao().tipos,
-        whatsapp_contatos: salvo.whatsapp_contatos || [],
-      });
+      setAlertas(normalizarAlertas(salvo));
       setMessage("Notificações de alerta salvas.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erro");
@@ -316,16 +326,6 @@ export default function ConfiguracoesPage() {
     }
   }
 
-  function toggleTipo(id: string) {
-    setAlertas((atual) => {
-      const tem = atual.tipos.includes(id);
-      return {
-        ...atual,
-        tipos: tem ? atual.tipos.filter((t) => t !== id) : [...atual.tipos, id],
-      };
-    });
-  }
-
   if (!config && !error) return <p className="text-muted-foreground">Carregando...</p>;
   if (!config) return <p className="text-destructive">{error}</p>;
 
@@ -379,18 +379,44 @@ export default function ConfiguracoesPage() {
         <CardContent>
           <form className="space-y-6" onSubmit={saveAlertas}>
             <div className="space-y-3">
-              <p className="text-sm font-medium">Tipos enviados</p>
-              <div className="grid gap-2 sm:grid-cols-3">
-                {TIPOS_ALERTA.map((tipo) => (
-                  <label key={tipo.id} className="flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      checked={alertas.tipos.includes(tipo.id)}
-                      onChange={() => toggleTipo(tipo.id)}
-                    />
-                    {tipo.label}
-                  </label>
-                ))}
+              <p className="text-sm font-medium">Tipos de alerta</p>
+              <p className="text-sm text-muted-foreground">
+                Liga ou desliga cada monitoramento. O tempo de cada um é definido em Setores
+                (minutos sem emitir e minutos sem chamar).
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="flex items-start gap-3 rounded-lg border p-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={alertas.alerta_sem_emitir}
+                    onChange={(e) =>
+                      setAlertas({ ...alertas, alerta_sem_emitir: e.target.checked })
+                    }
+                  />
+                  <span>
+                    <span className="block font-medium">Tempo sem emitir senha</span>
+                    <span className="text-muted-foreground">
+                      Usa o limite de minutos configurado em cada setor para retirada de senha.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 rounded-lg border p-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={alertas.alerta_sem_chamar}
+                    onChange={(e) =>
+                      setAlertas({ ...alertas, alerta_sem_chamar: e.target.checked })
+                    }
+                  />
+                  <span>
+                    <span className="block font-medium">Tempo sem chamar senhas</span>
+                    <span className="text-muted-foreground">
+                      Usa o limite de minutos configurado em cada setor para chamada de senha.
+                    </span>
+                  </span>
+                </label>
               </div>
             </div>
 

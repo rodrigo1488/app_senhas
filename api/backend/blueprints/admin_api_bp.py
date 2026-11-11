@@ -110,6 +110,16 @@ def _orientacao_tv(valor) -> str:
     return orientacao
 
 
+def _parse_minutos_alerta(valor, *, campo: str) -> int:
+    try:
+        minutos = int(60 if valor is None else valor)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{campo} inválido") from exc
+    if minutos < 1:
+        raise ValueError(f"{campo} deve ser >= 1")
+    return minutos
+
+
 def _validar_setor_pronto_para_pin(setor: Setor) -> None:
     sem_pin = setor.operadores.filter(
         (Operador.pin_hash.is_(None)) | (Operador.pin_hash == "")
@@ -132,6 +142,9 @@ def _setor_admin_dict(setor: Setor, *, ocultar_senha: bool = False) -> dict:
         "propagandas_cliente_ativas": bool(setor.propagandas_cliente_ativas),
         "impressao_via_cliente": bool(setor.impressao_via_cliente),
         "alertas_ativos": bool(setor.alertas_ativos) if setor.alertas_ativos is not None else True,
+        "alerta_sem_emitir_minutos": max(
+            1, int(getattr(setor, "alerta_sem_emitir_minutos", None) or 60)
+        ),
         "alerta_ociosidade_minutos": max(
             1, int(getattr(setor, "alerta_ociosidade_minutos", None) or 60)
         ),
@@ -749,16 +762,21 @@ def create_setor():
         senha_setor = ""
         cliente_ativas = False
         ociosidade_minutos = 60
+        emitir_minutos = 60
     else:
         senha_setor = (data.get("senha_setor") or "").strip()
         cliente_ativas = bool(data.get("propagandas_cliente_ativas", False))
-        raw_ociosidade = data.get("alerta_ociosidade_minutos", 60)
         try:
-            ociosidade_minutos = int(60 if raw_ociosidade is None else raw_ociosidade)
-        except (TypeError, ValueError):
-            return jsonify({"error": "alerta_ociosidade_minutos inválido"}), 400
-        if ociosidade_minutos < 1:
-            return jsonify({"error": "alerta_ociosidade_minutos deve ser >= 1"}), 400
+            ociosidade_minutos = _parse_minutos_alerta(
+                data.get("alerta_ociosidade_minutos", 60),
+                campo="alerta_ociosidade_minutos",
+            )
+            emitir_minutos = _parse_minutos_alerta(
+                data.get("alerta_sem_emitir_minutos", 60),
+                campo="alerta_sem_emitir_minutos",
+            )
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
     setor = Setor(
         nome=nome,
         descricao=(data.get("descricao") or "").strip(),
@@ -773,6 +791,7 @@ def create_setor():
         alertas_ativos=True
         if tipo_setor == TIPO_SETOR_STREAMING
         else bool(data.get("alertas_ativos", True)),
+        alerta_sem_emitir_minutos=emitir_minutos,
         alerta_ociosidade_minutos=ociosidade_minutos,
         layout_tv_web=layout_tv_web,
         orientacao_tv=orientacao_tv,
@@ -799,6 +818,7 @@ def update_setor(setor_id: int):
             "propagandas_cliente_ativas",
             "impressao_via_cliente",
             "alertas_ativos",
+            "alerta_sem_emitir_minutos",
             "alerta_ociosidade_minutos",
             "layout_tv_web",
             "orientacao_tv",
@@ -846,14 +866,22 @@ def update_setor(setor_id: int):
         setor.impressao_via_cliente = bool(data.get("impressao_via_cliente"))
     if "alertas_ativos" in data and not setor_eh_streaming(setor):
         setor.alertas_ativos = bool(data.get("alertas_ativos"))
+    if "alerta_sem_emitir_minutos" in data and not setor_eh_streaming(setor):
+        try:
+            setor.alerta_sem_emitir_minutos = _parse_minutos_alerta(
+                data.get("alerta_sem_emitir_minutos"),
+                campo="alerta_sem_emitir_minutos",
+            )
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
     if "alerta_ociosidade_minutos" in data and not setor_eh_streaming(setor):
         try:
-            minutos = int(data.get("alerta_ociosidade_minutos"))
-        except (TypeError, ValueError):
-            return jsonify({"error": "alerta_ociosidade_minutos inválido"}), 400
-        if minutos < 1:
-            return jsonify({"error": "alerta_ociosidade_minutos deve ser >= 1"}), 400
-        setor.alerta_ociosidade_minutos = minutos
+            setor.alerta_ociosidade_minutos = _parse_minutos_alerta(
+                data.get("alerta_ociosidade_minutos"),
+                campo="alerta_ociosidade_minutos",
+            )
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
     if "layout_tv_web" in data and not setor_eh_streaming(setor):
         try:
             setor.layout_tv_web = _layout_tv_web(data.get("layout_tv_web"))
