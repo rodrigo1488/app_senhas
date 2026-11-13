@@ -69,7 +69,7 @@ export default function HeatmapDashboardPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Mapa de calor</h1>
         <p className="text-muted-foreground">
-          Carga operacional por horário e setor, das 07h às 22h
+          Carga operacional por horário e setor, das 07h às 21h
         </p>
       </div>
 

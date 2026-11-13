@@ -16,11 +16,96 @@ from backend.utils import get_configuracao
 
 DEFAULT_ABANDONO_MINUTOS = 30
 DEFAULT_META_ESPERA_MIN = 10.0
-# Grade do painel: 07h até 22h (expediente até as 22:00).
+# Fallbacks da grade (sobrescritos pela config em alerta_notify_service).
 HORA_INICIO_EXPEDIENTE = 7
-HORA_FIM_EXPEDIENTE = 22
-# Horas cheias que devem ter movimento: 07h, 08h, …, 21h.
-HORA_FIM_ALERTA = 21
+HORA_FIM_EXPEDIENTE = 21
+HORA_FIM_ALERTA = 20
+
+
+def _config_monitoramento() -> dict[str, Any]:
+    from backend.services.alerta_notify_service import ler_config_monitoramento
+
+    return ler_config_monitoramento()
+
+
+def _pascoa(ano: int) -> date:
+    """Domingo de Páscoa (algoritmo gregoriano anônimo)."""
+    a = ano % 19
+    b = ano // 100
+    c = ano % 100
+    d = b // 4
+    e = b % 4
+    f = (b + 8) // 25
+    g = (b - f + 1) // 3
+    h = (19 * a + b - d - g + 15) % 30
+    i = c // 4
+    k = c % 4
+    l = (32 + 2 * e + 2 * i - h - k) % 7
+    m = (a + 11 * h + 22 * l) // 451
+    mes = (h + l - 7 * m + 114) // 31
+    dia = ((h + l - 7 * m + 114) % 31) + 1
+    return date(ano, mes, dia)
+
+
+def _eh_feriado_nacional(dia: date) -> bool:
+    """Feriados nacionais fixos e móveis usados no comércio."""
+    fixos = {
+        (1, 1),
+        (4, 21),
+        (5, 1),
+        (9, 7),
+        (10, 12),
+        (11, 2),
+        (11, 15),
+        (11, 20),
+        (12, 25),
+    }
+    if (dia.month, dia.day) in fixos:
+        return True
+    pascoa = _pascoa(dia.year)
+    moveis = {
+        pascoa - timedelta(days=48),  # Carnaval (segunda)
+        pascoa - timedelta(days=47),  # Carnaval (terça)
+        pascoa - timedelta(days=2),  # Sexta-feira Santa
+        pascoa + timedelta(days=60),  # Corpus Christi
+    }
+    return dia in moveis
+
+
+def _faixa_expediente(
+    dia: date,
+    cfg: dict[str, Any] | None = None,
+) -> tuple[int, int, int] | None:
+    """Retorna (hora_inicio, hora_fim, hora_alerta_ate) ou None se o dia não é monitorado."""
+    cfg = cfg or _config_monitoramento()
+    if cfg.get("especial_ativo") and cfg.get("especial_feriados") and _eh_feriado_nacional(dia):
+        return (
+            int(cfg["especial_hora_inicio"]),
+            int(cfg["especial_hora_fim"]),
+            int(cfg["especial_hora_alerta_ate"]),
+        )
+    weekday = dia.weekday()
+    if cfg.get("especial_ativo") and weekday in set(cfg.get("especial_dias") or []):
+        return (
+            int(cfg["especial_hora_inicio"]),
+            int(cfg["especial_hora_fim"]),
+            int(cfg["especial_hora_alerta_ate"]),
+        )
+    if weekday in set(cfg.get("dias") or []):
+        return (
+            int(cfg["hora_inicio"]),
+            int(cfg["hora_fim"]),
+            int(cfg["hora_alerta_ate"]),
+        )
+    return None
+
+
+def _no_expediente(agora: datetime, cfg: dict[str, Any] | None = None) -> bool:
+    faixa = _faixa_expediente(agora.date(), cfg)
+    if faixa is None:
+        return False
+    inicio, fim, _ = faixa
+    return inicio <= agora.hour < fim
 
 
 def _parse_dt(value: Optional[str], *, end_of_day: bool = False) -> datetime:
@@ -187,12 +272,15 @@ def _montar_fluxo_por_setor(
         counts[(chave_t, senha.setor_id)] += 1
 
     horas_com_volume = {t.hour for (t, _sid), total in counts.items() if total > 0}
+    mon = _config_monitoramento()
+    grade_ini = int(mon.get("hora_inicio", HORA_INICIO_EXPEDIENTE))
+    grade_fim = int(mon.get("hora_fim", HORA_FIM_EXPEDIENTE))
 
     buckets: list[tuple[datetime, str]] = []
     if use_hour:
         cursor = datetime(inicio.year, inicio.month, inicio.day, inicio.hour)
         while cursor < fim:
-            dentro = HORA_INICIO_EXPEDIENTE <= cursor.hour <= HORA_FIM_EXPEDIENTE
+            dentro = grade_ini <= cursor.hour <= grade_fim
             if dentro or cursor.hour in horas_com_volume:
                 label = (
                     cursor.strftime("%d/%m %Hh")
@@ -286,9 +374,11 @@ def _resumo_lacunas(
 ) -> str:
     varios = len(por_dia) > 1
     partes: list[str] = []
+    cfg = _config_monitoramento()
     for dia, horas in por_dia[:6]:
         prefixo = f"{dia:%d/%m}: " if varios else ""
-        if horas == list(range(HORA_INICIO_EXPEDIENTE, HORA_FIM_ALERTA + 1)):
+        faixa = _faixa_expediente(dia, cfg)
+        if faixa and horas == list(range(faixa[0], faixa[2] + 1)):
             partes.append(f"{prefixo}{vazio}")
         else:
             partes.append(f"{prefixo}{parcial} {_formatar_faixas_hora(horas)}")
@@ -314,11 +404,16 @@ def _alerta_tempo_sem_evento(
     """Alerta se passou o tempo configurado do setor sem o evento no expediente."""
     if not (inicio <= agora < fim):
         return None
-    if not (HORA_INICIO_EXPEDIENTE <= agora.hour < HORA_FIM_EXPEDIENTE):
+    cfg = _config_monitoramento()
+    if not _no_expediente(agora, cfg):
         return None
 
     limite = max(1, int(limite_minutos or 60))
-    abertura = datetime(agora.year, agora.month, agora.day, HORA_INICIO_EXPEDIENTE)
+    faixa = _faixa_expediente(agora.date(), cfg)
+    if faixa is None:
+        return None
+    hora_abertura = faixa[0]
+    abertura = datetime(agora.year, agora.month, agora.day, hora_abertura)
     anteriores = [ts for ts in timestamps if abertura <= ts <= agora]
     referencia = max(anteriores) if anteriores else abertura
     gap = agora - referencia
@@ -334,7 +429,10 @@ def _alerta_tempo_sem_evento(
             f"(limite {limite} min; última às {referencia:%H:%M})."
         )
     else:
-        mensagem = f"Há {duracao} sem {acao} senha desde as 07:00 (limite {limite} min)."
+        mensagem = (
+            f"Há {duracao} sem {acao} senha desde as {abertura:%H:%M} "
+            f"(limite {limite} min)."
+        )
     if nome_setor:
         mensagem = f"{nome_setor}: {mensagem[:1].lower()}{mensagem[1:]}"
     alerta: dict[str, Any] = {
@@ -446,12 +544,9 @@ def _alertas_horario(
     agora: datetime,
     setores: dict[int, Setor] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Lacunas do expediente: hora sem retirada (07–21) e hora sem chamada."""
+    """Lacunas de retirada no expediente + ociosidade recente (sem alerta horário de chamada)."""
     setores = setores or {}
     retiradas: set[tuple[date, int]] = set()
-    retiradas_por_setor: set[tuple[date, int, int]] = set()
-    chamadas: set[tuple[date, int]] = set()
-    chamadas_por_setor: set[tuple[date, int, int]] = set()
     chamadas_em: list[datetime] = []
     chamadas_em_por_setor: dict[int, list[datetime]] = defaultdict(list)
     retiradas_em: list[datetime] = []
@@ -461,40 +556,28 @@ def _alertas_horario(
             retiradas.add((senha.data_hora.date(), senha.data_hora.hour))
             retiradas_em.append(senha.data_hora)
             if senha.setor_id:
-                retiradas_por_setor.add((senha.data_hora.date(), senha.data_hora.hour, senha.setor_id))
                 retiradas_em_por_setor[senha.setor_id].append(senha.data_hora)
         if senha.chamada_em and inicio <= senha.chamada_em < fim:
-            chamadas.add((senha.chamada_em.date(), senha.chamada_em.hour))
             chamadas_em.append(senha.chamada_em)
             if senha.setor_id:
-                chamadas_por_setor.add((senha.chamada_em.date(), senha.chamada_em.hour, senha.setor_id))
                 chamadas_em_por_setor[senha.setor_id].append(senha.chamada_em)
 
     sem_retirada: list[tuple[date, list[int]]] = []
-    sem_chamada: list[tuple[date, list[int]]] = []
-    sem_chamada_por_setor: dict[int, list[tuple[date, list[int]]]] = defaultdict(list)
+    cfg = _config_monitoramento()
 
     for dia in _dias_periodo(inicio, fim):
+        faixa = _faixa_expediente(dia, cfg)
+        if faixa is None:
+            continue
+        hora_ini, _, hora_alerta = faixa
         horas_retirada: list[int] = []
-        horas_chamada: list[int] = []
-        horas_por_setor: dict[int, list[int]] = {sid: [] for sid in setores}
-        for hora in range(HORA_INICIO_EXPEDIENTE, HORA_FIM_ALERTA + 1):
+        for hora in range(hora_ini, hora_alerta + 1):
             if not _hora_cheia_no_periodo(dia, hora, inicio, fim, agora):
                 continue
             if (dia, hora) not in retiradas:
                 horas_retirada.append(hora)
-            if (dia, hora) not in chamadas:
-                horas_chamada.append(hora)
-            for sid in setores:
-                if (dia, hora, sid) not in chamadas_por_setor:
-                    horas_por_setor[sid].append(hora)
         if horas_retirada:
             sem_retirada.append((dia, horas_retirada))
-        if horas_chamada:
-            sem_chamada.append((dia, horas_chamada))
-        for sid, horas in horas_por_setor.items():
-            if horas:
-                sem_chamada_por_setor[sid].append((dia, horas))
 
     alertas: list[dict[str, Any]] = []
     if sem_retirada:
@@ -504,27 +587,14 @@ def _alertas_horario(
                 "severidade": "warning",
                 "mensagem": _resumo_lacunas(
                     sem_retirada,
-                    vazio="Nenhuma senha retirada entre 07h e 21h.",
-                    parcial="Horários sem retirada de senha (07h–21h):",
+                    vazio="Nenhuma senha retirada no expediente.",
+                    parcial="Horários sem retirada de senha:",
                 ),
                 "valor": sum(len(horas) for _, horas in sem_retirada),
             }
         )
 
     if not setores:
-        if sem_chamada:
-            alertas.append(
-                {
-                    "tipo": "sem_chamada",
-                    "severidade": "warning",
-                    "mensagem": _resumo_lacunas(
-                        sem_chamada,
-                        vazio="Nenhuma senha chamada entre 07h e 21h.",
-                        parcial="Horários sem chamada de senha:",
-                    ),
-                    "valor": sum(len(horas) for _, horas in sem_chamada),
-                }
-            )
         recente_emitir = _alerta_sem_retirada_recente(retiradas_em, inicio, fim, agora)
         recente_chamar = _alerta_sem_chamada_recente(chamadas_em, inicio, fim, agora)
         if recente_emitir:
@@ -539,15 +609,6 @@ def _alertas_horario(
                     dia,
                     horas,
                     lambda hora: f"Horário {hora:02d}h sem retirada de senha.",
-                )
-            )
-        for dia, horas in sem_chamada:
-            eventos.extend(
-                _eventos_horas(
-                    "sem_chamada",
-                    dia,
-                    horas,
-                    lambda hora: f"Horário {hora:02d}h sem chamada de senha.",
                 )
             )
         for recente in (recente_emitir, recente_chamar):
@@ -571,27 +632,6 @@ def _alertas_horario(
         )
     for sid, setor in sorted(setores.items(), key=lambda item: ((item[1].nome or "").lower(), item[0])):
         nome = setor.nome or "—"
-        lacunas = sem_chamada_por_setor.get(sid) or []
-        if lacunas:
-            alertas.append(
-                {
-                    "tipo": "sem_chamada",
-                    "severidade": "warning",
-                    "setor_id": sid,
-                    "mensagem": f"{nome}: {_resumo_lacunas(lacunas, vazio='nenhuma senha chamada entre 07h e 21h.', parcial='horários sem chamada de senha:')}",
-                    "valor": sum(len(horas) for _, horas in lacunas),
-                }
-            )
-            for dia, horas in lacunas:
-                eventos.extend(
-                    _eventos_horas(
-                        "sem_chamada",
-                        dia,
-                        horas,
-                        lambda hora, nome=nome: f"{nome}: horário {hora:02d}h sem chamada de senha.",
-                        setor_id=sid,
-                    )
-                )
         recente_emitir = _alerta_sem_retirada_recente(
             retiradas_em_por_setor.get(sid, []),
             inicio,
@@ -1127,6 +1167,7 @@ def montar_analytics(
         except Exception:
             db.session.rollback()
 
+    mon = _config_monitoramento()
     return {
         "periodo": {
             "from": inicio.isoformat(),
@@ -1140,9 +1181,9 @@ def montar_analytics(
         "por_hora": por_hora,
         "fluxo_por_setor": _montar_fluxo_por_setor(senhas, setores, inicio, fim),
         "heatmap": {
-            "hora_inicio": HORA_INICIO_EXPEDIENTE,
-            "hora_fim": HORA_FIM_EXPEDIENTE,
-            "hora_alerta_ate": HORA_FIM_ALERTA,
+            "hora_inicio": int(mon["hora_inicio"]),
+            "hora_fim": int(mon["hora_fim"]),
+            "hora_alerta_ate": int(mon["hora_alerta_ate"]),
             "setores": [
                 {"id": sid, "nome": setores[sid].nome if sid in setores else "—"}
                 for sid in setor_ids_hm

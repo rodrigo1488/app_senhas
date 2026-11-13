@@ -33,7 +33,7 @@ export function DemandaPorHoraChart({ data }: { data: AnalyticsData["por_hora"] 
     <Card className="col-span-full lg:col-span-2">
       <CardHeader>
         <CardTitle>Demanda por horário</CardTitle>
-        <CardDescription>Retiradas e chamadas das 07h às 22h</CardDescription>
+        <CardDescription>Retiradas e chamadas das 07h às 21h</CardDescription>
       </CardHeader>
       <CardContent className="h-[280px]">
         <ResponsiveContainer width="100%" height="100%">
@@ -176,7 +176,7 @@ export function FluxoPorSetorChart({
       <CardHeader>
         <CardTitle>Fluxo por setor</CardTitle>
         <CardDescription>
-          Volume de senhas {data?.granularidade === "dia" ? "por dia" : "por hora, das 07h às 22h"} em cada
+          Volume de senhas {data?.granularidade === "dia" ? "por dia" : "por hora, das 07h às 21h"} em cada
           setor de atendimento
         </CardDescription>
       </CardHeader>

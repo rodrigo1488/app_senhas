@@ -78,7 +78,7 @@ export default function AlertasPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">Alertas</h1>
         <p className="text-muted-foreground">
-          Linha do tempo dos horários sem retirada e sem chamada de senha
+          Linha do tempo de ociosidade e horários sem retirada de senha
         </p>
       </div>
 

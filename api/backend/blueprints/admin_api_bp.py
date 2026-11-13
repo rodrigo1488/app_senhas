@@ -360,7 +360,10 @@ def put_alertas_notificacoes():
     from backend.services.alerta_notify_service import salvar_config_alerta, status_whatsapp
 
     data = request.get_json(silent=True) or {}
-    cfg = salvar_config_alerta(data)
+    try:
+        cfg = salvar_config_alerta(data)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     cfg["whatsapp"] = status_whatsapp()
     return jsonify(cfg)
 

@@ -32,8 +32,46 @@ type AlertasConfig = {
   tipos?: string[];
   alerta_sem_emitir: boolean;
   alerta_sem_chamar: boolean;
+  hora_inicio: number;
+  hora_fim: number;
+  dias: number[];
+  especial_ativo: boolean;
+  especial_hora_inicio: number;
+  especial_hora_fim: number;
+  especial_dias: number[];
+  especial_feriados: boolean;
   whatsapp?: WhatsappStatus;
 };
+
+const DIAS_SEMANA: { id: number; label: string }[] = [
+  { id: 0, label: "Seg" },
+  { id: 1, label: "Ter" },
+  { id: 2, label: "Qua" },
+  { id: 3, label: "Qui" },
+  { id: 4, label: "Sex" },
+  { id: 5, label: "Sáb" },
+  { id: 6, label: "Dom" },
+];
+
+function horaInput(valor: number): string {
+  return `${String(Math.max(0, Math.min(23, valor || 0))).padStart(2, "0")}:00`;
+}
+
+function parseHoraInput(valor: string, fallback: number): number {
+  const raw = (valor || "").trim();
+  if (!raw) return fallback;
+  const parte = raw.includes(":") ? raw.split(":")[0] : raw;
+  const n = Number.parseInt(parte, 10);
+  if (Number.isNaN(n)) return fallback;
+  return Math.max(0, Math.min(23, n));
+}
+
+function toggleDia(lista: number[], id: number, ligado: boolean): number[] {
+  const set = new Set(lista);
+  if (ligado) set.add(id);
+  else set.delete(id);
+  return Array.from(set).sort((a, b) => a - b);
+}
 
 type Config = {
   nome_empresa: string;
@@ -54,6 +92,14 @@ function alertasPadrao(): AlertasConfig {
     whatsapp_contatos: [],
     alerta_sem_emitir: true,
     alerta_sem_chamar: true,
+    hora_inicio: 7,
+    hora_fim: 21,
+    dias: [0, 1, 2, 3, 4, 5],
+    especial_ativo: true,
+    especial_hora_inicio: 8,
+    especial_hora_fim: 12,
+    especial_dias: [6],
+    especial_feriados: true,
     whatsapp: { status: "unknown", connected: false },
   };
 }
@@ -75,6 +121,22 @@ function normalizarAlertas(cfg: Partial<AlertasConfig> | undefined): AlertasConf
     ...cfg,
     alerta_sem_emitir: semEmitir,
     alerta_sem_chamar: semChamar,
+    hora_inicio: Number.isFinite(cfg.hora_inicio) ? Number(cfg.hora_inicio) : base.hora_inicio,
+    hora_fim: Number.isFinite(cfg.hora_fim) ? Number(cfg.hora_fim) : base.hora_fim,
+    dias: Array.isArray(cfg.dias) ? cfg.dias.map(Number).filter((d) => d >= 0 && d <= 6) : base.dias,
+    especial_ativo:
+      typeof cfg.especial_ativo === "boolean" ? cfg.especial_ativo : base.especial_ativo,
+    especial_hora_inicio: Number.isFinite(cfg.especial_hora_inicio)
+      ? Number(cfg.especial_hora_inicio)
+      : base.especial_hora_inicio,
+    especial_hora_fim: Number.isFinite(cfg.especial_hora_fim)
+      ? Number(cfg.especial_hora_fim)
+      : base.especial_hora_fim,
+    especial_dias: Array.isArray(cfg.especial_dias)
+      ? cfg.especial_dias.map(Number).filter((d) => d >= 0 && d <= 6)
+      : base.especial_dias,
+    especial_feriados:
+      typeof cfg.especial_feriados === "boolean" ? cfg.especial_feriados : base.especial_feriados,
     whatsapp_contatos: cfg.whatsapp_contatos || [],
   };
 }
@@ -203,6 +265,14 @@ export default function ConfiguracoesPage() {
           whatsapp_ativo: alertas.whatsapp_ativo,
           alerta_sem_emitir: alertas.alerta_sem_emitir,
           alerta_sem_chamar: alertas.alerta_sem_chamar,
+          hora_inicio: alertas.hora_inicio,
+          hora_fim: alertas.hora_fim,
+          dias: alertas.dias,
+          especial_ativo: alertas.especial_ativo,
+          especial_hora_inicio: alertas.especial_hora_inicio,
+          especial_hora_fim: alertas.especial_hora_fim,
+          especial_dias: alertas.especial_dias,
+          especial_feriados: alertas.especial_feriados,
         }),
       });
       setAlertas(normalizarAlertas(salvo));
@@ -378,6 +448,174 @@ export default function ConfiguracoesPage() {
         </CardHeader>
         <CardContent>
           <form className="space-y-6" onSubmit={saveAlertas}>
+            <div className="space-y-4 rounded-lg border p-4">
+              <div>
+                <p className="text-sm font-medium">Período e dias de monitoramento</p>
+                <p className="text-sm text-muted-foreground">
+                  Define quando o sistema observa emissão e chamada de senhas.
+                </p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="monitor_hora_inicio">Início</Label>
+                  <Input
+                    id="monitor_hora_inicio"
+                    type="time"
+                    value={horaInput(alertas.hora_inicio)}
+                    onChange={(e) =>
+                      setAlertas({
+                        ...alertas,
+                        hora_inicio: parseHoraInput(e.target.value, alertas.hora_inicio),
+                      })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="monitor_hora_fim">Fim</Label>
+                  <Input
+                    id="monitor_hora_fim"
+                    type="time"
+                    value={horaInput(alertas.hora_fim)}
+                    onChange={(e) =>
+                      setAlertas({
+                        ...alertas,
+                        hora_fim: parseHoraInput(e.target.value, alertas.hora_fim),
+                      })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Dias monitorados</p>
+                <div className="flex flex-wrap gap-2">
+                  {DIAS_SEMANA.map((dia) => {
+                    const marcado = alertas.dias.includes(dia.id);
+                    return (
+                      <label
+                        key={dia.id}
+                        className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${
+                          marcado ? "border-primary bg-accent/40" : "border-input"
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={marcado}
+                          onChange={(e) =>
+                            setAlertas({
+                              ...alertas,
+                              dias: toggleDia(alertas.dias, dia.id, e.target.checked),
+                            })
+                          }
+                        />
+                        {dia.label}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-3 border-t pt-4">
+                <label className="flex items-start gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={alertas.especial_ativo}
+                    onChange={(e) =>
+                      setAlertas({ ...alertas, especial_ativo: e.target.checked })
+                    }
+                  />
+                  <span>
+                    <span className="block font-medium">Horário especial (domingo e feriados)</span>
+                    <span className="text-muted-foreground">
+                      Usa outro período nestes dias, em vez do horário padrão acima.
+                    </span>
+                  </span>
+                </label>
+                {alertas.especial_ativo ? (
+                  <div className="space-y-4 pl-0 sm:pl-6">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div className="space-y-2">
+                        <Label htmlFor="monitor_esp_inicio">Início especial</Label>
+                        <Input
+                          id="monitor_esp_inicio"
+                          type="time"
+                          value={horaInput(alertas.especial_hora_inicio)}
+                          onChange={(e) =>
+                            setAlertas({
+                              ...alertas,
+                              especial_hora_inicio: parseHoraInput(
+                                e.target.value,
+                                alertas.especial_hora_inicio
+                              ),
+                            })
+                          }
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="monitor_esp_fim">Fim especial</Label>
+                        <Input
+                          id="monitor_esp_fim"
+                          type="time"
+                          value={horaInput(alertas.especial_hora_fim)}
+                          onChange={(e) =>
+                            setAlertas({
+                              ...alertas,
+                              especial_hora_fim: parseHoraInput(
+                                e.target.value,
+                                alertas.especial_hora_fim
+                              ),
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Dias com horário especial</p>
+                      <div className="flex flex-wrap gap-2">
+                        {DIAS_SEMANA.map((dia) => {
+                          const marcado = alertas.especial_dias.includes(dia.id);
+                          return (
+                            <label
+                              key={`esp-${dia.id}`}
+                              className={`flex cursor-pointer items-center gap-2 rounded-md border px-3 py-2 text-sm ${
+                                marcado ? "border-primary bg-accent/40" : "border-input"
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={marcado}
+                                onChange={(e) =>
+                                  setAlertas({
+                                    ...alertas,
+                                    especial_dias: toggleDia(
+                                      alertas.especial_dias,
+                                      dia.id,
+                                      e.target.checked
+                                    ),
+                                  })
+                                }
+                              />
+                              {dia.label}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <label className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={alertas.especial_feriados}
+                        onChange={(e) =>
+                          setAlertas({ ...alertas, especial_feriados: e.target.checked })
+                        }
+                      />
+                      Incluir feriados nacionais neste horário especial
+                    </label>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
             <div className="space-y-3">
               <p className="text-sm font-medium">Tipos de alerta</p>
               <p className="text-sm text-muted-foreground">

@@ -261,6 +261,41 @@ class AlertaNotifyTest(unittest.TestCase):
             self.assertFalse(nenhum["alerta_sem_emitir"])
             self.assertFalse(nenhum["alerta_sem_chamar"])
 
+    def test_salva_periodo_e_dias_monitoramento(self):
+        with self.app.app_context():
+            padrao = salvar_config_alerta({})
+            self.assertEqual(7, padrao["hora_inicio"])
+            self.assertEqual(21, padrao["hora_fim"])
+            self.assertEqual([0, 1, 2, 3, 4, 5], padrao["dias"])
+            self.assertTrue(padrao["especial_ativo"])
+            self.assertEqual(8, padrao["especial_hora_inicio"])
+            self.assertEqual(12, padrao["especial_hora_fim"])
+            self.assertEqual([6], padrao["especial_dias"])
+            self.assertTrue(padrao["especial_feriados"])
+
+            salvo = salvar_config_alerta(
+                {
+                    "hora_inicio": "08:00",
+                    "hora_fim": 20,
+                    "dias": [0, 2, 4],
+                    "especial_ativo": True,
+                    "especial_hora_inicio": 9,
+                    "especial_hora_fim": "14:30",
+                    "especial_dias": [6],
+                    "especial_feriados": False,
+                }
+            )
+            self.assertEqual(8, salvo["hora_inicio"])
+            self.assertEqual(20, salvo["hora_fim"])
+            self.assertEqual([0, 2, 4], salvo["dias"])
+            self.assertEqual(9, salvo["especial_hora_inicio"])
+            self.assertEqual(14, salvo["especial_hora_fim"])
+            self.assertEqual([6], salvo["especial_dias"])
+            self.assertFalse(salvo["especial_feriados"])
+
+            with self.assertRaises(ValueError):
+                salvar_config_alerta({"hora_inicio": 10, "hora_fim": 10})
+
     def test_atualiza_contato_sem_telefone_nao_exige_numero(self):
         with self.app.app_context():
             criado = salvar_contato_whatsapp(

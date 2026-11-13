@@ -32,11 +32,179 @@ CFG_WHATSAPP_ATIVO = "alerta_whatsapp_ativo"
 CFG_WHATSAPP_DESTINO = "alerta_whatsapp_destino"
 CFG_TIPOS = "alerta_notificar_tipos"
 
+# Expediente de monitoramento (padrão: seg–sáb 07–21; domingo/feriados 08–12).
+CFG_MON_INICIO = "alerta_monitor_hora_inicio"
+CFG_MON_FIM = "alerta_monitor_hora_fim"
+CFG_MON_DIAS = "alerta_monitor_dias"
+CFG_MON_ESP_ATIVO = "alerta_monitor_especial_ativo"
+CFG_MON_ESP_INICIO = "alerta_monitor_especial_hora_inicio"
+CFG_MON_ESP_FIM = "alerta_monitor_especial_hora_fim"
+CFG_MON_ESP_DIAS = "alerta_monitor_especial_dias"
+CFG_MON_ESP_FERIADOS = "alerta_monitor_especial_feriados"
+
+DEFAULT_MON_INICIO = 7
+DEFAULT_MON_FIM = 21
+DEFAULT_MON_DIAS = (0, 1, 2, 3, 4, 5)  # seg–sáb
+DEFAULT_MON_ESP_INICIO = 8
+DEFAULT_MON_ESP_FIM = 12
+DEFAULT_MON_ESP_DIAS = (6,)  # domingo
+
 _envio_lock = threading.Lock()
 
 
 def _truthy(value: Optional[str]) -> bool:
     return (value or "").strip().lower() in ("1", "true", "yes", "on", "sim")
+
+
+def _parse_hora_config(value: Any, default: int) -> int:
+    """Aceita 7, '7', '07', '07:00' → hora 0–23."""
+    if value is None or value == "":
+        return default
+    raw = str(value).strip()
+    if ":" in raw:
+        raw = raw.split(":", 1)[0]
+    try:
+        hora = int(raw)
+    except (TypeError, ValueError):
+        return default
+    return max(0, min(23, hora))
+
+
+def _parse_dias_config(value: Any, default: tuple[int, ...]) -> list[int]:
+    if value is None:
+        return list(default)
+    if isinstance(value, (list, tuple, set)):
+        partes = list(value)
+    else:
+        raw = str(value).strip()
+        if not raw:
+            return []
+        partes = [p.strip() for p in raw.replace(";", ",").split(",") if p.strip()]
+    dias: list[int] = []
+    for parte in partes:
+        try:
+            dia = int(parte)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= dia <= 6 and dia not in dias:
+            dias.append(dia)
+    return sorted(dias)
+
+
+def _hora_alerta_ate(inicio: int, fim: int) -> int:
+    if fim <= inicio:
+        return inicio
+    return fim - 1
+
+
+def ler_config_monitoramento() -> dict[str, Any]:
+    """Janelas e dias usados pelo monitoramento de alertas."""
+    hora_inicio = _parse_hora_config(get_configuracao(CFG_MON_INICIO), DEFAULT_MON_INICIO)
+    hora_fim = _parse_hora_config(get_configuracao(CFG_MON_FIM), DEFAULT_MON_FIM)
+    if hora_fim <= hora_inicio:
+        hora_fim = min(23, hora_inicio + 1)
+
+    dias = _parse_dias_config(get_configuracao(CFG_MON_DIAS), DEFAULT_MON_DIAS)
+
+    esp_raw = get_configuracao(CFG_MON_ESP_ATIVO)
+    especial_ativo = True if esp_raw is None else _truthy(esp_raw)
+
+    esp_inicio = _parse_hora_config(
+        get_configuracao(CFG_MON_ESP_INICIO), DEFAULT_MON_ESP_INICIO
+    )
+    esp_fim = _parse_hora_config(get_configuracao(CFG_MON_ESP_FIM), DEFAULT_MON_ESP_FIM)
+    if esp_fim <= esp_inicio:
+        esp_fim = min(23, esp_inicio + 1)
+
+    esp_dias_raw = get_configuracao(CFG_MON_ESP_DIAS)
+    especial_dias = _parse_dias_config(
+        esp_dias_raw,
+        DEFAULT_MON_ESP_DIAS if especial_ativo else (),
+    )
+
+    fer_raw = get_configuracao(CFG_MON_ESP_FERIADOS)
+    especial_feriados = True if fer_raw is None else _truthy(fer_raw)
+    if not especial_ativo:
+        especial_dias = []
+        especial_feriados = False
+
+    return {
+        "hora_inicio": hora_inicio,
+        "hora_fim": hora_fim,
+        "hora_alerta_ate": _hora_alerta_ate(hora_inicio, hora_fim),
+        "dias": dias,
+        "especial_ativo": especial_ativo,
+        "especial_hora_inicio": esp_inicio,
+        "especial_hora_fim": esp_fim,
+        "especial_hora_alerta_ate": _hora_alerta_ate(esp_inicio, esp_fim),
+        "especial_dias": especial_dias,
+        "especial_feriados": especial_feriados,
+    }
+
+
+def _salvar_config_monitoramento(data: dict[str, Any]) -> None:
+    keys = (
+        "hora_inicio",
+        "hora_fim",
+        "dias",
+        "especial_ativo",
+        "especial_hora_inicio",
+        "especial_hora_fim",
+        "especial_dias",
+        "especial_feriados",
+    )
+    if not any(k in data for k in keys):
+        return
+
+    atual = ler_config_monitoramento()
+    hora_inicio = _parse_hora_config(data.get("hora_inicio", atual["hora_inicio"]), DEFAULT_MON_INICIO)
+    hora_fim = _parse_hora_config(data.get("hora_fim", atual["hora_fim"]), DEFAULT_MON_FIM)
+    if hora_fim <= hora_inicio:
+        raise ValueError("Horário final do monitoramento deve ser depois do inicial")
+
+    if "dias" in data:
+        dias = _parse_dias_config(data.get("dias"), ())
+    else:
+        dias = list(atual["dias"])
+
+    especial_ativo = (
+        bool(data.get("especial_ativo"))
+        if "especial_ativo" in data
+        else bool(atual["especial_ativo"])
+    )
+    esp_inicio = _parse_hora_config(
+        data.get("especial_hora_inicio", atual["especial_hora_inicio"]),
+        DEFAULT_MON_ESP_INICIO,
+    )
+    esp_fim = _parse_hora_config(
+        data.get("especial_hora_fim", atual["especial_hora_fim"]),
+        DEFAULT_MON_ESP_FIM,
+    )
+    if especial_ativo and esp_fim <= esp_inicio:
+        raise ValueError("Horário final especial deve ser depois do inicial")
+
+    if "especial_dias" in data:
+        especial_dias = _parse_dias_config(data.get("especial_dias"), ())
+    else:
+        especial_dias = list(atual["especial_dias"])
+
+    especial_feriados = (
+        bool(data.get("especial_feriados"))
+        if "especial_feriados" in data
+        else bool(atual["especial_feriados"])
+    )
+    if not especial_ativo:
+        especial_dias = []
+        especial_feriados = False
+
+    set_configuracao(CFG_MON_INICIO, str(hora_inicio))
+    set_configuracao(CFG_MON_FIM, str(hora_fim))
+    set_configuracao(CFG_MON_DIAS, ",".join(str(d) for d in dias))
+    set_configuracao(CFG_MON_ESP_ATIVO, "1" if especial_ativo else "0")
+    set_configuracao(CFG_MON_ESP_INICIO, str(esp_inicio))
+    set_configuracao(CFG_MON_ESP_FIM, str(esp_fim))
+    set_configuracao(CFG_MON_ESP_DIAS, ",".join(str(d) for d in especial_dias))
+    set_configuracao(CFG_MON_ESP_FERIADOS, "1" if especial_feriados else "0")
 
 
 def _tipos_habilitados() -> set[str]:
@@ -178,6 +346,7 @@ def ler_config_alerta() -> dict[str, Any]:
     contatos = listar_contatos_whatsapp()
     ativos = [c["telefone"] for c in contatos if c.get("ativo")]
     tipos = _tipos_habilitados()
+    monitor = ler_config_monitoramento()
     return {
         "telegram_ativo": _truthy(get_configuracao(CFG_TELEGRAM_ATIVO)),
         "telegram_bot_token": get_configuracao(CFG_TELEGRAM_TOKEN, "") or "",
@@ -192,6 +361,7 @@ def ler_config_alerta() -> dict[str, Any]:
         "whatsapp_service_url": (
             os.getenv("WHATSAPP_SERVICE_URL") or "http://whatsapp:3001"
         ).rstrip("/"),
+        **monitor,
     }
 
 
@@ -209,6 +379,7 @@ def salvar_config_alerta(data: dict[str, Any]) -> dict[str, Any]:
     if tipos is not None:
         # Lista vazia = ambos desligados (não volta ao padrão).
         set_configuracao(CFG_TIPOS, ",".join(tipos))
+    _salvar_config_monitoramento(data)
     return ler_config_alerta()
 
 

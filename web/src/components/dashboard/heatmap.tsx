@@ -5,8 +5,8 @@ import type { AnalyticsData } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const HORA_INICIO = 7;
-const HORA_FIM = 22;
-const HORA_ALERTA_ATE = 21;
+const HORA_FIM = 21;
+const HORA_ALERTA_ATE = 20;
 
 function heatColor(carga: number): string {
   if (carga <= 0) return "color-mix(in oklch, var(--muted) 75%, transparent)";
@@ -35,8 +35,8 @@ export function HeatmapSetorHora({ heatmap }: { heatmap: AnalyticsData["heatmap"
       <CardHeader>
         <CardTitle>Mapa de calor · {String(inicio).padStart(2, "0")}h às {String(fim).padStart(2, "0")}h</CardTitle>
         <CardDescription>
-          Expediente até as 22h. Carga = volume de senhas + espera média. Célula tracejada entre 07h e 21h
-          é hora sem retirada.
+          Expediente até as 21h (domingo e feriados 08h–12h). Carga = volume de senhas + espera média.
+          Célula tracejada no expediente é hora sem retirada.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 overflow-x-auto">
