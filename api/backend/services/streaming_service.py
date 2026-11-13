@@ -549,6 +549,9 @@ def listar_simulacao_telas(setor_ids: list[int] | None = None) -> list[dict]:
                     "tipo": "setor",
                     "nome": tv["nome"],
                     "subtitulo": "Painel de senhas",
+                    "setor_id": tv["id"],
+                    "setor_nome": tv["nome"],
+                    "descricao": (setor.descricao if setor else None) or "",
                     "is_online": bool(tv.get("is_online")),
                     "formato": config.get("orientacao_tv") or "horizontal",
                     "rotacao_tv": 90 if (config.get("orientacao_tv") or "horizontal") == "vertical" else 0,
@@ -583,6 +586,7 @@ def listar_simulacao_telas(setor_ids: list[int] | None = None) -> list[dict]:
         rotacao = rotacao_do_dispositivo(dispositivo) if dispositivo else 0
         formato = orientacao_de_rotacao(rotacao)
         fila_midia = fila_streaming(dispositivo) if dispositivo else []
+        setor_streaming = db.session.get(Setor, setor_id) if setor_id else None
         telas.append(
             {
                 "chave": tv["chave"],
@@ -590,6 +594,9 @@ def listar_simulacao_telas(setor_ids: list[int] | None = None) -> list[dict]:
                 "tipo": "streaming",
                 "nome": tv["nome"],
                 "subtitulo": tv.get("setor_nome") or tv.get("device_name") or "Streaming",
+                "setor_id": setor_id,
+                "setor_nome": tv.get("setor_nome"),
+                "descricao": (setor_streaming.descricao if setor_streaming else None) or "",
                 "is_online": bool(tv.get("is_online")),
                 "formato": formato,
                 "rotacao_tv": rotacao,

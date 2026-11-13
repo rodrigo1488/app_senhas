@@ -165,6 +165,9 @@ export type SimulacaoTela = {
   tipo: "setor" | "streaming" | "tablet";
   nome: string;
   subtitulo: string;
+  setor_id?: number | null;
+  setor_nome?: string | null;
+  descricao?: string | null;
   is_online: boolean;
   formato: "horizontal" | "vertical";
   rotacao_tv: number;

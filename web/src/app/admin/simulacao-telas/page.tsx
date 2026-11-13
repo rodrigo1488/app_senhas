@@ -1,8 +1,27 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { apiFetch, type SimulacaoMidia, type SimulacaoTela } from "@/lib/api";
 import { cn } from "@/lib/utils";
+
+const selectClass =
+  "flex h-10 w-full rounded-lg border border-input bg-card px-3 text-sm shadow-sm outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+function normalizarTexto(valor: string): string {
+  return valor
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .toLowerCase()
+    .trim();
+}
+
+function correspondeDescricao(tela: SimulacaoTela, busca: string): boolean {
+  const termo = normalizarTexto(busca);
+  if (!termo) return true;
+  return normalizarTexto(tela.descricao || "").includes(termo);
+}
 
 function rotuloModo(tela: SimulacaoTela): string {
   if (tela.modo === "fila") return "Fluxo de chamadas";
@@ -18,7 +37,9 @@ function rotuloPapelTablet(papel: string): string {
 }
 
 function descricaoTela(tela: SimulacaoTela, midias: number): string {
-  const partes = [rotuloFormato(tela), rotuloModo(tela)];
+  const partes: string[] = [];
+  if (tela.descricao?.trim()) partes.push(tela.descricao.trim());
+  partes.push(rotuloFormato(tela), rotuloModo(tela));
   if (midias) partes.push(`${midias} mídia(s)`);
   const ips = (tela.ips || []).filter(Boolean);
   if (ips.length === 1) partes.push(`IP ${ips[0]}`);
@@ -107,7 +128,9 @@ function TelaCard({ tela }: { tela: SimulacaoTela }) {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate font-semibold">{tela.nome}</p>
-          <p className="truncate text-xs text-muted-foreground">{tela.subtitulo}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {tela.descricao?.trim() ? `${tela.subtitulo} · ${tela.descricao.trim()}` : tela.subtitulo}
+          </p>
         </div>
         <span
           className={cn(
@@ -164,6 +187,8 @@ export default function SimulacaoTelasPage() {
   const [telas, setTelas] = useState<SimulacaoTela[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [filtro, setFiltro] = useState<"todas" | "setor" | "streaming">("todas");
+  const [filtroSetorId, setFiltroSetorId] = useState("");
+  const [filtroDescricao, setFiltroDescricao] = useState("");
 
   useEffect(() => {
     let ativo = true;
@@ -186,12 +211,36 @@ export default function SimulacaoTelasPage() {
     };
   }, []);
 
-  const aparelhos = useMemo(() => telas.filter((tela) => tela.tipo === "tablet"), [telas]);
-  const visiveis = useMemo(() => {
-    const paineis = telas.filter((tela) => tela.tipo !== "tablet");
-    if (filtro === "todas") return paineis;
-    return paineis.filter((tela) => tela.tipo === filtro);
-  }, [filtro, telas]);
+  const setoresDisponiveis = useMemo(() => {
+    const mapa = new Map<number, string>();
+    for (const tela of telas) {
+      const setorId = tela.setor_id ?? (tela.tipo === "setor" ? tela.id : null);
+      const setorNome = tela.setor_nome || (tela.tipo === "setor" ? tela.nome : null);
+      if (setorId != null && setorNome) mapa.set(setorId, setorNome);
+    }
+    return [...mapa.entries()]
+      .map(([id, nome]) => ({ id, nome }))
+      .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));
+  }, [telas]);
+
+  const telasFiltradas = useMemo(() => {
+    return telas.filter((tela) => {
+      if (filtro !== "todas" && tela.tipo !== "tablet" && tela.tipo !== filtro) return false;
+      const setorId = tela.setor_id ?? (tela.tipo === "setor" ? tela.id : null);
+      if (filtroSetorId && String(setorId ?? "") !== filtroSetorId) return false;
+      if (!correspondeDescricao(tela, filtroDescricao)) return false;
+      return true;
+    });
+  }, [filtro, filtroDescricao, filtroSetorId, telas]);
+
+  const aparelhos = useMemo(
+    () => telasFiltradas.filter((tela) => tela.tipo === "tablet"),
+    [telasFiltradas],
+  );
+  const visiveis = useMemo(
+    () => telasFiltradas.filter((tela) => tela.tipo !== "tablet"),
+    [telasFiltradas],
+  );
 
   return (
     <div className="space-y-6">
@@ -225,6 +274,34 @@ export default function SimulacaoTelasPage() {
         ))}
       </div>
 
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="filtro-setor">Setor</Label>
+          <select
+            id="filtro-setor"
+            className={selectClass}
+            value={filtroSetorId}
+            onChange={(e) => setFiltroSetorId(e.target.value)}
+          >
+            <option value="">Todos os setores</option>
+            {setoresDisponiveis.map((setor) => (
+              <option key={setor.id} value={setor.id}>
+                {setor.nome}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="filtro-descricao">Descrição</Label>
+          <Input
+            id="filtro-descricao"
+            value={filtroDescricao}
+            onChange={(e) => setFiltroDescricao(e.target.value)}
+            placeholder="Ex.: filial, açougue…"
+          />
+        </div>
+      </div>
+
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
@@ -251,6 +328,9 @@ export default function SimulacaoTelasPage() {
                   <div className="min-w-0">
                     <p className="truncate font-semibold">{tablet.nome}</p>
                     <p className="truncate text-xs text-muted-foreground">{tablet.subtitulo}</p>
+                    {tablet.descricao?.trim() ? (
+                      <p className="truncate text-xs text-muted-foreground">{tablet.descricao}</p>
+                    ) : null}
                   </div>
                   <span
                     className={cn(
@@ -268,7 +348,11 @@ export default function SimulacaoTelasPage() {
             ))}
           </div>
         ) : (
-          <p className="text-sm text-muted-foreground">Nenhum tablet informou o IP ainda.</p>
+          <p className="text-sm text-muted-foreground">
+            {filtroSetorId || filtroDescricao.trim()
+              ? "Nenhum tablet neste filtro."
+              : "Nenhum tablet informou o IP ainda."}
+          </p>
         )}
       </section>
     </div>

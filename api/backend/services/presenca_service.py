@@ -158,6 +158,8 @@ def listar_tablets_simulacao() -> list[dict]:
                 "chave": f"tablet:{row.device_id}",
                 "id": row.id,
                 "setor_id": row.setor_id,
+                "setor_nome": nome_setor if row.setor_id else None,
+                "descricao": (setor.descricao if setor else None) or "",
                 "tipo": "tablet",
                 "nome": row.nome or "Tablet",
                 "subtitulo": f"{papel} · {nome_setor}",
