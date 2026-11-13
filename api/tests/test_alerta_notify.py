@@ -4,10 +4,13 @@ from unittest.mock import patch
 from backend import create_app
 from backend.extensions import db
 from backend.models import AlertaLog, AlertaWhatsappContato, Setor
+from backend.services import alerta_notify_service
 from backend.services.alerta_notify_service import (
     despachar_alertas_pendentes,
+    montar_eventos_equipamento_offline,
     salvar_config_alerta,
     salvar_contato_whatsapp,
+    verificar_e_despachar_equipamentos_offline,
 )
 from backend.services.usuario_service import criar_ou_atualizar_admin
 from backend.timezone import agora_sp
@@ -33,6 +36,8 @@ class AlertaNotifyTest(unittest.TestCase):
             db.session.add(caixa)
             db.session.commit()
             self.caixa_id = caixa.id
+            alerta_notify_service._visto_online.clear()
+            alerta_notify_service._alerta_offline_aberto.clear()
 
     def test_despacha_telegram_e_whatsapp_uma_vez(self):
         with self.app.app_context():
@@ -235,17 +240,26 @@ class AlertaNotifyTest(unittest.TestCase):
     def test_dois_grupos_alerta_habilitam_tipos(self):
         with self.app.app_context():
             so_emitir = salvar_config_alerta(
-                {"alerta_sem_emitir": True, "alerta_sem_chamar": False}
+                {
+                    "alerta_sem_emitir": True,
+                    "alerta_sem_chamar": False,
+                    "alerta_equipamento_offline": False,
+                }
             )
             self.assertTrue(so_emitir["alerta_sem_emitir"])
             self.assertFalse(so_emitir["alerta_sem_chamar"])
+            self.assertFalse(so_emitir["alerta_equipamento_offline"])
             self.assertEqual(
                 ["sem_retirada", "sem_retirada_recente"],
                 so_emitir["tipos"],
             )
 
             so_chamar = salvar_config_alerta(
-                {"alerta_sem_emitir": False, "alerta_sem_chamar": True}
+                {
+                    "alerta_sem_emitir": False,
+                    "alerta_sem_chamar": True,
+                    "alerta_equipamento_offline": False,
+                }
             )
             self.assertFalse(so_chamar["alerta_sem_emitir"])
             self.assertTrue(so_chamar["alerta_sem_chamar"])
@@ -254,12 +268,85 @@ class AlertaNotifyTest(unittest.TestCase):
                 so_chamar["tipos"],
             )
 
+            so_equip = salvar_config_alerta(
+                {
+                    "alerta_sem_emitir": False,
+                    "alerta_sem_chamar": False,
+                    "alerta_equipamento_offline": True,
+                }
+            )
+            self.assertTrue(so_equip["alerta_equipamento_offline"])
+            self.assertEqual(["equipamento_offline"], so_equip["tipos"])
+
             nenhum = salvar_config_alerta(
-                {"alerta_sem_emitir": False, "alerta_sem_chamar": False}
+                {
+                    "alerta_sem_emitir": False,
+                    "alerta_sem_chamar": False,
+                    "alerta_equipamento_offline": False,
+                }
             )
             self.assertEqual([], nenhum["tipos"])
             self.assertFalse(nenhum["alerta_sem_emitir"])
             self.assertFalse(nenhum["alerta_sem_chamar"])
+            self.assertFalse(nenhum["alerta_equipamento_offline"])
+
+    def test_alerta_equipamento_offline_envia_whatsapp_uma_vez(self):
+        with self.app.app_context():
+            salvar_config_alerta(
+                {
+                    "whatsapp_ativo": True,
+                    "alerta_sem_emitir": False,
+                    "alerta_sem_chamar": False,
+                    "alerta_equipamento_offline": True,
+                    "hora_inicio": 0,
+                    "hora_fim": 23,
+                    "dias": [0, 1, 2, 3, 4, 5, 6],
+                    "especial_ativo": False,
+                }
+            )
+            salvar_contato_whatsapp(
+                {"nome": "Ops", "telefone": "5511988887777", "ativo": True}
+            )
+
+            tv_online = {
+                "chave": "setor:1",
+                "nome": "Caixa",
+                "tipo": "setor",
+                "setor_id": self.caixa_id,
+                "setor_nome": "Caixa",
+            }
+
+            with patch(
+                "backend.services.analytics_service._no_expediente",
+                return_value=True,
+            ), patch(
+                "backend.services.streaming_service.listar_tvs_admin",
+                return_value=[tv_online],
+            ), patch(
+                "backend.services.streaming_service.esta_online",
+                side_effect=[True, False, False],
+            ), patch(
+                "backend.services.presenca_service.listar_tablets_presenca",
+                return_value=[],
+            ), patch(
+                "backend.services.alerta_notify_service.enviar_whatsapp"
+            ) as wa:
+                # 1º ciclo: marca como visto online
+                self.assertEqual([], montar_eventos_equipamento_offline())
+                # 2º ciclo: cai offline → cria e despacha
+                ids = verificar_e_despachar_equipamentos_offline()
+                self.assertEqual(1, len(ids))
+                self.assertEqual(1, wa.call_count)
+                # 3º ciclo: continua offline → não reenvia
+                ids2 = verificar_e_despachar_equipamentos_offline()
+                self.assertEqual([], ids2)
+                self.assertEqual(1, wa.call_count)
+
+            row = db.session.get(AlertaLog, ids[0])
+            self.assertEqual("equipamento_offline", row.tipo)
+            self.assertTrue(row.enviado_whatsapp)
+            self.assertIn("Caixa", row.mensagem)
+            self.assertIn("offline", row.mensagem.lower())
 
     def test_salva_periodo_e_dias_monitoramento(self):
         with self.app.app_context():

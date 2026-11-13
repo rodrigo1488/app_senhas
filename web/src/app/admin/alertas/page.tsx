@@ -18,8 +18,10 @@ type AlertaLog = {
 
 const ROTULO: Record<string, string> = {
   sem_retirada: "Sem retirada",
+  sem_retirada_recente: "Tempo sem emitir",
   sem_chamada: "Sem chamada",
-  sem_chamada_recente: "Hora sem chamada",
+  sem_chamada_recente: "Tempo sem chamar",
+  equipamento_offline: "Equipamento offline",
 };
 
 function horaDe(iso: string | null) {

@@ -19,11 +19,17 @@ TIPOS_ALERTA_PADRAO = (
     "sem_retirada_recente",
     "sem_chamada",
     "sem_chamada_recente",
+    "equipamento_offline",
 )
 
-# Dois grupos na UI: emitir senha × chamar senha.
+# Grupos na UI: emitir senha × chamar senha × equipamento offline.
 TIPOS_SEM_EMITIR = frozenset({"sem_retirada", "sem_retirada_recente"})
 TIPOS_SEM_CHAMAR = frozenset({"sem_chamada", "sem_chamada_recente"})
+TIPOS_EQUIPAMENTO = frozenset({"equipamento_offline"})
+
+# Estado em memória: só alerta quem já esteve online neste processo (evita spam no boot).
+_visto_online: set[str] = set()
+_alerta_offline_aberto: dict[str, str] = {}
 
 CFG_TELEGRAM_ATIVO = "alerta_telegram_ativo"
 CFG_TELEGRAM_TOKEN = "alerta_telegram_bot_token"
@@ -320,13 +326,19 @@ def excluir_contato_whatsapp(contato_id: int) -> None:
 
 
 def _expandir_tipos_grupos(data: dict[str, Any]) -> list[str] | None:
-    """Converte os dois toggles da UI (ou lista legada) na lista de tipos internos."""
-    if "alerta_sem_emitir" in data or "alerta_sem_chamar" in data:
+    """Converte os toggles da UI (ou lista legada) na lista de tipos internos."""
+    if (
+        "alerta_sem_emitir" in data
+        or "alerta_sem_chamar" in data
+        or "alerta_equipamento_offline" in data
+    ):
         tipos: list[str] = []
         if data.get("alerta_sem_emitir"):
             tipos.extend(sorted(TIPOS_SEM_EMITIR))
         if data.get("alerta_sem_chamar"):
             tipos.extend(sorted(TIPOS_SEM_CHAMAR))
+        if data.get("alerta_equipamento_offline"):
+            tipos.extend(sorted(TIPOS_EQUIPAMENTO))
         return tipos
     if "tipos" not in data:
         return None
@@ -339,6 +351,8 @@ def _expandir_tipos_grupos(data: dict[str, Any]) -> list[str] | None:
         selecionados |= set(TIPOS_SEM_CHAMAR)
     if selecionados & TIPOS_SEM_EMITIR:
         selecionados |= set(TIPOS_SEM_EMITIR)
+    if selecionados & TIPOS_EQUIPAMENTO:
+        selecionados |= set(TIPOS_EQUIPAMENTO)
     return sorted(selecionados)
 
 
@@ -358,6 +372,7 @@ def ler_config_alerta() -> dict[str, Any]:
         "tipos": sorted(tipos),
         "alerta_sem_emitir": bool(tipos & TIPOS_SEM_EMITIR),
         "alerta_sem_chamar": bool(tipos & TIPOS_SEM_CHAMAR),
+        "alerta_equipamento_offline": bool(tipos & TIPOS_EQUIPAMENTO),
         "whatsapp_service_url": (
             os.getenv("WHATSAPP_SERVICE_URL") or "http://whatsapp:3001"
         ).rstrip("/"),
@@ -597,13 +612,134 @@ def despachar_alertas_pendentes(alerta_ids: Optional[list[int]] = None) -> dict[
         return {"telegram": enviados_tg, "whatsapp": enviados_wa, "falhas": falhas, "avaliados": len(rows)}
 
 
+def _rotulo_tipo_equipamento(tipo: str) -> str:
+    if tipo == "setor":
+        return "Painel de senhas"
+    if tipo == "streaming":
+        return "TV de streaming"
+    if tipo == "tablet":
+        return "Tablet"
+    return tipo or "Equipamento"
+
+
+def _listar_estado_equipamentos() -> list[dict[str, Any]]:
+    """Snapshot online/offline das TVs (socket) e tablets (presença HTTP)."""
+    from backend.services.presenca_service import listar_tablets_presenca
+    from backend.services.streaming_service import esta_online, listar_tvs_admin
+
+    itens: list[dict[str, Any]] = []
+    for tv in listar_tvs_admin():
+        chave = str(tv.get("chave") or "")
+        if not chave:
+            continue
+        itens.append(
+            {
+                "chave_dispositivo": f"tv:{chave}",
+                "online": bool(esta_online(chave)),
+                "nome": (tv.get("nome") or chave).strip() or chave,
+                "tipo": tv.get("tipo") or "streaming",
+                "setor_id": tv.get("setor_id"),
+                "setor_nome": tv.get("setor_nome"),
+                "extra": None,
+            }
+        )
+
+    for tablet in listar_tablets_presenca():
+        device_id = tablet["device_id"]
+        papel = tablet["papel_rotulo"]
+        nome = tablet.get("nome") or f"Tablet {papel}"
+        itens.append(
+            {
+                "chave_dispositivo": f"tablet:{device_id}",
+                "online": bool(tablet.get("is_online")),
+                "nome": nome,
+                "tipo": "tablet",
+                "setor_id": tablet.get("setor_id"),
+                "setor_nome": tablet.get("setor_nome"),
+                "extra": papel,
+            }
+        )
+    return itens
+
+
+def montar_eventos_equipamento_offline() -> list[dict[str, Any]]:
+    """Detecta transição online→offline e monta eventos de AlertaLog.
+
+    Só alerta equipamentos já vistos online neste processo (evita falso positivo
+    após reinício da API). Um episódio offline gera uma única chave até voltar.
+    """
+    from backend.services.analytics_service import _no_expediente
+
+    if "equipamento_offline" not in _tipos_habilitados():
+        return []
+
+    agora = agora_sp()
+    if not _no_expediente(agora):
+        return []
+
+    eventos: list[dict[str, Any]] = []
+    for item in _listar_estado_equipamentos():
+        chave_disp = item["chave_dispositivo"]
+        online = bool(item["online"])
+        if online:
+            _visto_online.add(chave_disp)
+            _alerta_offline_aberto.pop(chave_disp, None)
+            continue
+        if chave_disp not in _visto_online:
+            continue
+        chave_alerta = _alerta_offline_aberto.get(chave_disp)
+        if chave_alerta:
+            continue
+
+        ocorrido = agora
+        chave_alerta = (
+            f"equipamento_offline:{chave_disp}:{ocorrido.strftime('%Y%m%d%H%M%S')}"
+        )
+        _alerta_offline_aberto[chave_disp] = chave_alerta
+
+        tipo_eq = _rotulo_tipo_equipamento(str(item.get("tipo") or ""))
+        nome = item.get("nome") or chave_disp
+        partes = [f"Equipamento offline: {nome} ({tipo_eq})"]
+        if item.get("extra"):
+            partes[0] = f"Equipamento offline: {nome} ({tipo_eq} · {item['extra']})"
+        setor_nome = (item.get("setor_nome") or "").strip()
+        if setor_nome:
+            partes.append(f"Setor {setor_nome}")
+        partes.append("Verifique energia e conexão.")
+        eventos.append(
+            {
+                "chave": chave_alerta,
+                "tipo": "equipamento_offline",
+                "severidade": "critical",
+                "mensagem": " · ".join(partes),
+                "setor_id": item.get("setor_id"),
+                "ocorrido_em": ocorrido,
+            }
+        )
+    return eventos
+
+
+def verificar_e_despachar_equipamentos_offline() -> list[int]:
+    """Gera logs de equipamentos que acabaram de ficar offline e despacha."""
+    from backend.services.analytics_service import registrar_logs_alerta
+
+    eventos = montar_eventos_equipamento_offline()
+    if not eventos:
+        return []
+    novos_ids = registrar_logs_alerta(eventos)
+    if novos_ids:
+        despachar_alertas_pendentes(novos_ids)
+    return novos_ids
+
+
 def gerar_e_despachar_alertas_hoje() -> dict[str, Any]:
     from backend.services.analytics_service import montar_analytics
 
     hoje = agora_sp().date().isoformat()
     montar_analytics(from_s=hoje, to_s=hoje)
+    offline_ids = verificar_e_despachar_equipamentos_offline()
     envio = despachar_alertas_pendentes()
-    return {"dia": hoje, **envio}
+    return {"dia": hoje, "equipamentos_offline": len(offline_ids), **envio}
 
 
 def iniciar_rotina_alertas(app) -> None:

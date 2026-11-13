@@ -32,6 +32,7 @@ type AlertasConfig = {
   tipos?: string[];
   alerta_sem_emitir: boolean;
   alerta_sem_chamar: boolean;
+  alerta_equipamento_offline: boolean;
   hora_inicio: number;
   hora_fim: number;
   dias: number[];
@@ -92,6 +93,7 @@ function alertasPadrao(): AlertasConfig {
     whatsapp_contatos: [],
     alerta_sem_emitir: true,
     alerta_sem_chamar: true,
+    alerta_equipamento_offline: true,
     hora_inicio: 7,
     hora_fim: 21,
     dias: [0, 1, 2, 3, 4, 5],
@@ -116,11 +118,16 @@ function normalizarAlertas(cfg: Partial<AlertasConfig> | undefined): AlertasConf
     typeof cfg.alerta_sem_chamar === "boolean"
       ? cfg.alerta_sem_chamar
       : tipos.includes("sem_chamada") || tipos.includes("sem_chamada_recente");
+  const equipamentoOffline =
+    typeof cfg.alerta_equipamento_offline === "boolean"
+      ? cfg.alerta_equipamento_offline
+      : tipos.includes("equipamento_offline");
   return {
     ...base,
     ...cfg,
     alerta_sem_emitir: semEmitir,
     alerta_sem_chamar: semChamar,
+    alerta_equipamento_offline: equipamentoOffline,
     hora_inicio: Number.isFinite(cfg.hora_inicio) ? Number(cfg.hora_inicio) : base.hora_inicio,
     hora_fim: Number.isFinite(cfg.hora_fim) ? Number(cfg.hora_fim) : base.hora_fim,
     dias: Array.isArray(cfg.dias) ? cfg.dias.map(Number).filter((d) => d >= 0 && d <= 6) : base.dias,
@@ -265,6 +272,7 @@ export default function ConfiguracoesPage() {
           whatsapp_ativo: alertas.whatsapp_ativo,
           alerta_sem_emitir: alertas.alerta_sem_emitir,
           alerta_sem_chamar: alertas.alerta_sem_chamar,
+          alerta_equipamento_offline: alertas.alerta_equipamento_offline,
           hora_inicio: alertas.hora_inicio,
           hora_fim: alertas.hora_fim,
           dias: alertas.dias,
@@ -619,8 +627,8 @@ export default function ConfiguracoesPage() {
             <div className="space-y-3">
               <p className="text-sm font-medium">Tipos de alerta</p>
               <p className="text-sm text-muted-foreground">
-                Liga ou desliga cada monitoramento. O tempo de cada um é definido em Setores
-                (minutos sem emitir e minutos sem chamar).
+                Liga ou desliga cada monitoramento. O tempo sem emitir/chamar é definido em
+                Setores. Equipamento offline usa a presença das TVs e tablets.
               </p>
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="flex items-start gap-3 rounded-lg border p-3 text-sm">
@@ -652,6 +660,23 @@ export default function ConfiguracoesPage() {
                     <span className="block font-medium">Tempo sem chamar senhas</span>
                     <span className="text-muted-foreground">
                       Usa o limite de minutos configurado em cada setor para chamada de senha.
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-start gap-3 rounded-lg border p-3 text-sm sm:col-span-2">
+                  <input
+                    type="checkbox"
+                    className="mt-1"
+                    checked={alertas.alerta_equipamento_offline}
+                    onChange={(e) =>
+                      setAlertas({ ...alertas, alerta_equipamento_offline: e.target.checked })
+                    }
+                  />
+                  <span>
+                    <span className="block font-medium">Equipamento offline</span>
+                    <span className="text-muted-foreground">
+                      Avisa no WhatsApp/Telegram quando uma TV ou tablet que estava online
+                      perder a conexão, dentro do horário de monitoramento.
                     </span>
                   </span>
                 </label>

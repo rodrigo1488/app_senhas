@@ -144,6 +144,31 @@ def tablets_do_setor(setor_id: int) -> list[dict]:
     ]
 
 
+def listar_tablets_presenca() -> list[dict]:
+    """Tablets recentes com flag online (janela de presença)."""
+    itens: list[dict] = []
+    for row in _recentes():
+        if row.papel not in PAPEIS_TABLET:
+            continue
+        device_id = (row.device_id or "").strip()
+        if not device_id:
+            continue
+        itens.append(
+            {
+                "device_id": device_id,
+                "papel": row.papel,
+                "papel_rotulo": ROTULO_PAPEL.get(row.papel, row.papel),
+                "nome": (row.nome or "").strip() or None,
+                "setor_id": row.setor_id,
+                "setor_nome": row.setor.nome if row.setor else None,
+                "ip": row.ip,
+                "is_online": _online(row),
+                "last_seen": row.last_seen,
+            }
+        )
+    return itens
+
+
 def listar_tablets_simulacao() -> list[dict]:
     """Itens extras do simulador: cada tablet com o IP na descrição."""
     telas: list[dict] = []
